@@ -10,11 +10,15 @@ declare global {
       getSetting(key: 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution'): Promise<string | null>;
       setSetting(key: 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution', value: string): Promise<void>;
       getActiveEvent(): Promise<ActiveEvent>;
+      setActiveEventRetakeLimit(limit: number): Promise<ActiveEvent>;
       createSession(): Promise<{ sessionId: string; event: ActiveEvent }>;
       listUnfinishedSessions(): Promise<UnfinishedSession[]>;
       loadSession(sessionId: string): Promise<SessionRecord>;
       saveOriginalPhoto(sessionId: string, slotNumber: number, bytes: Uint8Array, width: number, height: number): Promise<PhotoRecord>;
+      saveRetakeOriginalPhoto(sessionId: string, slotNumber: number, bytes: Uint8Array, width: number, height: number): Promise<PhotoRecord>;
       saveDownloadCopy(photoId: string, bytes: Uint8Array): Promise<void>;
+      commitRetake(sessionId: string, slotNumber: number, photoId: string): Promise<void>;
+      revertRetake(sessionId: string, slotNumber: number): Promise<void>;
       readOriginalPhoto(photoId: string): Promise<Uint8Array>;
       abandonSession(sessionId: string): Promise<void>;
       discardSession(sessionId: string): Promise<void>;

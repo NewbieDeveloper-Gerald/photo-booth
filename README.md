@@ -30,7 +30,7 @@ Playwright is configured for browser UI flows. Install its browser once with `np
 
 ## Local data
 
-At first launch, the app creates its SQLite database and `photobooth-paths.json` under Electron's user data directory. That JSON file configures the `photosDirectory` and `backupDirectory`; by default both folders are created beside the database. Each session photo is written as a full-resolution JPEG under `photos/<event>/<session>/` before the app creates a reduced download copy (max 2048px, JPEG quality 80). Canvas re-encoding creates a metadata-free copy; webcam video frames do not carry source GPS EXIF. Timed-out or discarded sessions copy originals into `backup/<event>/<session>/`; they are not deleted.
+At first launch, the app creates its SQLite database and `photobooth-paths.json` under Electron's user data directory. That JSON file configures the `photosDirectory` and `backupDirectory`; by default both folders are created beside the database. Session images live together in `photos/<event>/<session>/`, named `slot-01-original.jpg`, `slot-01-retake-01.jpg`, `slot-01-retake-02.jpg`, and so on. Only the full-resolution version is saved, to avoid duplicate storage; a smaller download copy is not generated or saved. Reverting changes which version is current but leaves every version in that folder. Canvas re-encoding creates a metadata-free copy; webcam video frames do not carry source GPS EXIF. Timed-out or discarded sessions also copy originals into `backup/<event>/<session>/`; they are not deleted. Event retake limit `-1` means unlimited; zero disables retakes.
 
 ## Security and image handling
 

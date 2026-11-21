@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { initializeStorage } from './database';
-import { abandonSession, createSession, getActiveEvent, listUnfinishedSessions, loadSession, saveDownloadCopy, saveOriginalPhoto } from './sessions';
+import { abandonSession, commitRetake, createSession, getActiveEvent, listUnfinishedSessions, loadSession, readOriginalPhoto, revertRetake, saveOriginalPhoto, saveRetakeOriginalPhoto, setActiveEventRetakeLimit } from './sessions';
 
 const directories: string[] = [];
 function setup(): string {
@@ -28,25 +28,23 @@ describe('session storage', () => {
     expect(loadSession(directory, sessionId).slots.map((slot) => slot.slotNumber)).toEqual([1, 2, 3]);
   });
 
-  it('writes the original before its download copy and completes after all slots are copied', async () => {
+  it('saves only full-resolution originals and completes after all slots are captured', async () => {
     const directory = setup();
     const { sessionId } = createSession(directory);
     for (const slot of [1, 2, 3]) {
       const saved = await saveOriginalPhoto(directory, sessionId, slot, tinyJpeg, 4000, 3000);
       const session = loadSession(directory, sessionId);
       expect(session.slots[slot - 1]?.photoId).toBe(saved.photoId);
-      expect(session.slots[slot - 1]?.downloadReady).toBe(false);
-      await saveDownloadCopy(directory, saved.photoId, tinyJpeg);
     }
     const session = loadSession(directory, sessionId);
     expect(session.status).toBe('completed');
-    expect(session.slots.every((slot) => slot.downloadReady)).toBe(true);
     const database = new Database(path.join(directory, 'photobooth.sqlite'));
     const file = database.prepare('SELECT original_path, download_path, width, height FROM photos LIMIT 1').get() as {
       original_path: string; download_path: string; width: number; height: number;
     };
     expect(fs.existsSync(file.original_path)).toBe(true);
-    expect(fs.existsSync(file.download_path)).toBe(true);
+    expect(file.download_path).toBeNull();
+    expect(fs.readdirSync(path.dirname(file.original_path)).some((name) => name.endsWith('-download.jpg'))).toBe(false);
     expect(file).toMatchObject({ width: 4000, height: 3000 });
     database.close();
   });
@@ -61,5 +59,75 @@ describe('session storage', () => {
     expect(loadSession(directory, sessionId).status).toBe('abandoned');
     const backupRoot = path.join(directory, 'backup', 'default-event', sessionId);
     expect(fs.readdirSync(backupRoot)).toHaveLength(1);
+  });
+
+  it('keeps clearly named original and retake versions together and reverts without moving or deleting them', async () => {
+    const directory = setup();
+    const { sessionId } = createSession(directory);
+    const originals = new Map<number, Uint8Array>();
+    for (const slot of [1, 2, 3]) {
+      const bytes = new Uint8Array([0xff, 0xd8, slot, 0xa0 + slot, 0xd9]);
+      originals.set(slot, bytes);
+      await saveOriginalPhoto(directory, sessionId, slot, bytes, 1920, 1080);
+    }
+    const before = loadSession(directory, sessionId);
+    const untouched = [1, 3].map((slot) => before.slots[slot - 1]!.photoId);
+    const newBytes = new Uint8Array([0xff, 0xd8, 0x77, 0x78, 0xd9]);
+    const retake = await saveRetakeOriginalPhoto(directory, sessionId, 2, newBytes, 1920, 1080);
+    await commitRetake(directory, sessionId, 2, retake.photoId);
+    const secondRetakeBytes = new Uint8Array([0xff, 0xd8, 0x88, 0x89, 0xd9]);
+    const secondRetake = await saveRetakeOriginalPhoto(directory, sessionId, 2, secondRetakeBytes, 1920, 1080);
+    await commitRetake(directory, sessionId, 2, secondRetake.photoId);
+
+    let after = loadSession(directory, sessionId);
+    expect(after.retakesUsed).toBe(2);
+    expect(after.slots[1]).toMatchObject({ photoId: secondRetake.photoId, previousPhotoId: retake.photoId, hasPrevious: true });
+    expect(after.slots[0]?.photoId).toBe(untouched[0]);
+    expect(after.slots[2]?.photoId).toBe(untouched[1]);
+    expect(readOriginalPhoto(directory, after.slots[0]!.photoId)).toEqual(originals.get(1));
+    expect(readOriginalPhoto(directory, after.slots[2]!.photoId)).toEqual(originals.get(3));
+    expect(readOriginalPhoto(directory, after.slots[1]!.previousPhotoId)).toEqual(newBytes);
+
+    await revertRetake(directory, sessionId, 2);
+    after = loadSession(directory, sessionId);
+    expect(after.slots[1]).toMatchObject({ photoId: retake.photoId, hasPrevious: false });
+    expect(readOriginalPhoto(directory, after.slots[1]!.photoId)).toEqual(newBytes);
+    expect(readOriginalPhoto(directory, secondRetake.photoId)).toEqual(secondRetakeBytes);
+    expect(after.retakesUsed).toBe(2);
+    expect(readOriginalPhoto(directory, after.slots[0]!.photoId)).toEqual(originals.get(1));
+    expect(readOriginalPhoto(directory, after.slots[2]!.photoId)).toEqual(originals.get(3));
+    const sessionFolder = path.join(directory, 'photos', 'default-event', sessionId);
+    expect(fs.readdirSync(sessionFolder).sort()).toEqual(expect.arrayContaining([
+      'slot-01-original.jpg', 'slot-02-original.jpg', 'slot-02-retake-01.jpg', 'slot-02-retake-02.jpg', 'slot-03-original.jpg',
+    ]));
+    expect(fs.existsSync(path.join(directory, 'backup', 'default-event', sessionId))).toBe(false);
+  });
+
+  it('exposes a pending retake for recovery after an interrupted retake', async () => {
+    const directory = setup();
+    const { sessionId } = createSession(directory);
+    for (const slot of [1, 2, 3]) {
+      await saveOriginalPhoto(directory, sessionId, slot, tinyJpeg, 640, 480);
+    }
+    const pending = await saveRetakeOriginalPhoto(directory, sessionId, 2, new Uint8Array([0xff, 0xd8, 0x66, 0xd9]), 640, 480);
+    expect(listUnfinishedSessions(directory)).toMatchObject([{ id: sessionId, pendingRetakes: 1 }]);
+    expect(loadSession(directory, sessionId).slots[1]?.pendingPhotoId).toBe(pending.photoId);
+    await commitRetake(directory, sessionId, 2, pending.photoId);
+    expect(listUnfinishedSessions(directory)).toEqual([]);
+    expect(loadSession(directory, sessionId).slots[1]).toMatchObject({ photoId: pending.photoId, pendingPhotoId: null });
+  });
+
+  it('snapshots the event retake limit for a session and blocks zero-retake sessions', async () => {
+    const directory = setup();
+    setActiveEventRetakeLimit(directory, 0);
+    const { sessionId } = createSession(directory);
+    expect(loadSession(directory, sessionId).retakeLimit).toBe(0);
+    for (const slot of [1, 2, 3]) {
+      await saveOriginalPhoto(directory, sessionId, slot, tinyJpeg, 640, 480);
+    }
+    await expect(saveRetakeOriginalPhoto(directory, sessionId, 1, tinyJpeg, 640, 480)).rejects.toThrow(/limit/);
+    setActiveEventRetakeLimit(directory, -1);
+    const unlimited = createSession(directory);
+    expect(unlimited.event.retakeLimit).toBe(-1);
   });
 });

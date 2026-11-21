@@ -73,6 +73,21 @@ const migrations: Array<{ name: string; sql: string }> = [
       CREATE INDEX IF NOT EXISTS idx_slots_session ON slots(session_id, slot_number);
     `,
   },
+  {
+    name: '003_slot_retake_history',
+    sql: `
+      ALTER TABLE sessions ADD COLUMN retakes_used INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE sessions ADD COLUMN retake_limit INTEGER NOT NULL DEFAULT 3;
+      ALTER TABLE slots ADD COLUMN current_photo_id TEXT;
+      ALTER TABLE slots ADD COLUMN previous_photo_id TEXT;
+      ALTER TABLE photos ADD COLUMN photo_state TEXT NOT NULL DEFAULT 'current';
+      UPDATE slots SET current_photo_id = (
+        SELECT p.id FROM photos p WHERE p.slot_id = slots.id ORDER BY p.created_at DESC LIMIT 1
+      ) WHERE status = 'captured';
+      CREATE INDEX IF NOT EXISTS idx_photos_slot_state ON photos(slot_id, photo_state);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_one_pending_retake_per_slot ON photos(slot_id) WHERE photo_state = 'pending';
+    `,
+  },
 ];
 
 export function initializeStorage(userDataPath: string): void {

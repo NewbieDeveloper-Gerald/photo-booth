@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, session } from 'electron';
 import path from 'node:path';
 import { initializeStorage } from '../src/storage/database.js';
 import { readBoothSetting, writeBoothSetting } from '../src/storage/settings.js';
-import { abandonSession, createSession, discardSession, getActiveEvent, listUnfinishedSessions, loadSession, readOriginalPhoto, saveDownloadCopy, saveOriginalPhoto } from '../src/storage/sessions.js';
+import { abandonSession, commitRetake, createSession, discardSession, getActiveEvent, listUnfinishedSessions, loadSession, readOriginalPhoto, revertRetake, saveDownloadCopy, saveOriginalPhoto, saveRetakeOriginalPhoto, setActiveEventRetakeLimit } from '../src/storage/sessions.js';
 
 const settingKeys = new Set(['selectedCameraId', 'countdownSeconds', 'cameraResolution']);
 
@@ -45,12 +45,17 @@ app.whenReady().then(() => {
     writeBoothSetting(userDataPath, key, value);
   });
   ipcMain.handle('session:getActiveEvent', () => getActiveEvent(userDataPath));
+  ipcMain.handle('session:setRetakeLimit', (_event, limit: unknown) => setActiveEventRetakeLimit(userDataPath, limit));
   ipcMain.handle('session:create', () => createSession(userDataPath));
   ipcMain.handle('session:listUnfinished', () => listUnfinishedSessions(userDataPath));
   ipcMain.handle('session:load', (_event, sessionId: unknown) => loadSession(userDataPath, sessionId));
   ipcMain.handle('session:saveOriginal', (_event, sessionId: unknown, slotNumber: unknown, bytes: unknown, width: unknown, height: unknown) =>
     saveOriginalPhoto(userDataPath, sessionId, slotNumber, bytes, width, height));
+  ipcMain.handle('session:saveRetakeOriginal', (_event, sessionId: unknown, slotNumber: unknown, bytes: unknown, width: unknown, height: unknown) =>
+    saveRetakeOriginalPhoto(userDataPath, sessionId, slotNumber, bytes, width, height));
   ipcMain.handle('session:saveDownload', (_event, photoId: unknown, bytes: unknown) => saveDownloadCopy(userDataPath, photoId, bytes));
+  ipcMain.handle('session:commitRetake', (_event, sessionId: unknown, slotNumber: unknown, photoId: unknown) => commitRetake(userDataPath, sessionId, slotNumber, photoId));
+  ipcMain.handle('session:revertRetake', (_event, sessionId: unknown, slotNumber: unknown) => revertRetake(userDataPath, sessionId, slotNumber));
   ipcMain.handle('session:readOriginal', (_event, photoId: unknown) => readOriginalPhoto(userDataPath, photoId));
   ipcMain.handle('session:abandon', (_event, sessionId: unknown) => abandonSession(userDataPath, sessionId));
   ipcMain.handle('session:discard', (_event, sessionId: unknown) => discardSession(userDataPath, sessionId));

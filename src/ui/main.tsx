@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createDownloadCopy, captureOriginalJpeg } from '../core/photo-pipeline';
+import { canRetake, isValidRetakeLimit, retakesRemaining } from '../core/retakes';
+import { captureOriginalJpeg } from '../core/photo-pipeline';
 import { BrowserCameraDevice, type CameraInfo, type CameraResolution } from '../hardware/camera';
-import type { ActiveEvent, UnfinishedSession } from '../storage/sessions';
+import type { ActiveEvent, SessionRecord, SessionSlot, UnfinishedSession } from '../storage/sessions';
 import './style.css';
 
 const resolutionOptions: Array<{ value: CameraResolution; label: string }> = [
@@ -11,18 +12,17 @@ const resolutionOptions: Array<{ value: CameraResolution; label: string }> = [
   { value: '1920x1080', label: 'Full HD · 1920 × 1080' },
   { value: '3840x2160', label: '4K · 3840 × 2160' },
 ];
-type Screen = 'ready' | 'capturing' | 'complete';
+type Screen = 'ready' | 'capturing' | 'review';
+type ReviewImage = { slotNumber: number; photoId: string; url: string };
 
 async function getPreference(key: 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution'): Promise<string | null> {
   if (window.photobooth) return window.photobooth.getSetting(key);
   return localStorage.getItem(`photobooth.${key}`);
 }
-
 async function savePreference(key: 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution', value: string): Promise<void> {
   if (window.photobooth) return window.photobooth.setSetting(key, value);
   localStorage.setItem(`photobooth.${key}`, value);
 }
-
 function cameraErrorMessage(error: unknown): string {
   const name = error instanceof Error ? error.name : '';
   if (name === 'NotAllowedError' || name === 'SecurityError') return 'Camera permission was denied. Allow camera access in Windows Settings, then try again.';
@@ -30,20 +30,13 @@ function cameraErrorMessage(error: unknown): string {
   if (name === 'NotReadableError' || name === 'AbortError') return 'The camera is disconnected or being used by another app. Close that app or reconnect the camera.';
   return 'The camera could not start. Check its connection and try again.';
 }
-
-function blobBytes(blob: Blob): Promise<Uint8Array> {
-  return blob.arrayBuffer().then((buffer) => new Uint8Array(buffer));
-}
-
+function blobBytes(blob: Blob): Promise<Uint8Array> { return blob.arrayBuffer().then((buffer) => new Uint8Array(buffer)); }
 function bytesBlob(bytes: Uint8Array): Blob {
   const copy = new Uint8Array(bytes.byteLength);
   copy.set(bytes);
   return new Blob([copy.buffer], { type: 'image/jpeg' });
 }
-
-function wait(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
-}
+function wait(milliseconds: number): Promise<void> { return new Promise((resolve) => window.setTimeout(resolve, milliseconds)); }
 
 function App(): React.JSX.Element {
   const camera = useMemo(() => typeof navigator !== 'undefined' && navigator.mediaDevices ? new BrowserCameraDevice() : null, []);
@@ -52,6 +45,7 @@ function App(): React.JSX.Element {
   const startSequence = useRef(0);
   const sequenceCancelled = useRef(false);
   const cancelCountdown = useRef<(() => void) | null>(null);
+  const reviewUrls = useRef<string[]>([]);
   const [cameras, setCameras] = useState<CameraInfo[]>([]);
   const [selectedCameraId, setSelectedCameraId] = useState('');
   const [resolution, setResolution] = useState<CameraResolution>('best');
@@ -62,20 +56,51 @@ function App(): React.JSX.Element {
   const [actualResolution, setActualResolution] = useState('');
   const [cameraReady, setCameraReady] = useState(false);
   const [event, setEvent] = useState<ActiveEvent | null>(null);
+  const [retakeLimitDraft, setRetakeLimitDraft] = useState('3');
   const [screen, setScreen] = useState<Screen>('ready');
   const [sessionId, setSessionId] = useState('');
+  const [reviewRecord, setReviewRecord] = useState<SessionRecord | null>(null);
+  const [reviewImages, setReviewImages] = useState<ReviewImage[]>([]);
   const [unfinishedSessions, setUnfinishedSessions] = useState<UnfinishedSession[]>([]);
   const [capturedSlots, setCapturedSlots] = useState<Set<number>>(new Set());
   const [currentSlot, setCurrentSlot] = useState(0);
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState('');
   const [busy, setBusy] = useState(false);
+  const [retakeBusySlot, setRetakeBusySlot] = useState<number | null>(null);
   const [lastActivity, setLastActivity] = useState(Date.now());
+
+  const clearReviewUrls = useCallback(() => {
+    for (const url of reviewUrls.current) URL.revokeObjectURL(url);
+    reviewUrls.current = [];
+  }, []);
 
   const refreshUnfinishedSessions = useCallback(async (): Promise<void> => {
     if (!window.photobooth) return;
     try { setUnfinishedSessions(await window.photobooth.listUnfinishedSessions()); }
     catch { setErrorMessage('Could not load unfinished sessions. Your saved photos remain on disk.'); }
   }, []);
+
+  const loadReviewSession = useCallback(async (activeSessionId: string): Promise<SessionRecord> => {
+    const bridge = window.photobooth;
+    if (!bridge) throw new Error('Session review is available in the desktop app.');
+    const record = await bridge.loadSession(activeSessionId);
+    const createdUrls: ReviewImage[] = [];
+    try {
+      for (const slot of record.slots) {
+        if (!slot.photoId) continue;
+        const bytes = await bridge.readOriginalPhoto(slot.photoId);
+        createdUrls.push({ slotNumber: slot.slotNumber, photoId: slot.photoId, url: URL.createObjectURL(bytesBlob(bytes)) });
+      }
+    } catch (error) {
+      for (const image of createdUrls) URL.revokeObjectURL(image.url);
+      throw error;
+    }
+    clearReviewUrls();
+    reviewUrls.current = createdUrls.map((image) => image.url);
+    setReviewRecord(record);
+    setReviewImages(createdUrls);
+    return record;
+  }, [clearReviewUrls]);
 
   useEffect(() => {
     if (videoRef.current) videoRef.current.srcObject = currentStream.current;
@@ -90,10 +115,7 @@ function App(): React.JSX.Element {
   }, [camera]);
 
   const startCamera = useCallback(async (deviceId: string, quality: CameraResolution): Promise<void> => {
-    if (!camera) {
-      setStatus('Camera access is not available in this environment.');
-      return;
-    }
+    if (!camera) { setStatus('Camera access is not available in this environment.'); return; }
     const sequence = ++startSequence.current;
     camera.stopPreview(currentStream.current);
     currentStream.current = null;
@@ -101,18 +123,11 @@ function App(): React.JSX.Element {
     setErrorMessage('');
     setActualResolution('');
     setStatus('Connecting to camera…');
-
     try {
       const stream = await camera.startPreview(deviceId, quality);
-      if (sequence !== startSequence.current) {
-        camera.stopPreview(stream);
-        return;
-      }
+      if (sequence !== startSequence.current) { camera.stopPreview(stream); return; }
       currentStream.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play().catch(() => undefined);
-      }
+      if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play().catch(() => undefined); }
       const settings = stream.getVideoTracks()[0]?.getSettings();
       if (settings?.width && settings.height) setActualResolution(`${settings.width} × ${settings.height}`);
       setCameraReady(true);
@@ -163,14 +178,15 @@ function App(): React.JSX.Element {
       if (window.photobooth) {
         const [activeEvent] = await Promise.all([window.photobooth.getActiveEvent().catch(() => null), refreshUnfinishedSessions()]);
         if (cancelled) return;
-        if (activeEvent) setEvent(activeEvent);
+        if (activeEvent) {
+          setEvent(activeEvent);
+          setRetakeLimitDraft(activeEvent.retakeLimit === -1 ? '' : String(activeEvent.retakeLimit));
+        }
       } else {
         setEvent({ id: 'preview-event', name: 'Default Event', shots: 3, retakeLimit: 3, printEnabled: true, expiryDays: 30 });
+        setRetakeLimitDraft('3');
       }
-      if (!camera) {
-        setStatus('Camera access is not available.');
-        return;
-      }
+      if (!camera) { setStatus('Camera access is not available.'); return; }
       const devices = await camera.listCameras().catch(() => []);
       if (cancelled) return;
       setCameras(devices);
@@ -185,8 +201,9 @@ function App(): React.JSX.Element {
       cancelCountdown.current?.();
       stopCurrentStream();
       if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl);
+      clearReviewUrls();
     };
-    // Initial preferences are loaded once; device changes are handled in a separate effect.
+    // Initial preferences load once; camera and session changes are handled separately.
   }, []);
 
   useEffect(() => {
@@ -197,9 +214,7 @@ function App(): React.JSX.Element {
 
   useEffect(() => {
     if (!errorMessage || !selectedCameraId || errorMessage.includes('permission')) return undefined;
-    const retry = window.setInterval(() => {
-      if (!currentStream.current) void startCamera(selectedCameraId, resolution);
-    }, 5000);
+    const retry = window.setInterval(() => { if (!currentStream.current) void startCamera(selectedCameraId, resolution); }, 5000);
     return () => window.clearInterval(retry);
   }, [errorMessage, resolution, selectedCameraId, startCamera]);
 
@@ -207,10 +222,7 @@ function App(): React.JSX.Element {
     const registerActivity = (): void => setLastActivity(Date.now());
     window.addEventListener('pointerdown', registerActivity);
     window.addEventListener('keydown', registerActivity);
-    return () => {
-      window.removeEventListener('pointerdown', registerActivity);
-      window.removeEventListener('keydown', registerActivity);
-    };
+    return () => { window.removeEventListener('pointerdown', registerActivity); window.removeEventListener('keydown', registerActivity); };
   }, []);
 
   const abandonForIdle = useCallback(async (activeSessionId: string): Promise<void> => {
@@ -220,24 +232,23 @@ function App(): React.JSX.Element {
     try { await window.photobooth?.abandonSession(activeSessionId); }
     catch { setErrorMessage('Could not complete the backup. The session remains available to resume.'); }
     setSessionId('');
+    setReviewRecord(null);
+    clearReviewUrls();
     setScreen('ready');
     setStatus('Session timed out; saved originals were backed up.');
     setPhotoPreviewUrl((current) => { if (current) URL.revokeObjectURL(current); return ''; });
     await refreshUnfinishedSessions();
-  }, [refreshUnfinishedSessions]);
+  }, [clearReviewUrls, refreshUnfinishedSessions]);
 
   useEffect(() => {
-    if (screen !== 'capturing' || !sessionId) return undefined;
+    if ((screen !== 'capturing' && screen !== 'review') || !sessionId || retakeBusySlot !== null) return undefined;
     const remaining = Math.max(0, 90_000 - (Date.now() - lastActivity));
     const timer = window.setTimeout(() => { void abandonForIdle(sessionId); }, remaining);
     return () => window.clearTimeout(timer);
-  }, [abandonForIdle, lastActivity, screen, sessionId]);
+  }, [abandonForIdle, lastActivity, retakeBusySlot, screen, sessionId]);
 
   const setPreviewImage = (blob: Blob): void => {
-    setPhotoPreviewUrl((current) => {
-      if (current) URL.revokeObjectURL(current);
-      return URL.createObjectURL(blob);
-    });
+    setPhotoPreviewUrl((current) => { if (current) URL.revokeObjectURL(current); return URL.createObjectURL(blob); });
   };
 
   const runCountdown = async (): Promise<boolean> => {
@@ -258,27 +269,21 @@ function App(): React.JSX.Element {
     const bridge = window.photobooth;
     const video = videoRef.current;
     if (!bridge || !video || !currentStream.current) throw new Error('The camera is not ready for capture.');
-
     const original = await captureOriginalJpeg(video);
-    // Persist the full-resolution original before creating the reduced download copy.
-    const record = await bridge.saveOriginalPhoto(activeSessionId, slotNumber, await blobBytes(original.blob), original.width, original.height);
+    await bridge.saveOriginalPhoto(activeSessionId, slotNumber, await blobBytes(original.blob), original.width, original.height);
     setCapturedSlots((current) => new Set(current).add(slotNumber));
     setPreviewImage(original.blob);
-    setStatus(`Photo ${slotNumber} saved · making download copy…`);
-
-    const download = await createDownloadCopy(original.blob);
-    await bridge.saveDownloadCopy(record.photoId, await blobBytes(download.blob));
+    setStatus(`Photo ${slotNumber} saved.`);
   };
 
-  const captureSlots = async (activeSessionId: string, slots: number[]): Promise<void> => {
+  const captureSlots = async (activeSessionId: string, slots: number[], totalSlots: number): Promise<void> => {
     sequenceCancelled.current = false;
     setScreen('capturing');
     for (const slotNumber of slots) {
       if (sequenceCancelled.current) return;
       setCurrentSlot(slotNumber);
-      setStatus(`Get ready for photo ${slotNumber} of ${event?.shots ?? 3}…`);
-      const countedDown = await runCountdown();
-      if (!countedDown) return;
+      setStatus(`Get ready for photo ${slotNumber} of ${totalSlots}…`);
+      if (!await runCountdown()) return;
       try {
         await saveCapturedSlot(activeSessionId, slotNumber);
         setStatus(`Photo ${slotNumber} saved`);
@@ -292,14 +297,15 @@ function App(): React.JSX.Element {
         setStatus('Session paused · saved photos are safe');
         setErrorMessage(error instanceof Error ? error.message : 'Capture failed. Resume this session to continue.');
         setSessionId('');
-            await refreshUnfinishedSessions();
+        await refreshUnfinishedSessions();
         return;
       }
     }
-    setScreen('complete');
     setCurrentSlot(0);
-    setStatus('All photos saved');
-    setSessionId('');
+    setStatus('Review your photos');
+    setScreen('review');
+    setLastActivity(Date.now());
+    await loadReviewSession(activeSessionId);
     await refreshUnfinishedSessions();
   };
 
@@ -311,19 +317,24 @@ function App(): React.JSX.Element {
     setBusy(true);
     setErrorMessage('');
     setCapturedSlots(new Set());
+    clearReviewUrls();
     try {
       const created = await window.photobooth.createSession();
       setEvent(created.event);
       setSessionId(created.sessionId);
       setScreen('capturing');
       setLastActivity(Date.now());
-      await captureSlots(created.sessionId, Array.from({ length: created.event.shots }, (_, index) => index + 1));
+      await captureSlots(created.sessionId, Array.from({ length: created.event.shots }, (_, index) => index + 1), created.event.shots);
     } catch (error) {
       setScreen('ready');
       setErrorMessage(error instanceof Error ? error.message : 'Could not start the session.');
-    } finally {
-      setBusy(false);
-    }
+    } finally { setBusy(false); }
+  };
+
+  const finishPendingRetake = async (activeSessionId: string, slot: SessionSlot): Promise<void> => {
+    const bridge = window.photobooth;
+    if (!bridge || !slot.pendingPhotoId) return;
+    await bridge.commitRetake(activeSessionId, slot.slotNumber, slot.pendingPhotoId);
   };
 
   const handleResumeSession = async (unfinished: UnfinishedSession): Promise<void> => {
@@ -335,35 +346,38 @@ function App(): React.JSX.Element {
     try {
       const saved = await bridge.loadSession(unfinished.id);
       setSessionId(saved.id);
+      setLastActivity(Date.now());
+      if (saved.status === 'completed') {
+        setScreen('review');
+        const pendingRetakes = saved.slots.filter((slot) => slot.pendingPhotoId);
+        if (pendingRetakes.length) setRetakeBusySlot(pendingRetakes[0]!.slotNumber);
+        for (const slot of pendingRetakes) await finishPendingRetake(saved.id, slot);
+        setRetakeBusySlot(null);
+        setLastActivity(Date.now());
+        await loadReviewSession(saved.id);
+        await refreshUnfinishedSessions();
+        return;
+      }
       setScreen('capturing');
       setCapturedSlots(new Set(saved.slots.filter((slot) => slot.status === 'captured').map((slot) => slot.slotNumber)));
-      setLastActivity(Date.now());
-
-      for (const slot of saved.slots) {
-        if (slot.photoId && !slot.downloadReady) {
-          const originalBytes = await bridge.readOriginalPhoto(slot.photoId);
-          const recoveredCopy = await createDownloadCopy(bytesBlob(originalBytes));
-          await bridge.saveDownloadCopy(slot.photoId, await blobBytes(recoveredCopy.blob));
-        }
-      }
       const refreshed = await bridge.loadSession(saved.id);
       const missing = refreshed.slots.filter((slot) => !slot.photoId).map((slot) => slot.slotNumber);
-      if (missing.length) await captureSlots(saved.id, missing);
+      if (missing.length) await captureSlots(saved.id, missing, refreshed.slots.length);
       else {
-        setScreen('complete');
-        setSessionId('');
-            setStatus('All photos saved');
+        setCurrentSlot(0);
+        setScreen('review');
+        setStatus('Review your photos');
+        await loadReviewSession(saved.id);
         await refreshUnfinishedSessions();
       }
     } catch (error) {
       sequenceCancelled.current = true;
+      setRetakeBusySlot(null);
       setScreen('ready');
       setSessionId('');
-        setErrorMessage(error instanceof Error ? error.message : 'Could not resume the session. Saved originals are safe.');
+      setErrorMessage(error instanceof Error ? error.message : 'Could not resume the session. Saved originals are safe.');
       await refreshUnfinishedSessions();
-    } finally {
-      setBusy(false);
-    }
+    } finally { setBusy(false); }
   };
 
   const handleDiscardSession = async (unfinished: UnfinishedSession): Promise<void> => {
@@ -376,9 +390,95 @@ function App(): React.JSX.Element {
       await refreshUnfinishedSessions();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Could not back up the session. It remains available.');
-    } finally {
-      setBusy(false);
+    } finally { setBusy(false); }
+  };
+
+  const handleRetake = async (slot: SessionSlot): Promise<void> => {
+    const bridge = window.photobooth;
+    if (!bridge || !sessionId || !reviewRecord || !cameraReady) return;
+    if (slot.pendingPhotoId) {
+      setBusy(true);
+      setRetakeBusySlot(slot.slotNumber);
+      try {
+        await finishPendingRetake(sessionId, slot);
+        setLastActivity(Date.now());
+        await loadReviewSession(sessionId);
+        await refreshUnfinishedSessions();
+      } catch (error) { setErrorMessage(error instanceof Error ? error.message : 'Could not finish the saved retake.'); }
+      finally { setRetakeBusySlot(null); setBusy(false); }
+      return;
     }
+    if (!canRetake(reviewRecord.retakeLimit, reviewRecord.retakesUsed)) return;
+    setRetakeBusySlot(slot.slotNumber);
+    setCurrentSlot(slot.slotNumber);
+    setErrorMessage('');
+    try {
+      setStatus(`Get ready to retake photo ${slot.slotNumber}…`);
+      if (!await runCountdown()) return;
+      const video = videoRef.current;
+      if (!video || !currentStream.current) throw new Error('The camera is not ready for capture.');
+      const original = await captureOriginalJpeg(video);
+      const pending = await bridge.saveRetakeOriginalPhoto(sessionId, slot.slotNumber, await blobBytes(original.blob), original.width, original.height);
+      setPreviewImage(original.blob);
+      setStatus('Retake photo saved.');
+      await bridge.commitRetake(sessionId, slot.slotNumber, pending.photoId);
+      await loadReviewSession(sessionId);
+      setStatus(`Photo ${slot.slotNumber} replaced · previous version saved`);
+      setLastActivity(Date.now());
+      await wait(700);
+      setPhotoPreviewUrl((current) => { if (current) URL.revokeObjectURL(current); return ''; });
+      await refreshUnfinishedSessions();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Retake failed. Your saved photos are safe.');
+      if (sessionId) await loadReviewSession(sessionId).catch(() => undefined);
+      await refreshUnfinishedSessions();
+    } finally { setRetakeBusySlot(null); }
+  };
+
+  const handleRevert = async (slot: SessionSlot): Promise<void> => {
+    if (!window.photobooth || !sessionId || !slot.previousPhotoId) return;
+    setBusy(true);
+    setErrorMessage('');
+    try {
+      await window.photobooth.revertRetake(sessionId, slot.slotNumber);
+      await loadReviewSession(sessionId);
+      setStatus(`Previous photo restored in slot ${slot.slotNumber}`);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Could not restore the previous photo.');
+    } finally { setBusy(false); }
+  };
+
+  const handleContinue = (): void => {
+    setScreen('ready');
+    setSessionId('');
+    setReviewRecord(null);
+    clearReviewUrls();
+    setPhotoPreviewUrl((current) => { if (current) URL.revokeObjectURL(current); return ''; });
+    setErrorMessage('');
+    setStatus('Camera is ready');
+    void refreshUnfinishedSessions();
+  };
+
+  const handleRetakeLimitChange = async (limit: number): Promise<void> => {
+    if (!window.photobooth) return;
+    setBusy(true);
+    setErrorMessage('');
+    try {
+      const updatedEvent = await window.photobooth.setActiveEventRetakeLimit(limit);
+      setEvent(updatedEvent);
+      setRetakeLimitDraft(updatedEvent.retakeLimit === -1 ? '' : String(updatedEvent.retakeLimit));
+    } catch (error) { setErrorMessage(error instanceof Error ? error.message : 'Could not save the event retake limit.'); }
+    finally { setBusy(false); }
+  };
+
+  const handleRetakeLimitInput = (value: string): void => setRetakeLimitDraft(value);
+  const saveRetakeLimitDraft = (): void => {
+    if (retakeLimitDraft === '' || !isValidRetakeLimit(Number(retakeLimitDraft))) {
+      setRetakeLimitDraft(event?.retakeLimit === -1 ? '' : String(event?.retakeLimit ?? 3));
+      return;
+    }
+    const value = Number(retakeLimitDraft);
+    if (value !== event?.retakeLimit) void handleRetakeLimitChange(value);
   };
 
   const handleCameraChange = async (deviceId: string): Promise<void> => {
@@ -397,7 +497,8 @@ function App(): React.JSX.Element {
   };
 
   const slotCount = event?.shots ?? 3;
-  const isBusy = busy || screen === 'capturing';
+  const isBusy = busy || screen === 'capturing' || retakeBusySlot !== null;
+  const retakeText = reviewRecord ? retakesRemaining(reviewRecord.retakeLimit, reviewRecord.retakesUsed) : 0;
 
   return (
     <main className="booth-app">
@@ -407,8 +508,12 @@ function App(): React.JSX.Element {
       </header>
       <section className="workspace">
         <div className="stage-heading">
-          <div><p className="eyebrow">{screen === 'ready' ? 'PHOTO SESSION' : screen === 'capturing' ? 'SESSION IN PROGRESS' : 'SESSION COMPLETE'}</p><h1>{screen === 'ready' ? 'Frame the moment.' : screen === 'capturing' ? `Photo ${currentSlot} of ${slotCount}` : 'All set.'}</h1><p className="subheading">{screen === 'ready' ? `Ready for ${event?.name ?? 'your event'}. Check the preview, then start a session.` : screen === 'capturing' ? 'Stay in frame. Your original photo is saved before the download copy is prepared.' : 'Your three full-resolution originals and download copies are saved on this booth.'}</p></div>
-          <div className="live-badge"><span /> {screen === 'capturing' ? 'CAPTURING' : 'LOCAL CAMERA'}</div>
+          <div>
+            <p className="eyebrow">{screen === 'ready' ? 'PHOTO SESSION' : screen === 'capturing' ? 'SESSION IN PROGRESS' : 'REVIEW YOUR PHOTOS'}</p>
+            <h1>{screen === 'ready' ? 'Frame the moment.' : screen === 'capturing' ? `Photo ${currentSlot} of ${slotCount}` : 'Choose a favorite.'}</h1>
+            <p className="subheading">{screen === 'ready' ? `Ready for ${event?.name ?? 'your event'}. Check the preview, then start a session.` : screen === 'capturing' ? 'Stay in frame. Your original photo is saved directly to the session folder.' : 'Retake just one slot if needed. Your other photos will stay exactly as they are.'}</p>
+          </div>
+          <div className="live-badge"><span /> {screen === 'capturing' ? 'CAPTURING' : screen === 'review' ? 'SESSION REVIEW' : 'LOCAL CAMERA'}</div>
         </div>
         <div className="preview-card">
           <video ref={videoRef} className="camera-video" autoPlay playsInline muted aria-label="Mirrored live camera preview" />
@@ -418,14 +523,30 @@ function App(): React.JSX.Element {
           <div className="preview-meta"><span>{actualResolution || (cameraReady ? 'Camera ready' : 'Waiting for camera')}</span><span className="mirror-label">MIRRORED</span></div>
         </div>
         <div className="controls-grid">
-          <label className="control-field"><span>CAMERA</span><select value={selectedCameraId} onChange={(e) => void handleCameraChange(e.target.value)} disabled={isBusy || !cameras.length}><option value="" disabled>Select a camera</option>{cameras.map((item, index) => <option key={item.deviceId || index} value={item.deviceId}>{item.label || `Camera ${index + 1}`}</option>)}</select></label>
-          <label className="control-field"><span>PREVIEW QUALITY</span><select value={resolution} onChange={(e) => void handleResolutionChange(e.target.value as CameraResolution)} disabled={isBusy}>{resolutionOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
-          <label className="control-field countdown-setting"><span>COUNTDOWN</span><select value={countdownSeconds} onChange={(e) => void handleCountdownChange(Number(e.target.value))} disabled={isBusy}>{Array.from({ length: 8 }, (_, index) => index + 3).map((seconds) => <option key={seconds} value={seconds}>{seconds} seconds</option>)}</select></label>
-          {screen === 'complete' ? <button className="start-button" type="button" onClick={() => { setScreen('ready'); setStatus('Camera is ready'); setErrorMessage(''); }} disabled={!cameraReady}>Start another session <span aria-hidden="true">→</span></button>
+          <label className="control-field"><span>CAMERA</span><select value={selectedCameraId} onChange={(e) => void handleCameraChange(e.target.value)} disabled={isBusy || screen === 'review' || !cameras.length}><option value="" disabled>Select a camera</option>{cameras.map((item, index) => <option key={item.deviceId || index} value={item.deviceId}>{item.label || `Camera ${index + 1}`}</option>)}</select></label>
+          <label className="control-field"><span>PREVIEW QUALITY</span><select value={resolution} onChange={(e) => void handleResolutionChange(e.target.value as CameraResolution)} disabled={isBusy || screen === 'review'}>{resolutionOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+          <label className="control-field countdown-setting"><span>COUNTDOWN</span><select value={countdownSeconds} onChange={(e) => void handleCountdownChange(Number(e.target.value))} disabled={isBusy || screen === 'review'}>{Array.from({ length: 8 }, (_, index) => index + 3).map((seconds) => <option key={seconds} value={seconds}>{seconds} seconds</option>)}</select></label>
+          {screen === 'ready' && <label className="control-field"><span>RETAKES PER SESSION</span><div className="retake-limit-control"><input aria-label="Retakes per session" type="number" min="0" step="1" value={retakeLimitDraft} placeholder="0+" onChange={(e) => handleRetakeLimitInput(e.target.value)} onBlur={saveRetakeLimitDraft} disabled={busy || !window.photobooth || event?.retakeLimit === -1} /><button type="button" className="unlimited-button" onClick={() => void handleRetakeLimitChange(event?.retakeLimit === -1 ? 3 : -1)} disabled={busy || !window.photobooth}>{event?.retakeLimit === -1 ? 'Use a limit' : 'Unlimited'}</button></div></label>}
+          {screen === 'review' ? <button className="start-button" type="button" onClick={handleContinue} disabled={isBusy}>Continue <span aria-hidden="true">→</span></button>
             : <button className="start-button" type="button" onClick={() => void handleStartSession()} disabled={!cameraReady || !event || isBusy || unfinishedSessions.length > 0}>Start session <span aria-hidden="true">→</span></button>}
         </div>
         {screen === 'capturing' && <div className="slot-progress" aria-label="Photo slot progress">{Array.from({ length: slotCount }, (_, index) => index + 1).map((slot) => <div className={`slot-chip ${capturedSlots.has(slot) ? 'saved' : currentSlot === slot ? 'current' : ''}`} key={slot}><b>{String(slot).padStart(2, '0')}</b><span>{capturedSlots.has(slot) ? 'Saved' : currentSlot === slot ? 'Now' : 'Next'}</span></div>)}</div>}
-        {unfinishedSessions.length > 0 && screen === 'ready' && <section className="recovery-card"><div><p className="eyebrow">UNFINISHED SESSION</p><strong>{unfinishedSessions[0]!.capturedSlots} of {unfinishedSessions[0]!.totalSlots} photos saved</strong><span>Your photos are safe on this booth. Resume where you left off or discard this session.</span></div><div className="recovery-actions"><button type="button" onClick={() => void handleResumeSession(unfinishedSessions[0]!)} disabled={busy || !cameraReady}>Resume</button><button type="button" className="secondary-button" onClick={() => void handleDiscardSession(unfinishedSessions[0]!)} disabled={busy}>Discard</button></div></section>}
+        {screen === 'review' && reviewRecord && <section className="review-section">
+          <div className="review-summary"><strong>{retakeText === null ? 'Unlimited retakes' : `${retakeText} retakes left`}</strong><span>{reviewRecord.retakesUsed} used · limit applies across all three slots</span></div>
+          <div className="review-grid">{reviewRecord.slots.map((slot) => {
+            const image = reviewImages.find((item) => item.slotNumber === slot.slotNumber);
+            const allowed = canRetake(reviewRecord.retakeLimit, reviewRecord.retakesUsed);
+            return <article className="review-slot" key={slot.slotNumber}>
+              <div className="review-image">{image ? <img src={image.url} alt={`Photo ${slot.slotNumber}`} /> : <span>Photo not available</span>}<b>PHOTO {slot.slotNumber}</b></div>
+              <div className="review-actions">
+                {slot.pendingPhotoId ? <button type="button" onClick={() => void handleRetake(slot)} disabled={isBusy}>Finish saved retake</button>
+                  : <button type="button" onClick={() => void handleRetake(slot)} disabled={!allowed || !cameraReady || isBusy}>Retake</button>}
+                <button type="button" className="revert-button" onClick={() => void handleRevert(slot)} disabled={!slot.previousPhotoId || isBusy}>Use previous photo</button>
+              </div>
+            </article>;
+          })}</div>
+        </section>}
+        {unfinishedSessions.length > 0 && screen === 'ready' && <section className="recovery-card"><div><p className="eyebrow">UNFINISHED SESSION</p><strong>{unfinishedSessions[0]!.pendingRetakes ? 'A retake needs finishing' : `${unfinishedSessions[0]!.capturedSlots} of ${unfinishedSessions[0]!.totalSlots} photos saved`}</strong><span>Your photos are safe on this booth. Resume where you left off or discard this session.</span></div><div className="recovery-actions"><button type="button" onClick={() => void handleResumeSession(unfinishedSessions[0]!)} disabled={busy || !cameraReady}>Resume</button><button type="button" className="secondary-button" onClick={() => void handleDiscardSession(unfinishedSessions[0]!)} disabled={busy}>Discard</button></div></section>}
         {errorMessage && <p className="camera-error" role="alert">{errorMessage}<button type="button" onClick={() => void refreshCameras()}>Retry</button></p>}
         {!errorMessage && <p className="helper-note">Originals stay on this booth. No photos are uploaded in this feature.</p>}
       </section>
