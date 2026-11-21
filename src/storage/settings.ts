@@ -1,9 +1,9 @@
 import Database from 'better-sqlite3';
 import path from 'node:path';
 
-export type BoothSettingKey = 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution' | 'lowDiskWarningGB';
+export type BoothSettingKey = 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution' | 'lowDiskWarningGB' | 'selectedPrinterName';
 
-const allowedKeys = new Set<BoothSettingKey>(['selectedCameraId', 'countdownSeconds', 'cameraResolution', 'lowDiskWarningGB']);
+const allowedKeys = new Set<BoothSettingKey>(['selectedCameraId', 'countdownSeconds', 'cameraResolution', 'lowDiskWarningGB', 'selectedPrinterName']);
 
 function isAllowedKey(key: unknown): key is BoothSettingKey {
   return typeof key === 'string' && allowedKeys.has(key as BoothSettingKey);

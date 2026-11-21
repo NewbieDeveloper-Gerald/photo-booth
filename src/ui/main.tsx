@@ -17,7 +17,7 @@ const resolutionOptions: Array<{ value: CameraResolution; label: string }> = [
 type Screen = 'ready' | 'capturing' | 'review' | 'finished';
 type ReviewImage = { slotNumber: number; photoId: string; url: string };
 
-type PreferenceKey = 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution' | 'lowDiskWarningGB';
+type PreferenceKey = 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution' | 'lowDiskWarningGB' | 'selectedPrinterName';
 async function getPreference(key: PreferenceKey): Promise<string | null> {
   if (window.photobooth) return window.photobooth.getSetting(key);
   return localStorage.getItem(`photobooth.${key}`);
@@ -103,6 +103,9 @@ function App(): React.JSX.Element {
   const [event, setEvent] = useState<ActiveEvent | null>(null);
   const [retakeLimitDraft, setRetakeLimitDraft] = useState('3');
   const [diskWarningGB, setDiskWarningGB] = useState('2');
+  const [printers, setPrinters] = useState<Array<{ name: string; displayName: string; isDefault?: boolean; status?: number }>>([]);
+  const [selectedPrinterName, setSelectedPrinterName] = useState('');
+  const [printStatus, setPrintStatus] = useState('Not printed yet');
   const [screen, setScreen] = useState<Screen>('ready');
   const [sessionId, setSessionId] = useState('');
   const [selectedLayoutId, setSelectedLayoutId] = useState('double-strip-3');
@@ -215,12 +218,22 @@ function App(): React.JSX.Element {
   useEffect(() => {
     let cancelled = false;
     const initialize = async (): Promise<void> => {
-      const [savedCamera, savedCountdown, savedResolution, savedDiskWarning] = await Promise.all([
+      const [savedCamera, savedCountdown, savedResolution, savedDiskWarning, savedPrinter] = await Promise.all([
         getPreference('selectedCameraId').catch(() => null),
         getPreference('countdownSeconds').catch(() => null),
         getPreference('cameraResolution').catch(() => null),
         getPreference('lowDiskWarningGB').catch(() => null),
+        getPreference('selectedPrinterName').catch(() => null),
       ]);
+      if (savedPrinter) setSelectedPrinterName(savedPrinter);
+      if (window.photobooth) {
+        const availablePrinters = await window.photobooth.listPrinters().catch(() => []);
+        if (cancelled) return;
+        setPrinters(availablePrinters);
+        const preferred = savedPrinter && availablePrinters.some((printer) => printer.name === savedPrinter) ? savedPrinter : availablePrinters.find((printer) => printer.isDefault)?.name ?? availablePrinters[0]?.name ?? '';
+        setSelectedPrinterName(preferred);
+        if (!savedPrinter && preferred) void savePreference('selectedPrinterName', preferred);
+      }
       if (savedDiskWarning !== null && Number.isFinite(Number(savedDiskWarning)) && Number(savedDiskWarning) >= 0 && Number(savedDiskWarning) <= 1000) setDiskWarningGB(savedDiskWarning);
       if (cancelled) return;
       const seconds = Number(savedCountdown);
@@ -504,6 +517,28 @@ function App(): React.JSX.Element {
     } finally { setBusy(false); }
   };
 
+  const handlePrinterChange = (printerName: string): void => {
+    setSelectedPrinterName(printerName);
+    void savePreference('selectedPrinterName', printerName).catch(() => setErrorMessage('Could not save the printer choice.'));
+  };
+
+  const sendPrintJob = async (activeSessionId: string): Promise<void> => {
+    const bridge = window.photobooth;
+    if (!bridge || !selectedPrinterName) { setPrintStatus('No printer selected. Choose one, then print.'); return; }
+    setPrintStatus(`Sending to ${selectedPrinterName}…`);
+    try {
+      const result = await bridge.printSessionOutput(activeSessionId, selectedPrinterName);
+      setPrintStatus(result.success ? `Done · ${selectedPrinterName}` : `Failed · ${result.error ?? 'printer error'}`);
+    } catch (error) { setPrintStatus(`Failed · ${error instanceof Error ? error.message : 'printer error'}`); }
+  };
+
+  const handleReprint = async (): Promise<void> => {
+    if (!sessionId || !selectedPrinterName) { setPrintStatus('Choose a printer before printing.'); return; }
+    setBusy(true);
+    await sendPrintJob(sessionId);
+    setBusy(false);
+  };
+
   const handleContinue = async (): Promise<void> => {
     if (!reviewRecord || !sessionId || !window.photobooth || !event) return;
     setBusy(true);
@@ -516,6 +551,7 @@ function App(): React.JSX.Element {
       setFinalOutputUrl((current) => { if (current) URL.revokeObjectURL(current); return URL.createObjectURL(blob); });
       setStatus(`Finished layout saved · ${savedPath}`);
       setScreen('finished');
+      await sendPrintJob(sessionId);
     } catch (error) { setErrorMessage(error instanceof Error ? error.message : 'Could not build the finished layout. Your photos are safe.'); }
     finally { setBusy(false); }
   };
@@ -619,12 +655,14 @@ function App(): React.JSX.Element {
           <label className="control-field"><span>PREVIEW QUALITY</span><select value={resolution} onChange={(e) => void handleResolutionChange(e.target.value as CameraResolution)} disabled={isBusy || screen === 'review' || screen === 'finished'}>{resolutionOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
           <label className="control-field countdown-setting"><span>COUNTDOWN</span><select value={countdownSeconds} onChange={(e) => void handleCountdownChange(Number(e.target.value))} disabled={isBusy || screen === 'review' || screen === 'finished'}>{Array.from({ length: 8 }, (_, index) => index + 3).map((seconds) => <option key={seconds} value={seconds}>{seconds} seconds</option>)}</select></label>
           {screen === 'ready' && <label className="control-field layout-choice"><span>PRINT LAYOUT</span><select aria-label="Print layout" value={selectedLayoutId} onChange={(e) => setSelectedLayoutId(e.target.value)} disabled={busy || unfinishedSessions.length > 0}>{layoutPresets.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.shots} shots · {item.copies} {item.copies === 1 ? 'copy' : 'copies'} · {item.width}×{item.height}</option>)}</select></label>}
+          {(screen === 'ready' || screen === 'finished') && <label className="control-field"><span>PRINTER</span><select aria-label="Printer" value={selectedPrinterName} onChange={(e) => handlePrinterChange(e.target.value)} disabled={busy || !window.photobooth}><option value="">Select a printer</option>{printers.map((printer) => <option key={printer.name} value={printer.name}>{printer.displayName || printer.name}{printer.isDefault ? ' · Default' : ''}</option>)}</select></label>}
           {screen === 'ready' && <label className="control-field"><span>LOW-DISK WARNING (GB)</span><input aria-label="Low-disk warning threshold in gigabytes" type="number" min="0" max="1000" step="0.1" value={diskWarningGB} onChange={(e) => handleDiskWarningChange(e.target.value)} onBlur={saveDiskWarning} disabled={busy || !window.photobooth} /></label>}
           {screen === 'ready' && <label className="control-field"><span>RETAKES PER SESSION</span><div className="retake-limit-control"><input aria-label="Retakes per session" type="number" min="0" step="1" value={retakeLimitDraft} placeholder="0+" onChange={(e) => handleRetakeLimitInput(e.target.value)} onBlur={saveRetakeLimitDraft} disabled={busy || !window.photobooth || event?.retakeLimit === -1} /><button type="button" className="unlimited-button" onClick={() => void handleRetakeLimitChange(event?.retakeLimit === -1 ? 3 : -1)} disabled={busy || !window.photobooth}>{event?.retakeLimit === -1 ? 'Use a limit' : 'Unlimited'}</button></div></label>}
           {screen === 'review' ? <button className="start-button" type="button" onClick={() => void handleContinue()} disabled={isBusy}>Continue <span aria-hidden="true">→</span></button>
-            : screen === 'finished' ? <button className="start-button" type="button" onClick={returnToReady}>Back to start</button>
+            : screen === 'finished' ? <><button className="secondary-button" type="button" onClick={() => void handleReprint()} disabled={busy || !selectedPrinterName}>Reprint</button><button className="start-button" type="button" onClick={returnToReady} disabled={busy}>Back to start</button></>
               : <><button className="secondary-button" type="button" onClick={() => void handleExportEvent()} disabled={busy || !event || !window.photobooth}>Export event</button><button className="start-button" type="button" onClick={() => void handleStartSession()} disabled={!cameraReady || !event || isBusy || unfinishedSessions.length > 0}>Start session <span aria-hidden="true">→</span></button></>}
         </div>
+        {screen === 'finished' && <p className={`print-status ${printStatus.startsWith('Failed') ? 'failed' : printStatus.startsWith('Done') ? 'done' : ''}`} role="status">{printStatus}</p>}
         {screen === 'capturing' && <div className="slot-progress" aria-label="Photo slot progress">{Array.from({ length: slotCount }, (_, index) => index + 1).map((slot) => <div className={`slot-chip ${capturedSlots.has(slot) ? 'saved' : currentSlot === slot ? 'current' : ''}`} key={slot}><b>{String(slot).padStart(2, '0')}</b><span>{capturedSlots.has(slot) ? 'Saved' : currentSlot === slot ? 'Now' : 'Next'}</span></div>)}</div>}
         {screen === 'review' && reviewRecord && <section className="review-section">
           <div className="review-summary"><strong>{retakeText === null ? 'Unlimited retakes' : `${retakeText} retakes left`}</strong><span>{reviewRecord.retakesUsed} used · limit applies across all session photos</span></div>

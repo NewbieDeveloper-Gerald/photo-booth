@@ -23,9 +23,11 @@ describe('booth settings', () => {
     writeBoothSetting(directory, 'selectedCameraId', 'usb-cam-1');
     writeBoothSetting(directory, 'countdownSeconds', '5');
     writeBoothSetting(directory, 'lowDiskWarningGB', '2');
+    writeBoothSetting(directory, 'selectedPrinterName', 'Canon G3010 series');
     expect(readBoothSetting(directory, 'selectedCameraId')).toBe('usb-cam-1');
     expect(readBoothSetting(directory, 'countdownSeconds')).toBe('5');
     expect(readBoothSetting(directory, 'lowDiskWarningGB')).toBe('2');
+    expect(readBoothSetting(directory, 'selectedPrinterName')).toBe('Canon G3010 series');
   });
 
   it('rejects countdown values outside 3 to 10 seconds', () => {

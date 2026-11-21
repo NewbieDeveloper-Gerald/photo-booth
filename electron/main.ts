@@ -4,15 +4,19 @@ import path from 'node:path';
 import { initializeStorage } from '../src/storage/database.js';
 import { readBoothSetting, writeBoothSetting } from '../src/storage/settings.js';
 import { isBelowDiskWarningThreshold } from '../src/core/disk-space.js';
-import { abandonSession, commitRetake, createSession, discardSession, exportEventFolder, getActiveEvent, getConfiguredStoragePaths, listUnfinishedSessions, loadSession, readOriginalPhoto, revertRetake, saveDownloadCopy, saveOriginalPhoto, saveRetakeOriginalPhoto, saveSessionOutput, setActiveEventRetakeLimit } from '../src/storage/sessions.js';
+import { ElectronSystemPrinter } from './printer.js';
+import { pageSizeMicrons } from '../src/hardware/printer.js';
+import { abandonSession, commitRetake, createSession, discardSession, exportEventFolder, getActiveEvent, getConfiguredStoragePaths, getLatestSessionPrintInfo, listUnfinishedSessions, loadSession, readOriginalPhoto, revertRetake, saveDownloadCopy, saveOriginalPhoto, saveRetakeOriginalPhoto, saveSessionOutput, setActiveEventRetakeLimit } from '../src/storage/sessions.js';
 
-const settingKeys = new Set(['selectedCameraId', 'countdownSeconds', 'cameraResolution', 'lowDiskWarningGB']);
+const settingKeys = new Set(['selectedCameraId', 'countdownSeconds', 'cameraResolution', 'lowDiskWarningGB', 'selectedPrinterName']);
 
 function validateSettingKey(key: unknown): void {
   if (typeof key !== 'string' || !settingKeys.has(key)) throw new Error('Unsupported setting');
 }
 
-function createWindow(): void {
+let mainWindow: BrowserWindow | null = null;
+
+function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -32,6 +36,7 @@ function createWindow(): void {
   } else {
     void window.loadFile(path.join(app.getAppPath(), 'dist/index.html'));
   }
+  return window;
 }
 
 app.whenReady().then(() => {
@@ -47,6 +52,18 @@ app.whenReady().then(() => {
     writeBoothSetting(userDataPath, key, value);
   });
   ipcMain.handle('session:getActiveEvent', () => getActiveEvent(userDataPath));
+  ipcMain.handle('printer:list', async () => {
+    const owner = BrowserWindow.getFocusedWindow() ?? mainWindow;
+    if (!owner || owner.isDestroyed()) return [];
+    const printers = await owner.webContents.getPrintersAsync();
+    return printers.map((printer) => ({ name: printer.name, displayName: printer.displayName }));
+  });
+  ipcMain.handle('printer:printOutput', async (_event, sessionId: unknown, printerName: unknown) => {
+    if (typeof printerName !== 'string' || !printerName.trim() || printerName.length > 256) throw new Error('Choose a valid printer');
+    const printInfo = getLatestSessionPrintInfo(userDataPath, sessionId);
+    const printer = new ElectronSystemPrinter();
+    return printer.printImage(printInfo.imagePath, { printerName, ...pageSizeMicrons(printInfo.width, printInfo.height) });
+  });
   ipcMain.handle('session:exportEvent', async (_event, eventId: unknown) => {
     if (typeof eventId !== 'string') throw new Error('Invalid event');
     const selection = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] });
@@ -89,9 +106,9 @@ app.whenReady().then(() => {
     callback(permission === 'media');
   });
 
-  createWindow();
+  mainWindow = createWindow();
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow();
   });
 });
 

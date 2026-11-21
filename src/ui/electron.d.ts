@@ -7,9 +7,11 @@ interface PhotoRecord { photoId: string; width: number; height: number }
 declare global {
   interface Window {
     photobooth?: {
-      getSetting(key: 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution' | 'lowDiskWarningGB'): Promise<string | null>;
-      setSetting(key: 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution' | 'lowDiskWarningGB', value: string): Promise<void>;
+      getSetting(key: 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution' | 'lowDiskWarningGB' | 'selectedPrinterName'): Promise<string | null>;
+      setSetting(key: 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution' | 'lowDiskWarningGB' | 'selectedPrinterName', value: string): Promise<void>;
       getActiveEvent(): Promise<ActiveEvent>;
+      listPrinters(): Promise<Array<{ name: string; displayName: string; isDefault?: boolean; status?: number }>>;
+      printSessionOutput(sessionId: string, printerName: string): Promise<{ success: boolean; error?: string }>;
       exportEvent(eventId: string): Promise<string | null>;
       checkDiskSpace(thresholdGB: number): Promise<boolean>;
       setActiveEventRetakeLimit(limit: number): Promise<ActiveEvent>;

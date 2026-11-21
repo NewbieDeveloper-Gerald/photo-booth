@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { initializeStorage } from './database';
-import { abandonSession, commitRetake, createSession, exportEventFolder, getActiveEvent, listUnfinishedSessions, loadSession, readOriginalPhoto, revertRetake, saveOriginalPhoto, saveRetakeOriginalPhoto, saveSessionOutput, setActiveEventRetakeLimit } from './sessions';
+import { abandonSession, commitRetake, createSession, exportEventFolder, getActiveEvent, getLatestSessionPrintInfo, listUnfinishedSessions, loadSession, readOriginalPhoto, revertRetake, saveOriginalPhoto, saveRetakeOriginalPhoto, saveSessionOutput, setActiveEventRetakeLimit } from './sessions';
 
 const directories: string[] = [];
 function setup(): string {
@@ -140,6 +140,7 @@ describe('session storage', () => {
     for (const slot of [1, 2, 3, 4]) await saveOriginalPhoto(directory, sessionId, slot, tinyJpeg, 640, 480);
     const outputBytes = new Uint8Array([0xff, 0xd8, 0x55, 0xd9]);
     const outputPath = await saveSessionOutput(directory, sessionId, outputBytes, 1800, 1200);
+    expect(getLatestSessionPrintInfo(directory, sessionId)).toEqual({ imagePath: outputPath, width: 1800, height: 1200 });
     expect(new Uint8Array(fs.readFileSync(outputPath))).toEqual(outputBytes);
     expect(path.dirname(outputPath)).toBe(path.join(directory, 'photos', 'default-event', sessionId));
     const database = new Database(path.join(directory, 'photobooth.sqlite'));

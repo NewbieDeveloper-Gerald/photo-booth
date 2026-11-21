@@ -390,6 +390,21 @@ export async function saveSessionOutput(userDataPath: string, sessionIdValue: un
   return outputPath;
 }
 
+export function getLatestSessionPrintInfo(userDataPath: string, sessionIdValue: unknown): { imagePath: string; width: number; height: number } {
+  if (typeof sessionIdValue !== 'string' || !/^[0-9a-f-]{36}$/i.test(sessionIdValue)) throw new Error('Invalid session id');
+  const database = openDatabase(userDataPath);
+  const paths = getPaths(userDataPath);
+  try {
+    const row = database.prepare(`SELECT o.output_path AS imagePath, s.layout_id AS layoutId
+      FROM outputs o JOIN sessions s ON s.id = o.session_id
+      WHERE o.session_id = ? AND o.kind LIKE 'finished-%'
+      ORDER BY o.created_at DESC, o.rowid DESC LIMIT 1`).get(sessionIdValue) as { imagePath: string; layoutId: string } | undefined;
+    if (!row) throw new Error('No finished layout is saved for this session');
+    const layout = getLayoutPreset(row.layoutId);
+    return { imagePath: ensureInside(paths.photosDirectory, row.imagePath), width: layout.width, height: layout.height };
+  } finally { database.close(); }
+}
+
 export async function saveDownloadCopy(userDataPath: string, photoId: unknown, data: unknown): Promise<void> {
   if (typeof photoId !== 'string' || !/^[0-9a-f-]{36}$/i.test(photoId)) throw new Error('Invalid photo id');
   const bytes = toBuffer(data);

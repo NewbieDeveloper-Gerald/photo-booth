@@ -1,12 +1,14 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
-type SettingKey = 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution' | 'lowDiskWarningGB';
+type SettingKey = 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution' | 'lowDiskWarningGB' | 'selectedPrinterName';
 type PhotoBytes = Uint8Array;
 
 contextBridge.exposeInMainWorld('photobooth', {
   getSetting: (key: SettingKey): Promise<string | null> => ipcRenderer.invoke('settings:get', key),
   setSetting: (key: SettingKey, value: string): Promise<void> => ipcRenderer.invoke('settings:set', key, value),
   getActiveEvent: () => ipcRenderer.invoke('session:getActiveEvent'),
+  listPrinters: () => ipcRenderer.invoke('printer:list'),
+  printSessionOutput: (sessionId: string, printerName: string) => ipcRenderer.invoke('printer:printOutput', sessionId, printerName),
   exportEvent: (eventId: string): Promise<string | null> => ipcRenderer.invoke('session:exportEvent', eventId),
   checkDiskSpace: (thresholdGB: number): Promise<boolean> => ipcRenderer.invoke('session:checkDiskSpace', thresholdGB),
   setActiveEventRetakeLimit: (limit: number) => ipcRenderer.invoke('session:setRetakeLimit', limit),
