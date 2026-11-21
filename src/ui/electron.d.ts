@@ -13,7 +13,7 @@ declare global {
       exportEvent(eventId: string): Promise<string | null>;
       checkDiskSpace(thresholdGB: number): Promise<boolean>;
       setActiveEventRetakeLimit(limit: number): Promise<ActiveEvent>;
-      createSession(): Promise<{ sessionId: string; event: ActiveEvent }>;
+      createSession(layoutId: string): Promise<{ sessionId: string; event: ActiveEvent; shots: number; layoutId: string }>;
       listUnfinishedSessions(): Promise<UnfinishedSession[]>;
       loadSession(sessionId: string): Promise<SessionRecord>;
       saveOriginalPhoto(sessionId: string, slotNumber: number, bytes: Uint8Array, width: number, height: number): Promise<PhotoRecord>;

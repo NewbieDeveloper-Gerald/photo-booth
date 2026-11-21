@@ -133,18 +133,19 @@ describe('session storage', () => {
     expect(loadSession(directory, sessionId).slots[1]).toMatchObject({ photoId: pending.photoId, pendingPhotoId: null });
   });
 
-  it('saves and records a finished 1200 by 1800 layout in the session folder', async () => {
+  it('saves and records the selected print layout at the session-specific dimensions', async () => {
     const directory = setup();
-    const { sessionId } = createSession(directory);
-    for (const slot of [1, 2, 3]) await saveOriginalPhoto(directory, sessionId, slot, tinyJpeg, 640, 480);
+    const { sessionId } = createSession(directory, 'grid-4-landscape');
+    expect(loadSession(directory, sessionId)).toMatchObject({ layoutId: 'grid-4-landscape' });
+    for (const slot of [1, 2, 3, 4]) await saveOriginalPhoto(directory, sessionId, slot, tinyJpeg, 640, 480);
     const outputBytes = new Uint8Array([0xff, 0xd8, 0x55, 0xd9]);
-    const outputPath = await saveSessionOutput(directory, sessionId, outputBytes, 1200, 1800);
-    expect(fs.readFileSync(outputPath)).toEqual(Buffer.from(outputBytes));
+    const outputPath = await saveSessionOutput(directory, sessionId, outputBytes, 1800, 1200);
+    expect(new Uint8Array(fs.readFileSync(outputPath))).toEqual(outputBytes);
     expect(path.dirname(outputPath)).toBe(path.join(directory, 'photos', 'default-event', sessionId));
     const database = new Database(path.join(directory, 'photobooth.sqlite'));
-    expect(database.prepare('SELECT output_path, kind FROM outputs WHERE session_id = ?').get(sessionId)).toEqual({ output_path: outputPath, kind: 'finished-4x6' });
+    expect(database.prepare('SELECT output_path, kind FROM outputs WHERE session_id = ?').get(sessionId)).toEqual({ output_path: outputPath, kind: 'finished-grid-4-landscape' });
     database.close();
-    await expect(saveSessionOutput(directory, sessionId, outputBytes, 800, 1200)).rejects.toThrow(/1200 by 1800/);
+    await expect(saveSessionOutput(directory, sessionId, outputBytes, 1200, 1800)).rejects.toThrow(/1800 by 1200/);
   });
 
   it('snapshots the event retake limit for a session and blocks zero-retake sessions', async () => {

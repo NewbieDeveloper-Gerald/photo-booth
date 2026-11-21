@@ -69,7 +69,7 @@ app.whenReady().then(() => {
     return response.response === 0;
   });
   ipcMain.handle('session:setRetakeLimit', (_event, limit: unknown) => setActiveEventRetakeLimit(userDataPath, limit));
-  ipcMain.handle('session:create', () => createSession(userDataPath));
+  ipcMain.handle('session:create', (_event, layoutId: unknown) => createSession(userDataPath, layoutId));
   ipcMain.handle('session:listUnfinished', () => listUnfinishedSessions(userDataPath));
   ipcMain.handle('session:load', (_event, sessionId: unknown) => loadSession(userDataPath, sessionId));
   ipcMain.handle('session:saveOriginal', (_event, sessionId: unknown, slotNumber: unknown, bytes: unknown, width: unknown, height: unknown) =>

@@ -34,7 +34,7 @@ At first launch, the app creates its SQLite database and `photobooth-paths.json`
 
 ## Fixed 4×6 output layout
 
-`templates/default-4x6.json` defines the built-in three-photo layout, header, and reserved QR placeholder using 1200×1800 pixel coordinates. Each photo is center-cropped to fill its slot. Selecting **Create 4 × 6 layout** on the review screen creates a metadata-free JPEG at 1200×1800 and saves it as `finished-4x6-<id>.jpg` in the session folder; its path and `finished-4x6` kind are recorded in SQLite `outputs`. The rendered layout is then shown on screen. The QR placeholder is empty in this feature; QR generation and printing are later features.
+`templates/layouts.json` is the six-layout catalog. The operator selects one before a session; it sets the shot count and describes photo placements, duplicate-strip copies, dimensions, frame colors, and text. It includes 4-photo double strips, 4-photo portrait and landscape grids, 2-photo double strips, a single 2-photo portrait, and 3-photo double strips. Photo sources are center-cropped into their frames. Pressing **Continue** on review renders a metadata-free JPEG at the selected layout's dimensions and saves it as `finished-<layout-id>-<id>.jpg` in the session folder; the path and layout kind are recorded in SQLite `outputs`. The rendered result is shown on screen. The first-pass layouts use a simple red-and-white treatment; custom Canva artwork and logo files are not imported. Printing and QR generation remain later features.
 
 ## Security and image handling
 

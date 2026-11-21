@@ -88,6 +88,10 @@ const migrations: Array<{ name: string; sql: string }> = [
       CREATE UNIQUE INDEX IF NOT EXISTS idx_one_pending_retake_per_slot ON photos(slot_id) WHERE photo_state = 'pending';
     `,
   },
+  {
+    name: '004_session_layout_choice',
+    sql: `ALTER TABLE sessions ADD COLUMN layout_id TEXT NOT NULL DEFAULT 'double-strip-3';`,
+  },
 ];
 
 export function initializeStorage(userDataPath: string): void {

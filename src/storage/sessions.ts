@@ -3,11 +3,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { canRetake, isValidRetakeLimit } from '../core/retakes';
+import { getLayoutPreset } from '../core/layouts';
 
 export type ActiveEvent = { id: string; name: string; shots: number; retakeLimit: number; printEnabled: boolean; expiryDays: number };
 export type UnfinishedSession = { id: string; createdAt: string; capturedSlots: number; totalSlots: number; pendingRetakes: number };
 export type SessionSlot = { slotNumber: number; status: 'empty' | 'captured'; photoId: string | null; previousPhotoId: string | null; pendingPhotoId: string | null; downloadReady: boolean; hasPrevious: boolean; pendingDownloadReady: boolean; width: number | null; height: number | null };
-export type SessionRecord = { id: string; eventId: string; eventName: string; status: string; retakesUsed: number; retakeLimit: number; slots: SessionSlot[] };
+export type SessionRecord = { id: string; eventId: string; eventName: string; layoutId: string; status: string; retakesUsed: number; retakeLimit: number; slots: SessionSlot[] };
 type StoragePaths = { photosDirectory: string; backupDirectory: string };
 
 type EventRow = { id: string; name: string; shots: number; retake_limit: number; print_enabled: number; expiry_days: number };
@@ -101,18 +102,19 @@ export function setActiveEventRetakeLimit(userDataPath: string, limit: unknown):
   return getActiveEvent(userDataPath);
 }
 
-export function createSession(userDataPath: string): { sessionId: string; event: ActiveEvent } {
+export function createSession(userDataPath: string, layoutIdValue: unknown = 'double-strip-3'): { sessionId: string; event: ActiveEvent; shots: number; layoutId: string } {
   const event = getActiveEvent(userDataPath);
+  const layout = getLayoutPreset(layoutIdValue);
   const sessionId = randomUUID();
   const database = openDatabase(userDataPath);
   try {
     database.transaction(() => {
-      database.prepare('INSERT INTO sessions (id, event_id, status, retake_limit) VALUES (?, ?, ?, ?)')
-        .run(sessionId, event.id, 'in_progress', event.retakeLimit);
+      database.prepare('INSERT INTO sessions (id, event_id, status, retake_limit, layout_id) VALUES (?, ?, ?, ?, ?)')
+        .run(sessionId, event.id, 'in_progress', event.retakeLimit, layout.id);
       const insertSlot = database.prepare('INSERT INTO slots (id, session_id, slot_number, status) VALUES (?, ?, ?, ?)');
-      for (let slot = 1; slot <= event.shots; slot += 1) insertSlot.run(randomUUID(), sessionId, slot, 'empty');
+      for (let slot = 1; slot <= layout.shots; slot += 1) insertSlot.run(randomUUID(), sessionId, slot, 'empty');
     })();
-    return { sessionId, event };
+    return { sessionId, event, shots: layout.shots, layoutId: layout.id };
   } finally {
     database.close();
   }
@@ -141,7 +143,7 @@ export function loadSession(userDataPath: string, sessionId: unknown): SessionRe
   const database = openDatabase(userDataPath);
   try {
     const session = database.prepare(`SELECT s.id, s.event_id AS eventId, e.name AS eventName, s.status,
-      s.retakes_used AS retakesUsed, s.retake_limit AS retakeLimit
+      s.retakes_used AS retakesUsed, s.retake_limit AS retakeLimit, s.layout_id AS layoutId
       FROM sessions s JOIN events e ON e.id = s.event_id WHERE s.id = ?`).get(sessionId) as Omit<SessionRecord, 'slots'> | undefined;
     if (!session) throw new Error('Session not found');
     const slots = database.prepare(`SELECT sl.slot_number AS slotNumber, sl.status,
@@ -369,21 +371,21 @@ export async function revertRetake(userDataPath: string, sessionId: unknown, slo
 
 export async function saveSessionOutput(userDataPath: string, sessionIdValue: unknown, data: unknown, widthValue: unknown, heightValue: unknown): Promise<string> {
   if (typeof sessionIdValue !== 'string' || !/^[0-9a-f-]{36}$/i.test(sessionIdValue) ||
-      widthValue !== 1200 || heightValue !== 1800) throw new Error('Finished image must be 1200 by 1800 pixels');
+      !Number.isInteger(widthValue) || !Number.isInteger(heightValue)) throw new Error('Invalid finished image details');
   const bytes = toBuffer(data);
   const database = openDatabase(userDataPath);
   const paths = getPaths(userDataPath);
-  let eventId: string | undefined;
-  try {
-    const row = database.prepare("SELECT event_id FROM sessions WHERE id = ? AND status = 'completed'").get(sessionIdValue) as { event_id: string } | undefined;
-    eventId = row?.event_id;
-  } finally { database.close(); }
-  if (!eventId) throw new Error('Only completed sessions can save a finished image');
-  const folder = ensureInside(paths.photosDirectory, path.join(paths.photosDirectory, eventId, sessionIdValue));
-  const outputPath = ensureInside(folder, path.join(folder, `finished-4x6-${randomUUID()}.jpg`));
+  let session: { event_id: string; layout_id: string } | undefined;
+  try { session = database.prepare("SELECT event_id, layout_id FROM sessions WHERE id = ? AND status = 'completed'").get(sessionIdValue) as typeof session; }
+  finally { database.close(); }
+  if (!session) throw new Error('Only completed sessions can save a finished image');
+  const layout = getLayoutPreset(session.layout_id);
+  if (widthValue !== layout.width || heightValue !== layout.height) throw new Error(`Finished image must be ${layout.width} by ${layout.height} pixels`);
+  const folder = ensureInside(paths.photosDirectory, path.join(paths.photosDirectory, session.event_id, sessionIdValue));
+  const outputPath = ensureInside(folder, path.join(folder, `finished-${session.layout_id}-${randomUUID()}.jpg`));
   await writeAtomically(outputPath, bytes);
   const outputDatabase = openDatabase(userDataPath);
-  try { outputDatabase.prepare('INSERT INTO outputs (id, session_id, output_path, kind) VALUES (?, ?, ?, ?)').run(randomUUID(), sessionIdValue, outputPath, 'finished-4x6'); }
+  try { outputDatabase.prepare('INSERT INTO outputs (id, session_id, output_path, kind) VALUES (?, ?, ?, ?)').run(randomUUID(), sessionIdValue, outputPath, `finished-${session.layout_id}`); }
   finally { outputDatabase.close(); }
   return outputPath;
 }
@@ -468,7 +470,7 @@ export async function exportEventFolder(userDataPath: string, eventIdValue: unkn
       if (!sessionEntry.isDirectory()) continue;
       const sessionFolder = path.join(photosSource, sessionEntry.name);
       for (const file of await fs.promises.readdir(sessionFolder, { withFileTypes: true })) {
-        if (file.isFile() && file.name.toLowerCase().endsWith('.jpg')) await copyBackupVersion(paths, event.id, sessionEntry.name, path.join(sessionFolder, file.name));
+        if (file.isFile() && file.name.startsWith('slot-') && file.name.toLowerCase().endsWith('.jpg')) await copyBackupVersion(paths, event.id, sessionEntry.name, path.join(sessionFolder, file.name));
       }
     }
     await fs.promises.cp(backupSource, backupTarget, { recursive: true, force: true, errorOnExist: false }).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error; });

@@ -10,7 +10,7 @@ contextBridge.exposeInMainWorld('photobooth', {
   exportEvent: (eventId: string): Promise<string | null> => ipcRenderer.invoke('session:exportEvent', eventId),
   checkDiskSpace: (thresholdGB: number): Promise<boolean> => ipcRenderer.invoke('session:checkDiskSpace', thresholdGB),
   setActiveEventRetakeLimit: (limit: number) => ipcRenderer.invoke('session:setRetakeLimit', limit),
-  createSession: () => ipcRenderer.invoke('session:create'),
+  createSession: (layoutId: string) => ipcRenderer.invoke('session:create', layoutId),
   listUnfinishedSessions: () => ipcRenderer.invoke('session:listUnfinished'),
   loadSession: (sessionId: string) => ipcRenderer.invoke('session:load', sessionId),
   saveOriginalPhoto: (sessionId: string, slotNumber: number, bytes: PhotoBytes, width: number, height: number) =>
