@@ -1,15 +1,24 @@
 export {};
 
 import type { ActiveEvent, SessionRecord, UnfinishedSession } from '../storage/sessions';
+import type { UploadQueueSummary } from '../cloud/upload-queue';
 
 interface PhotoRecord { photoId: string; width: number; height: number }
 
 declare global {
   interface Window {
     photobooth?: {
-      getSetting(key: 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution' | 'lowDiskWarningGB' | 'selectedPrinterName'): Promise<string | null>;
-      setSetting(key: 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution' | 'lowDiskWarningGB' | 'selectedPrinterName', value: string): Promise<void>;
+      getSetting(key: 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution' | 'lowDiskWarningGB' | 'selectedPrinterName' | 'downloadBaseUrl' | 'consentText'): Promise<string | null>;
+      setSetting(key: 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution' | 'lowDiskWarningGB' | 'selectedPrinterName' | 'downloadBaseUrl' | 'consentText', value: string): Promise<void>;
+      hasAdminPin(): Promise<boolean>;
+      verifyAdminPin(pin: string): Promise<boolean>;
+      setAdminPin(pin: string, currentPin: string): Promise<void>;
+      exitKioskWithPin(pin: string): Promise<boolean>;
+      onExitRequested(callback: () => void): () => void;
       getActiveEvent(): Promise<ActiveEvent>;
+      createShareLink(sessionId: string): Promise<{ url: string; expiresAt: string }>;
+      getUploadQueue(): Promise<UploadQueueSummary>;
+      enqueueSessionUploads(sessionId: string): Promise<number>;
       listPrinters(): Promise<Array<{ name: string; displayName: string; isDefault?: boolean; status?: number }>>;
       printSessionOutput(sessionId: string, printerName: string): Promise<{ success: boolean; error?: string }>;
       exportEvent(eventId: string): Promise<string | null>;

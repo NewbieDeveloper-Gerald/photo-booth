@@ -92,6 +92,22 @@ const migrations: Array<{ name: string; sql: string }> = [
     name: '004_session_layout_choice',
     sql: `ALTER TABLE sessions ADD COLUMN layout_id TEXT NOT NULL DEFAULT 'double-strip-3';`,
   },
+  {
+    name: '005_private_download_links',
+    sql: `
+      ALTER TABLE sessions ADD COLUMN public_token TEXT;
+      ALTER TABLE sessions ADD COLUMN token_expires_at TEXT;
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_public_token ON sessions(public_token) WHERE public_token IS NOT NULL;
+    `,
+  },
+  {
+    name: '006_persistent_upload_queue',
+    sql: `
+      ALTER TABLE upload_queue ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now'));
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_upload_queue_session_file ON upload_queue(session_id, file_path);
+      CREATE INDEX IF NOT EXISTS idx_upload_queue_due ON upload_queue(status, next_retry_at, created_at);
+    `,
+  },
 ];
 
 export function initializeStorage(userDataPath: string): void {

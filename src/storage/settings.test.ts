@@ -24,10 +24,12 @@ describe('booth settings', () => {
     writeBoothSetting(directory, 'countdownSeconds', '5');
     writeBoothSetting(directory, 'lowDiskWarningGB', '2');
     writeBoothSetting(directory, 'selectedPrinterName', 'Canon G3010 series');
+    writeBoothSetting(directory, 'downloadBaseUrl', 'https://photos.example.com');
     expect(readBoothSetting(directory, 'selectedCameraId')).toBe('usb-cam-1');
     expect(readBoothSetting(directory, 'countdownSeconds')).toBe('5');
     expect(readBoothSetting(directory, 'lowDiskWarningGB')).toBe('2');
     expect(readBoothSetting(directory, 'selectedPrinterName')).toBe('Canon G3010 series');
+    expect(readBoothSetting(directory, 'downloadBaseUrl')).toBe('https://photos.example.com');
   });
 
   it('rejects countdown values outside 3 to 10 seconds', () => {
@@ -36,10 +38,20 @@ describe('booth settings', () => {
     expect(() => writeBoothSetting(directory, 'countdownSeconds', '11')).toThrow(/3 to 10/);
   });
 
+  it('stores editable consent wording and rejects overlong text', () => {
+    const directory = createDataDirectory();
+    const wording = 'Photos remain on this booth until removed by the operator; QR links expire after 30 days.';
+    writeBoothSetting(directory, 'consentText', wording);
+    expect(readBoothSetting(directory, 'consentText')).toBe(wording);
+    expect(() => writeBoothSetting(directory, 'consentText', '   ')).toThrow(/cannot be blank/);
+    expect(() => writeBoothSetting(directory, 'consentText', 'x'.repeat(1201))).toThrow(/1200 characters/);
+  });
+
   it('rejects unsupported resolution values and unknown setting keys', () => {
     const directory = createDataDirectory();
     expect(() => writeBoothSetting(directory, 'cameraResolution', '8k')).toThrow('Unsupported camera resolution');
     expect(() => writeBoothSetting(directory, 'lowDiskWarningGB', '-1')).toThrow(/threshold/);
+    expect(() => writeBoothSetting(directory, 'downloadBaseUrl', 'http://photos.example.com')).toThrow(/HTTPS/);
     expect(() => readBoothSetting(directory, 'adminPin')).toThrow('Unsupported setting');
   });
 });

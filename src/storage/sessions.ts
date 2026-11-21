@@ -4,6 +4,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { canRetake, isValidRetakeLimit } from '../core/retakes';
 import { getLayoutPreset } from '../core/layouts';
+import { generateSessionToken } from '../core/token';
 
 export type ActiveEvent = { id: string; name: string; shots: number; retakeLimit: number; printEnabled: boolean; expiryDays: number };
 export type UnfinishedSession = { id: string; createdAt: string; capturedSlots: number; totalSlots: number; pendingRetakes: number };
@@ -388,6 +389,23 @@ export async function saveSessionOutput(userDataPath: string, sessionIdValue: un
   try { outputDatabase.prepare('INSERT INTO outputs (id, session_id, output_path, kind) VALUES (?, ?, ?, ?)').run(randomUUID(), sessionIdValue, outputPath, `finished-${session.layout_id}`); }
   finally { outputDatabase.close(); }
   return outputPath;
+}
+
+export function createSessionShareLink(userDataPath: string, sessionIdValue: unknown, baseUrlValue: unknown): { url: string; expiresAt: string } {
+  if (typeof sessionIdValue !== 'string' || !/^[0-9a-f-]{36}$/i.test(sessionIdValue) || typeof baseUrlValue !== 'string') throw new Error('Invalid share-link request');
+  let baseUrl: URL;
+  try { baseUrl = new URL(baseUrlValue); } catch { throw new Error('Configure a valid HTTPS download URL first'); }
+  if (baseUrl.protocol !== 'https:' || baseUrl.username || baseUrl.password || baseUrl.search || baseUrl.hash || baseUrl.pathname !== '/') throw new Error('Download URL must be an HTTPS site origin');
+  const database = openDatabase(userDataPath);
+  try {
+    const session = database.prepare(`SELECT s.status, e.expiry_days FROM sessions s JOIN events e ON e.id = s.event_id WHERE s.id = ?`).get(sessionIdValue) as { status: string; expiry_days: number } | undefined;
+    if (!session || session.status !== 'completed') throw new Error('Only completed sessions can be shared');
+    const token = generateSessionToken();
+    const expiresAt = new Date(Date.now() + session.expiry_days * 24 * 60 * 60 * 1000).toISOString();
+    database.prepare("UPDATE sessions SET public_token = ?, token_expires_at = ?, updated_at = datetime('now') WHERE id = ?")
+      .run(token, expiresAt, sessionIdValue);
+    return { url: `${baseUrl.origin}/d/${token}`, expiresAt };
+  } finally { database.close(); }
 }
 
 export function getLatestSessionPrintInfo(userDataPath: string, sessionIdValue: unknown): { imagePath: string; width: number; height: number } {

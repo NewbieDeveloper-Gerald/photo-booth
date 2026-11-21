@@ -1,12 +1,24 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
-type SettingKey = 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution' | 'lowDiskWarningGB' | 'selectedPrinterName';
+type SettingKey = 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution' | 'lowDiskWarningGB' | 'selectedPrinterName' | 'downloadBaseUrl' | 'consentText';
 type PhotoBytes = Uint8Array;
 
 contextBridge.exposeInMainWorld('photobooth', {
   getSetting: (key: SettingKey): Promise<string | null> => ipcRenderer.invoke('settings:get', key),
   setSetting: (key: SettingKey, value: string): Promise<void> => ipcRenderer.invoke('settings:set', key, value),
+  hasAdminPin: (): Promise<boolean> => ipcRenderer.invoke('admin:hasPin'),
+  verifyAdminPin: (pin: string): Promise<boolean> => ipcRenderer.invoke('admin:verifyPin', pin),
+  setAdminPin: (pin: string, currentPin: string): Promise<void> => ipcRenderer.invoke('admin:setPin', pin, currentPin),
+  exitKioskWithPin: (pin: string): Promise<boolean> => ipcRenderer.invoke('kiosk:exitWithPin', pin),
+  onExitRequested: (callback: () => void): (() => void) => {
+    const listener = (): void => callback();
+    ipcRenderer.on('kiosk:exitRequested', listener);
+    return () => ipcRenderer.removeListener('kiosk:exitRequested', listener);
+  },
   getActiveEvent: () => ipcRenderer.invoke('session:getActiveEvent'),
+  createShareLink: (sessionId: string): Promise<{ url: string; expiresAt: string }> => ipcRenderer.invoke('download:createShareLink', sessionId),
+  getUploadQueue: () => ipcRenderer.invoke('uploadQueue:list'),
+  enqueueSessionUploads: (sessionId: string): Promise<number> => ipcRenderer.invoke('uploadQueue:enqueueSession', sessionId),
   listPrinters: () => ipcRenderer.invoke('printer:list'),
   printSessionOutput: (sessionId: string, printerName: string) => ipcRenderer.invoke('printer:printOutput', sessionId, printerName),
   exportEvent: (eventId: string): Promise<string | null> => ipcRenderer.invoke('session:exportEvent', eventId),

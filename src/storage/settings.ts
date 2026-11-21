@@ -1,9 +1,9 @@
 import Database from 'better-sqlite3';
 import path from 'node:path';
 
-export type BoothSettingKey = 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution' | 'lowDiskWarningGB' | 'selectedPrinterName';
+export type BoothSettingKey = 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution' | 'lowDiskWarningGB' | 'selectedPrinterName' | 'downloadBaseUrl' | 'consentText';
 
-const allowedKeys = new Set<BoothSettingKey>(['selectedCameraId', 'countdownSeconds', 'cameraResolution', 'lowDiskWarningGB', 'selectedPrinterName']);
+const allowedKeys = new Set<BoothSettingKey>(['selectedCameraId', 'countdownSeconds', 'cameraResolution', 'lowDiskWarningGB', 'selectedPrinterName', 'downloadBaseUrl', 'consentText']);
 
 function isAllowedKey(key: unknown): key is BoothSettingKey {
   return typeof key === 'string' && allowedKeys.has(key as BoothSettingKey);
@@ -27,7 +27,7 @@ export function readBoothSetting(userDataPath: string, key: unknown): string | n
 }
 
 export function writeBoothSetting(userDataPath: string, key: unknown, value: unknown): void {
-  if (!isAllowedKey(key) || typeof value !== 'string' || value.length > 256) {
+  if (!isAllowedKey(key) || typeof value !== 'string' || (value.length > 256 && key !== 'consentText')) {
     throw new Error('Invalid setting');
   }
   if (key === 'countdownSeconds' && !/^(?:[3-9]|10)$/.test(value)) {
@@ -38,6 +38,14 @@ export function writeBoothSetting(userDataPath: string, key: unknown, value: unk
   }
   if (key === 'lowDiskWarningGB' && (!/^(?:\d{1,4})(?:\.\d{1,2})?$/.test(value) || Number(value) > 1000)) {
     throw new Error('Disk warning threshold must be between 0 and 1000 GB');
+  }
+  if (key === 'consentText' && !value.trim()) throw new Error('Consent notice cannot be blank');
+  if (key === 'consentText' && value.trim().length > 1200) throw new Error('Consent notice must be 1200 characters or fewer');
+  if (key === 'downloadBaseUrl' && value !== '') {
+    let url: URL;
+    try { url = new URL(value); } catch { throw new Error('Download URL must be a valid HTTPS URL'); }
+    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) throw new Error('Download URL must use HTTPS and contain no credentials, query, or fragment');
+    if (value !== url.origin) throw new Error('Enter only the HTTPS site origin, for example https://photos.example.com');
   }
   const database = openDatabase(userDataPath);
   try {

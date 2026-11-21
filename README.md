@@ -50,3 +50,20 @@ Session tokens use 16 cryptographically secure random bytes encoded as unpadded 
 - `src/storage`: SQLite database and migrations
 - `src/cloud`: isolated future cloud integration
 - `electron`: desktop main process
+
+## QR downloads without cloud storage
+
+The app can serve a completed session directly from the booth laptop. It does not upload or persist duplicate download images. The share page serves current full-resolution slot photos and the finished layout; **Download all** creates a ZIP stream on demand without writing a ZIP to disk. Links use a random 128-bit token, expire according to the event's expiry days, send no-index/no-store headers, and the local server applies a small in-memory request limit. The share service runs only while the booth app is open.
+
+For mobile-data access, configure a Cloudflare Tunnel (no R2 bucket or image storage is used). Photo bytes pass through Cloudflare while being streamed, so the tunnel provider is part of the network trust path even though it does not store the photo files. In the booth's **PUBLIC DOWNLOAD URL (HTTPS)** field, enter the stable HTTPS hostname routed to the tunnel. Configure the tunnel origin as `http://127.0.0.1:47625`. Example Cloudflare setup outline (keep login and tunnel credentials on the booth PC; never send them in chat):
+
+1. For a temporary test without a domain/account, install `cloudflared` and run `cloudflared tunnel --url http://127.0.0.1:47625` in a separate PowerShell window. Copy the temporary `https://….trycloudflare.com` hostname it prints into the booth's **PUBLIC DOWNLOAD URL (HTTPS)** field. This hostname changes when the quick tunnel restarts; anyone with the QR link can access that session, so test with non-sensitive photos only.
+2. For a stable event URL, create a Cloudflare account and add a domain you control; authenticate `cloudflared` locally, create a named tunnel, and route a hostname such as `photos.example.com` to it.
+3. Set the named tunnel's local origin/service to `http://127.0.0.1:47625` and keep the tunnel process running while guests use QR links.
+4. Enter the matching public HTTPS origin in the booth settings and save it. Complete a session, scan its QR using mobile data, and verify per-photo downloads and **Download all**.
+
+The booth must remain powered, connected to the internet, and running; this F7 mode is on-demand streaming, not durable cloud hosting. If the tunnel or booth is offline, guest downloads are unavailable. F8 currently provides a persistent mock-only queue and status UI; it does not upload anything to a cloud provider. Cloudflare's [Quick Tunnel instructions](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/) describe the temporary test tunnel.
+
+## Consent, PIN and kiosk mode (F9)
+
+On first launch, create a 6–12 digit admin PIN in the operator section before starting guest sessions. It is stored as a salted scrypt hash, not plaintext. Lock guest mode to hide settings; use the PIN to unlock settings or authorize exiting the app. A consent notice appears before every session and must be agreed to before capture. The editable default says photos remain on the booth until removed by the operator and the private QR link expires after 30 days; local photo deletion is not automatic. Review consent wording with a lawyer before paid use, including for the Philippines Data Privacy Act of 2012. Electron kiosk mode makes the app full-screen and guards normal in-app/window exit; it cannot block Windows system shortcuts or replace Windows Assigned Access configuration.

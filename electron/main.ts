@@ -3,18 +3,24 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { initializeStorage } from '../src/storage/database.js';
 import { readBoothSetting, writeBoothSetting } from '../src/storage/settings.js';
+import { hasAdminPin, setAdminPin, verifyAdminPin } from '../src/storage/admin-security.js';
 import { isBelowDiskWarningThreshold } from '../src/core/disk-space.js';
 import { ElectronSystemPrinter } from './printer.js';
 import { pageSizeMicrons } from '../src/hardware/printer.js';
-import { abandonSession, commitRetake, createSession, discardSession, exportEventFolder, getActiveEvent, getConfiguredStoragePaths, getLatestSessionPrintInfo, listUnfinishedSessions, loadSession, readOriginalPhoto, revertRetake, saveDownloadCopy, saveOriginalPhoto, saveRetakeOriginalPhoto, saveSessionOutput, setActiveEventRetakeLimit } from '../src/storage/sessions.js';
+import { createDownloadServer } from '../src/cloud/download-server.js';
+import { enqueueSessionFiles, listUploadQueue, recoverInterruptedUploads } from '../src/cloud/upload-queue.js';
+import type { Server } from 'node:http';
+import { abandonSession, commitRetake, createSession, discardSession, exportEventFolder, getActiveEvent, getConfiguredStoragePaths, createSessionShareLink, getLatestSessionPrintInfo, listUnfinishedSessions, loadSession, readOriginalPhoto, revertRetake, saveDownloadCopy, saveOriginalPhoto, saveRetakeOriginalPhoto, saveSessionOutput, setActiveEventRetakeLimit } from '../src/storage/sessions.js';
 
-const settingKeys = new Set(['selectedCameraId', 'countdownSeconds', 'cameraResolution', 'lowDiskWarningGB', 'selectedPrinterName']);
+const settingKeys = new Set(['selectedCameraId', 'countdownSeconds', 'cameraResolution', 'lowDiskWarningGB', 'selectedPrinterName', 'downloadBaseUrl', 'consentText']);
 
 function validateSettingKey(key: unknown): void {
   if (typeof key !== 'string' || !settingKeys.has(key)) throw new Error('Unsupported setting');
 }
 
 let mainWindow: BrowserWindow | null = null;
+let downloadServer: Server | null = null;
+let permitWindowClose = false;
 
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
@@ -23,6 +29,7 @@ function createWindow(): BrowserWindow {
     minWidth: 900,
     minHeight: 600,
     backgroundColor: '#111827',
+    kiosk: true,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -31,6 +38,12 @@ function createWindow(): BrowserWindow {
     },
   });
 
+  window.on('close', (event) => {
+    if (!permitWindowClose) {
+      event.preventDefault();
+      window.webContents.send('kiosk:exitRequested');
+    }
+  });
   if (process.env.VITE_DEV_SERVER_URL) {
     void window.loadURL(process.env.VITE_DEV_SERVER_URL);
   } else {
@@ -39,9 +52,16 @@ function createWindow(): BrowserWindow {
   return window;
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   const userDataPath = app.getPath('userData');
   initializeStorage(userDataPath);
+  recoverInterruptedUploads(userDataPath);
+  try {
+    const { photosDirectory } = getConfiguredStoragePaths(userDataPath);
+    downloadServer = await createDownloadServer(userDataPath, photosDirectory, 47625, '127.0.0.1');
+  } catch {
+    console.warn('Private download service could not start; QR downloads are unavailable until the app is restarted.');
+  }
 
   ipcMain.handle('settings:get', (_event, key: unknown) => {
     validateSettingKey(key);
@@ -51,7 +71,27 @@ app.whenReady().then(() => {
     validateSettingKey(key);
     writeBoothSetting(userDataPath, key, value);
   });
+  ipcMain.handle('admin:hasPin', () => hasAdminPin(userDataPath));
+  ipcMain.handle('admin:verifyPin', (_event, pin: unknown) => verifyAdminPin(userDataPath, pin));
+  ipcMain.handle('admin:setPin', (_event, pin: unknown, currentPin: unknown) => {
+    if (hasAdminPin(userDataPath) && !verifyAdminPin(userDataPath, currentPin)) throw new Error('Current admin PIN is incorrect');
+    setAdminPin(userDataPath, pin);
+  });
+  ipcMain.handle('kiosk:exitWithPin', (_event, pin: unknown) => {
+    if (!verifyAdminPin(userDataPath, pin)) return false;
+    permitWindowClose = true;
+    app.quit();
+    return true;
+  });
   ipcMain.handle('session:getActiveEvent', () => getActiveEvent(userDataPath));
+  ipcMain.handle('uploadQueue:list', () => listUploadQueue(userDataPath));
+  ipcMain.handle('uploadQueue:enqueueSession', (_event, sessionId: unknown) => enqueueSessionFiles(userDataPath, sessionId));
+  ipcMain.handle('download:createShareLink', (_event, sessionId: unknown) => {
+    if (!downloadServer) throw new Error('The private download service is not running. Restart the booth app.');
+    const baseUrl = readBoothSetting(userDataPath, 'downloadBaseUrl');
+    if (!baseUrl) throw new Error('Set the public HTTPS download URL in the booth settings first.');
+    return createSessionShareLink(userDataPath, sessionId, baseUrl);
+  });
   ipcMain.handle('printer:list', async () => {
     const owner = BrowserWindow.getFocusedWindow() ?? mainWindow;
     if (!owner || owner.isDestroyed()) return [];
@@ -111,6 +151,8 @@ app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow();
   });
 });
+
+app.on('before-quit', () => { if (downloadServer) downloadServer.close(); });
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

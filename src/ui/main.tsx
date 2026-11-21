@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import QRCode from 'qrcode';
 import { createRoot } from 'react-dom/client';
 import { canRetake, isValidRetakeLimit, retakesRemaining } from '../core/retakes';
 import { captureOriginalJpeg } from '../core/photo-pipeline';
@@ -6,6 +7,7 @@ import { coverCrop } from '../core/layout';
 import { getLayoutPreset, layoutPresets } from '../core/layouts';
 import { BrowserCameraDevice, type CameraInfo, type CameraResolution } from '../hardware/camera';
 import type { ActiveEvent, SessionRecord, SessionSlot, UnfinishedSession } from '../storage/sessions';
+import type { UploadQueueSummary } from '../cloud/upload-queue';
 import './style.css';
 
 const resolutionOptions: Array<{ value: CameraResolution; label: string }> = [
@@ -17,7 +19,8 @@ const resolutionOptions: Array<{ value: CameraResolution; label: string }> = [
 type Screen = 'ready' | 'capturing' | 'review' | 'finished';
 type ReviewImage = { slotNumber: number; photoId: string; url: string };
 
-type PreferenceKey = 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution' | 'lowDiskWarningGB' | 'selectedPrinterName';
+type PreferenceKey = 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution' | 'lowDiskWarningGB' | 'selectedPrinterName' | 'downloadBaseUrl' | 'consentText';
+const DEFAULT_CONSENT = 'Your photos are stored locally on this booth until the operator removes them. The private QR download link expires after 30 days. Photos are shared only with people who have the link.';
 async function getPreference(key: PreferenceKey): Promise<string | null> {
   if (window.photobooth) return window.photobooth.getSetting(key);
   return localStorage.getItem(`photobooth.${key}`);
@@ -41,7 +44,7 @@ function bytesBlob(bytes: Uint8Array): Blob {
 }
 function wait(milliseconds: number): Promise<void> { return new Promise((resolve) => window.setTimeout(resolve, milliseconds)); }
 
-async function renderFinishedLayout(record: SessionRecord, eventName: string, layout: ReturnType<typeof getLayoutPreset>): Promise<Blob> {
+async function renderFinishedLayout(record: SessionRecord, eventName: string, layout: ReturnType<typeof getLayoutPreset>, qrDataUrl?: string): Promise<Blob> {
   const bridge = window.photobooth;
   if (!bridge) throw new Error('Finished layouts are available in the desktop app.');
   const canvas = document.createElement('canvas');
@@ -52,12 +55,19 @@ async function renderFinishedLayout(record: SessionRecord, eventName: string, la
   context.fillStyle = layout.background;
   context.fillRect(0, 0, canvas.width, canvas.height);
   context.fillStyle = layout.frameColor;
-  context.fillRect(0, 0, canvas.width, 90);
+  context.fillRect(0, 0, canvas.width, 112);
   context.fillStyle = '#ffffff';
   context.font = `700 ${layout.header.fontSize}px Inter, Segoe UI, sans-serif`;
   context.textAlign = 'center';
   context.textBaseline = 'middle';
-  context.fillText(layout.header.text.replace('{{eventName}}', eventName), canvas.width / 2, 45, canvas.width - 80);
+  context.fillText(layout.header.text.replace('{{eventName}}', eventName), qrDataUrl ? (canvas.width - 128) / 2 : canvas.width / 2, 56, canvas.width - (qrDataUrl ? 160 : 80));
+  if (qrDataUrl) {
+    const qrBitmap = await createImageBitmap(await (await fetch(qrDataUrl)).blob());
+    context.fillStyle = '#ffffff';
+    context.fillRect(canvas.width - 112, 8, 104, 104);
+    context.drawImage(qrBitmap, canvas.width - 108, 12, 96, 96);
+    qrBitmap.close();
+  }
 
   const bitmaps: ImageBitmap[] = [];
   try {
@@ -106,6 +116,9 @@ function App(): React.JSX.Element {
   const [printers, setPrinters] = useState<Array<{ name: string; displayName: string; isDefault?: boolean; status?: number }>>([]);
   const [selectedPrinterName, setSelectedPrinterName] = useState('');
   const [printStatus, setPrintStatus] = useState('Not printed yet');
+  const [downloadBaseUrl, setDownloadBaseUrl] = useState('');
+  const [shareUrl, setShareUrl] = useState('');
+  const [shareStatus, setShareStatus] = useState('');
   const [screen, setScreen] = useState<Screen>('ready');
   const [sessionId, setSessionId] = useState('');
   const [selectedLayoutId, setSelectedLayoutId] = useState('double-strip-3');
@@ -114,6 +127,18 @@ function App(): React.JSX.Element {
   const [reviewImages, setReviewImages] = useState<ReviewImage[]>([]);
   const [finalOutputUrl, setFinalOutputUrl] = useState('');
   const [unfinishedSessions, setUnfinishedSessions] = useState<UnfinishedSession[]>([]);
+  const [uploadQueue, setUploadQueue] = useState<UploadQueueSummary | null>(null);
+  const [pinConfigured, setPinConfigured] = useState(false);
+  const [adminLocked, setAdminLocked] = useState(false);
+  const [showUnlock, setShowUnlock] = useState(false);
+  const [pinDraft, setPinDraft] = useState('');
+  const [pinConfirm, setPinConfirm] = useState('');
+  const [currentPinDraft, setCurrentPinDraft] = useState('');
+  const [pinError, setPinError] = useState('');
+  const [consentText, setConsentText] = useState(DEFAULT_CONSENT);
+  const [consentOpen, setConsentOpen] = useState(false);
+  const [exitPrompt, setExitPrompt] = useState(false);
+  const [exitPin, setExitPin] = useState('');
   const [capturedSlots, setCapturedSlots] = useState<Set<number>>(new Set());
   const [currentSlot, setCurrentSlot] = useState(0);
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState('');
@@ -130,6 +155,12 @@ function App(): React.JSX.Element {
     if (!window.photobooth) return;
     try { setUnfinishedSessions(await window.photobooth.listUnfinishedSessions()); }
     catch { setErrorMessage('Could not load unfinished sessions. Your saved photos remain on disk.'); }
+  }, []);
+
+  const refreshUploadQueue = useCallback(async (): Promise<void> => {
+    if (!window.photobooth) return;
+    try { setUploadQueue(await window.photobooth.getUploadQueue()); }
+    catch { setUploadQueue(null); }
   }, []);
 
   const loadReviewSession = useCallback(async (activeSessionId: string): Promise<SessionRecord> => {
@@ -218,13 +249,22 @@ function App(): React.JSX.Element {
   useEffect(() => {
     let cancelled = false;
     const initialize = async (): Promise<void> => {
-      const [savedCamera, savedCountdown, savedResolution, savedDiskWarning, savedPrinter] = await Promise.all([
+      const [savedCamera, savedCountdown, savedResolution, savedDiskWarning, savedPrinter, savedDownloadBaseUrl, savedConsentText] = await Promise.all([
         getPreference('selectedCameraId').catch(() => null),
         getPreference('countdownSeconds').catch(() => null),
         getPreference('cameraResolution').catch(() => null),
         getPreference('lowDiskWarningGB').catch(() => null),
         getPreference('selectedPrinterName').catch(() => null),
+        getPreference('downloadBaseUrl').catch(() => null),
+        getPreference('consentText').catch(() => null),
       ]);
+      if (savedDownloadBaseUrl) setDownloadBaseUrl(savedDownloadBaseUrl);
+      if (savedConsentText) setConsentText(savedConsentText);
+      if (window.photobooth) {
+        const configured = await window.photobooth.hasAdminPin().catch(() => false);
+        setPinConfigured(configured);
+        setAdminLocked(configured);
+      }
       if (savedPrinter) setSelectedPrinterName(savedPrinter);
       if (window.photobooth) {
         const availablePrinters = await window.photobooth.listPrinters().catch(() => []);
@@ -240,7 +280,7 @@ function App(): React.JSX.Element {
       if (Number.isInteger(seconds) && seconds >= 3 && seconds <= 10) setCountdownSeconds(seconds);
       if (savedResolution && resolutionOptions.some((item) => item.value === savedResolution)) setResolution(savedResolution as CameraResolution);
       if (window.photobooth) {
-        const [activeEvent] = await Promise.all([window.photobooth.getActiveEvent().catch(() => null), refreshUnfinishedSessions()]);
+        const [activeEvent] = await Promise.all([window.photobooth.getActiveEvent().catch(() => null), refreshUnfinishedSessions(), refreshUploadQueue()]);
         if (cancelled) return;
         if (activeEvent) {
           setEvent(activeEvent);
@@ -271,6 +311,8 @@ function App(): React.JSX.Element {
     // Initial preferences load once; camera and session changes are handled separately.
   }, []);
 
+  useEffect(() => window.photobooth?.onExitRequested(() => { setExitPrompt(true); setExitPin(''); setPinError(''); }), []);
+
   useEffect(() => {
     const onDeviceChange = (): void => { void refreshCameras(); };
     navigator.mediaDevices?.addEventListener('devicechange', onDeviceChange);
@@ -298,12 +340,13 @@ function App(): React.JSX.Element {
     catch { setErrorMessage('Could not complete the backup. The session remains available to resume.'); }
     setSessionId('');
     setReviewRecord(null);
+    if (pinConfigured) { setAdminLocked(true); setShowUnlock(false); }
     clearReviewUrls();
     setScreen('ready');
     setStatus('Session timed out; saved originals were backed up.');
     setPhotoPreviewUrl((current) => { if (current) URL.revokeObjectURL(current); return ''; });
     await refreshUnfinishedSessions();
-  }, [clearReviewUrls, refreshUnfinishedSessions]);
+  }, [clearReviewUrls, pinConfigured, refreshUnfinishedSessions]);
 
   useEffect(() => {
     if ((screen !== 'capturing' && screen !== 'review') || !sessionId || retakeBusySlot !== null) return undefined;
@@ -375,10 +418,17 @@ function App(): React.JSX.Element {
   };
 
   const handleStartSession = async (): Promise<void> => {
+    if (!pinConfigured) { setErrorMessage('Set an admin PIN before starting guest sessions.'); return; }
     if (!cameraReady || !window.photobooth) {
       setErrorMessage(!cameraReady ? 'Connect a camera before starting a session.' : 'Start a session in the desktop app.');
       return;
     }
+    setConsentOpen(true);
+  };
+
+  const confirmConsentAndStart = async (): Promise<void> => {
+    setConsentOpen(false);
+    if (!cameraReady || !window.photobooth) return;
     setBusy(true);
     setErrorMessage('');
     setCapturedSlots(new Set());
@@ -396,6 +446,32 @@ function App(): React.JSX.Element {
       setScreen('ready');
       setErrorMessage(error instanceof Error ? error.message : 'Could not start the session.');
     } finally { setBusy(false); }
+  };
+
+  const savePin = async (): Promise<void> => {
+    if (!window.photobooth) return;
+    if (!/^\d{6,12}$/.test(pinDraft) || pinDraft !== pinConfirm) { setPinError('Enter matching PINs of 6 to 12 digits.'); return; }
+    try {
+      await window.photobooth.setAdminPin(pinDraft, pinConfigured ? currentPinDraft : '');
+      setPinConfigured(true);
+      setAdminLocked(false);
+      setPinError('Admin PIN saved. Lock the booth before guests use it.');
+      setPinDraft(''); setPinConfirm(''); setCurrentPinDraft('');
+    } catch (error) { setPinError(error instanceof Error ? error.message : 'Could not save admin PIN.'); }
+  };
+
+  const unlockAdmin = async (): Promise<void> => {
+    if (!window.photobooth) return;
+    const valid = await window.photobooth.verifyAdminPin(currentPinDraft).catch(() => false);
+    if (!valid) { setPinError('Incorrect admin PIN.'); return; }
+    setAdminLocked(false); setShowUnlock(false); setCurrentPinDraft(''); setPinError('');
+  };
+
+  const submitExit = async (): Promise<void> => {
+    if (!window.photobooth) return;
+    const exited = await window.photobooth.exitKioskWithPin(exitPin).catch(() => false);
+    if (!exited) { setPinError('Incorrect admin PIN; the booth remains locked.'); return; }
+    setExitPrompt(false);
   };
 
   const finishPendingRetake = async (activeSessionId: string, slot: SessionSlot): Promise<void> => {
@@ -546,8 +622,21 @@ function App(): React.JSX.Element {
     setStatus('Building your 4 × 6 layout…');
     try {
       const layout = getLayoutPreset(reviewRecord.layoutId);
-      const blob = await renderFinishedLayout(reviewRecord, event.name, layout);
+      let nextShareUrl = '';
+      let qrDataUrl = '';
+      if (downloadBaseUrl) {
+        try {
+          const link = await window.photobooth.createShareLink(sessionId);
+          nextShareUrl = link.url;
+          qrDataUrl = await QRCode.toDataURL(link.url, { width: 256, margin: 1, errorCorrectionLevel: 'Q' });
+          setShareStatus(`Link expires ${new Date(link.expiresAt).toLocaleDateString()}`);
+        } catch (error) { setShareStatus(error instanceof Error ? error.message : 'QR downloads are not available.'); }
+      } else setShareStatus('Set the public HTTPS download URL on the start screen to enable QR downloads.');
+      const blob = await renderFinishedLayout(reviewRecord, event.name, layout, qrDataUrl || undefined);
       const savedPath = await window.photobooth.saveSessionOutput(sessionId, await blobBytes(blob), layout.width, layout.height);
+      await window.photobooth.enqueueSessionUploads(sessionId);
+      await refreshUploadQueue();
+      setShareUrl(nextShareUrl);
       setFinalOutputUrl((current) => { if (current) URL.revokeObjectURL(current); return URL.createObjectURL(blob); });
       setStatus(`Finished layout saved · ${savedPath}`);
       setScreen('finished');
@@ -560,6 +649,7 @@ function App(): React.JSX.Element {
     setScreen('ready');
     setSessionId('');
     setReviewRecord(null);
+    if (pinConfigured) { setAdminLocked(true); setShowUnlock(false); }
     clearReviewUrls();
     setFinalOutputUrl((current) => { if (current) URL.revokeObjectURL(current); return ''; });
     setPhotoPreviewUrl((current) => { if (current) URL.revokeObjectURL(current); return ''; });
@@ -650,18 +740,28 @@ function App(): React.JSX.Element {
           {countdown !== null && <div className="countdown-overlay" aria-live="assertive"><span>{countdown}</span></div>}
           <div className="preview-meta"><span>{actualResolution || (cameraReady ? 'Camera ready' : 'Waiting for camera')}</span><span className="mirror-label">MIRRORED</span></div>
         </div>
-        <div className="controls-grid">
+        <div className={`controls-grid ${screen === 'ready' && adminLocked ? 'settings-locked' : ''}`}>
           <label className="control-field"><span>CAMERA</span><select value={selectedCameraId} onChange={(e) => void handleCameraChange(e.target.value)} disabled={isBusy || screen === 'review' || screen === 'finished' || !cameras.length}><option value="" disabled>Select a camera</option>{cameras.map((item, index) => <option key={item.deviceId || index} value={item.deviceId}>{item.label || `Camera ${index + 1}`}</option>)}</select></label>
           <label className="control-field"><span>PREVIEW QUALITY</span><select value={resolution} onChange={(e) => void handleResolutionChange(e.target.value as CameraResolution)} disabled={isBusy || screen === 'review' || screen === 'finished'}>{resolutionOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
           <label className="control-field countdown-setting"><span>COUNTDOWN</span><select value={countdownSeconds} onChange={(e) => void handleCountdownChange(Number(e.target.value))} disabled={isBusy || screen === 'review' || screen === 'finished'}>{Array.from({ length: 8 }, (_, index) => index + 3).map((seconds) => <option key={seconds} value={seconds}>{seconds} seconds</option>)}</select></label>
           {screen === 'ready' && <label className="control-field layout-choice"><span>PRINT LAYOUT</span><select aria-label="Print layout" value={selectedLayoutId} onChange={(e) => setSelectedLayoutId(e.target.value)} disabled={busy || unfinishedSessions.length > 0}>{layoutPresets.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.shots} shots · {item.copies} {item.copies === 1 ? 'copy' : 'copies'} · {item.width}×{item.height}</option>)}</select></label>}
           {(screen === 'ready' || screen === 'finished') && <label className="control-field"><span>PRINTER</span><select aria-label="Printer" value={selectedPrinterName} onChange={(e) => handlePrinterChange(e.target.value)} disabled={busy || !window.photobooth}><option value="">Select a printer</option>{printers.map((printer) => <option key={printer.name} value={printer.name}>{printer.displayName || printer.name}{printer.isDefault ? ' · Default' : ''}</option>)}</select></label>}
+          {screen === 'ready' && <label className="control-field"><span>PUBLIC DOWNLOAD URL (HTTPS)</span><input aria-label="Public HTTPS download URL" type="url" placeholder="https://photos.example.com" value={downloadBaseUrl} onChange={(e) => setDownloadBaseUrl(e.target.value)} onBlur={() => void savePreference('downloadBaseUrl', downloadBaseUrl.trim().replace(/\/$/, '')).catch(() => setErrorMessage('Enter a valid HTTPS site URL.'))} disabled={busy || !window.photobooth} /></label>}
           {screen === 'ready' && <label className="control-field"><span>LOW-DISK WARNING (GB)</span><input aria-label="Low-disk warning threshold in gigabytes" type="number" min="0" max="1000" step="0.1" value={diskWarningGB} onChange={(e) => handleDiskWarningChange(e.target.value)} onBlur={saveDiskWarning} disabled={busy || !window.photobooth} /></label>}
           {screen === 'ready' && <label className="control-field"><span>RETAKES PER SESSION</span><div className="retake-limit-control"><input aria-label="Retakes per session" type="number" min="0" step="1" value={retakeLimitDraft} placeholder="0+" onChange={(e) => handleRetakeLimitInput(e.target.value)} onBlur={saveRetakeLimitDraft} disabled={busy || !window.photobooth || event?.retakeLimit === -1} /><button type="button" className="unlimited-button" onClick={() => void handleRetakeLimitChange(event?.retakeLimit === -1 ? 3 : -1)} disabled={busy || !window.photobooth}>{event?.retakeLimit === -1 ? 'Use a limit' : 'Unlimited'}</button></div></label>}
           {screen === 'review' ? <button className="start-button" type="button" onClick={() => void handleContinue()} disabled={isBusy}>Continue <span aria-hidden="true">→</span></button>
             : screen === 'finished' ? <><button className="secondary-button" type="button" onClick={() => void handleReprint()} disabled={busy || !selectedPrinterName}>Reprint</button><button className="start-button" type="button" onClick={returnToReady} disabled={busy}>Back to start</button></>
-              : <><button className="secondary-button" type="button" onClick={() => void handleExportEvent()} disabled={busy || !event || !window.photobooth}>Export event</button><button className="start-button" type="button" onClick={() => void handleStartSession()} disabled={!cameraReady || !event || isBusy || unfinishedSessions.length > 0}>Start session <span aria-hidden="true">→</span></button></>}
+              : <><button className="secondary-button" type="button" onClick={() => void handleExportEvent()} disabled={busy || !event || !window.photobooth}>Export event</button><button className="start-button" type="button" onClick={() => void handleStartSession()} disabled={!cameraReady || !event || !pinConfigured || isBusy || unfinishedSessions.length > 0}>Start session <span aria-hidden="true">→</span></button></>}
         </div>
+        {screen === 'ready' && <section className="admin-security-card" aria-label="Operator security">
+          {!pinConfigured ? <><p className="eyebrow">FIRST-TIME SETUP</p><h2>Create admin PIN</h2><p>Set a PIN before starting guest sessions. Use 6 to 12 digits and keep it private.</p><label>New PIN<input aria-label="New admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinDraft} onChange={(e) => setPinDraft(e.target.value.replace(/\D/g, ''))} /></label><label>Confirm PIN<input aria-label="Confirm admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinConfirm} onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, ''))} /></label><button type="button" onClick={() => void savePin()}>Save admin PIN</button></>
+            : adminLocked ? <><p className="eyebrow">GUEST MODE</p><h2>Booth locked</h2><p>Operator settings are hidden. Enter the admin PIN to unlock them.</p>{showUnlock ? <><label>Admin PIN<input aria-label="Admin PIN to unlock settings" type="password" inputMode="numeric" maxLength={12} autoComplete="current-password" value={currentPinDraft} onChange={(e) => setCurrentPinDraft(e.target.value.replace(/\D/g, ''))} onKeyDown={(e) => { if (e.key === 'Enter') void unlockAdmin(); }} /></label><button type="button" onClick={() => void unlockAdmin()}>Unlock settings</button><button type="button" className="secondary-button" onClick={() => { setShowUnlock(false); setCurrentPinDraft(''); setPinError(''); }}>Cancel</button></> : <button type="button" onClick={() => { setShowUnlock(true); setPinError(''); }}>Operator unlock</button>}</>
+              : <><p className="eyebrow">OPERATOR SETTINGS</p><h2>Admin access</h2><label>Current PIN<input aria-label="Current admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="current-password" value={currentPinDraft} onChange={(e) => setCurrentPinDraft(e.target.value.replace(/\D/g, ''))} /></label><label>New PIN<input aria-label="Replacement admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinDraft} onChange={(e) => setPinDraft(e.target.value.replace(/\D/g, ''))} /></label><label>Confirm new PIN<input aria-label="Confirm replacement PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinConfirm} onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, ''))} /></label><button type="button" onClick={() => void savePin()}>Change admin PIN</button><label>Consent notice shown before every session<textarea aria-label="Consent notice wording" maxLength={1200} value={consentText} onChange={(e) => setConsentText(e.target.value)} onBlur={() => void savePreference('consentText', consentText).catch((error: unknown) => setPinError(error instanceof Error ? error.message : 'Could not save consent text.'))} /></label><p className="consent-retention-note">Current default explains local retention and 30-day QR-link expiry; it does not claim automatic photo deletion.</p><button type="button" onClick={() => { setAdminLocked(true); setShowUnlock(false); setPinError(''); setPinDraft(''); setPinConfirm(''); setCurrentPinDraft(''); }}>Lock guest mode</button><button type="button" className="secondary-button" onClick={() => { setExitPrompt(true); setExitPin(''); setPinError(''); }}>Exit booth…</button></>}
+          {pinError && <p className="pin-error" role="alert">{pinError}</p>}
+        </section>}
+        {consentOpen && <div className="modal-backdrop"><section className="consent-dialog" role="dialog" aria-modal="true" aria-labelledby="consent-heading"><p className="eyebrow">BEFORE WE TAKE A PHOTO</p><h2 id="consent-heading">Please read and agree</h2><p className="consent-copy">{consentText}</p><div className="dialog-actions"><button type="button" className="secondary-button" onClick={() => setConsentOpen(false)}>Not now</button><button type="button" className="start-button" onClick={() => void confirmConsentAndStart()}>Agree and continue</button></div></section></div>}
+        {exitPrompt && <div className="modal-backdrop"><section className="consent-dialog" role="dialog" aria-modal="true" aria-labelledby="exit-heading"><p className="eyebrow">ADMIN AUTHORIZATION</p><h2 id="exit-heading">Exit booth?</h2><p>Enter the admin PIN to close the photobooth application.</p><label>Admin PIN<input aria-label="Admin PIN to exit booth" type="password" inputMode="numeric" maxLength={12} autoComplete="current-password" value={exitPin} onChange={(e) => setExitPin(e.target.value.replace(/\D/g, ''))} onKeyDown={(e) => { if (e.key === 'Enter') void submitExit(); }} /></label><div className="dialog-actions"><button type="button" className="secondary-button" onClick={() => { setExitPrompt(false); setExitPin(''); setPinError(''); }}>Cancel</button><button type="button" onClick={() => void submitExit()}>Verify and exit</button></div>{pinError && <p className="pin-error" role="alert">{pinError}</p>}</section></div>}
+        {screen === 'finished' && <p className="share-status" role="status">{shareUrl ? <>Scan to download: <a href={shareUrl} target="_blank" rel="noreferrer">{shareUrl}</a> · {shareStatus}</> : shareStatus}</p>}
         {screen === 'finished' && <p className={`print-status ${printStatus.startsWith('Failed') ? 'failed' : printStatus.startsWith('Done') ? 'done' : ''}`} role="status">{printStatus}</p>}
         {screen === 'capturing' && <div className="slot-progress" aria-label="Photo slot progress">{Array.from({ length: slotCount }, (_, index) => index + 1).map((slot) => <div className={`slot-chip ${capturedSlots.has(slot) ? 'saved' : currentSlot === slot ? 'current' : ''}`} key={slot}><b>{String(slot).padStart(2, '0')}</b><span>{capturedSlots.has(slot) ? 'Saved' : currentSlot === slot ? 'Now' : 'Next'}</span></div>)}</div>}
         {screen === 'review' && reviewRecord && <section className="review-section">
@@ -679,7 +779,8 @@ function App(): React.JSX.Element {
             </article>;
           })}</div>
         </section>}
-        {unfinishedSessions.length > 0 && screen === 'ready' && <section className="recovery-card"><div><p className="eyebrow">UNFINISHED SESSION</p><strong>{unfinishedSessions[0]!.pendingRetakes ? 'A retake needs finishing' : `${unfinishedSessions[0]!.capturedSlots} of ${unfinishedSessions[0]!.totalSlots} photos saved`}</strong><span>Your photos are safe on this booth. Resume where you left off or discard this session.</span></div><div className="recovery-actions"><button type="button" onClick={() => void handleResumeSession(unfinishedSessions[0]!)} disabled={busy || !cameraReady}>Resume</button><button type="button" className="secondary-button" onClick={() => void handleDiscardSession(unfinishedSessions[0]!)} disabled={busy}>Discard</button></div></section>}
+        {unfinishedSessions.length > 0 && screen === 'ready' && !adminLocked && <section className="recovery-card"><div><p className="eyebrow">UNFINISHED SESSION</p><strong>{unfinishedSessions[0]!.pendingRetakes ? 'A retake needs finishing' : `${unfinishedSessions[0]!.capturedSlots} of ${unfinishedSessions[0]!.totalSlots} photos saved`}</strong><span>Your photos are safe on this booth. Resume where you left off or discard this session.</span></div><div className="recovery-actions"><button type="button" onClick={() => void handleResumeSession(unfinishedSessions[0]!)} disabled={busy || !cameraReady}>Resume</button><button type="button" className="secondary-button" onClick={() => void handleDiscardSession(unfinishedSessions[0]!)} disabled={busy}>Discard</button></div></section>}
+        {screen === 'ready' && uploadQueue && <section className="recovery-card upload-queue-card" aria-label="Upload queue status"><div><p className="eyebrow">UPLOAD QUEUE · MOCK-ONLY</p><strong>{uploadQueue.pending + uploadQueue.uploading} waiting · {uploadQueue.uploaded} completed</strong><span>No cloud uploader is configured, so files remain on this booth and nothing is sent online. Queue items will wait until a provider is added.</span>{uploadQueue.lastError && <span>Last error: {uploadQueue.lastError}</span>}</div><span className="queue-failed">{uploadQueue.failed} failed</span></section>}
         {errorMessage && <p className="camera-error" role="alert">{errorMessage}<button type="button" onClick={() => void refreshCameras()}>Retry</button></p>}
         {!errorMessage && <p className="helper-note">Originals stay on this booth. No photos are uploaded in this feature.</p>}
       </section>
