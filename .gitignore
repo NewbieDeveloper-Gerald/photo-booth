@@ -1,0 +1,11 @@
+node_modules/
+dist/
+dist-electron/
+playwright-report/
+test-results/
+coverage/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+.env*
+.DS_Store
