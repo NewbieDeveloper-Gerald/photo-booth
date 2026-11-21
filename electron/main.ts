@@ -10,7 +10,7 @@ import { pageSizeMicrons } from '../src/hardware/printer.js';
 import { createDownloadServer } from '../src/cloud/download-server.js';
 import { enqueueSessionFiles, listUploadQueue, recoverInterruptedUploads } from '../src/cloud/upload-queue.js';
 import type { Server } from 'node:http';
-import { abandonSession, commitRetake, createSession, discardSession, exportEventFolder, getActiveEvent, getConfiguredStoragePaths, createSessionShareLink, getLatestSessionPrintInfo, listUnfinishedSessions, loadSession, readOriginalPhoto, revertRetake, saveDownloadCopy, saveOriginalPhoto, saveRetakeOriginalPhoto, saveSessionOutput, setActiveEventRetakeLimit } from '../src/storage/sessions.js';
+import { abandonSession, commitRetake, createSession, discardSession, exportEventFolder, getActiveEvent, getConfiguredStoragePaths, createSessionShareLink, getLatestSessionPrintInfo, listUnfinishedSessions, loadSession, readOriginalPhoto, revertRetake, saveDownloadCopy, saveOriginalPhoto, saveRetakeOriginalPhoto, saveSessionOutput, setActiveEventRetakeLimit, listEvents, saveEventSettings, duplicateEvent, selectActiveEvent, setEventLogo, getEventLogoDataUrl } from '../src/storage/sessions.js';
 
 const settingKeys = new Set(['selectedCameraId', 'countdownSeconds', 'cameraResolution', 'lowDiskWarningGB', 'selectedPrinterName', 'downloadBaseUrl', 'consentText']);
 
@@ -84,6 +84,18 @@ app.whenReady().then(async () => {
     return true;
   });
   ipcMain.handle('session:getActiveEvent', () => getActiveEvent(userDataPath));
+  ipcMain.handle('event:list', () => listEvents(userDataPath));
+  ipcMain.handle('event:save', (_event, input: unknown) => saveEventSettings(userDataPath, input));
+  ipcMain.handle('event:duplicate', (_event, eventId: unknown) => duplicateEvent(userDataPath, eventId));
+  ipcMain.handle('event:activate', (_event, eventId: unknown) => selectActiveEvent(userDataPath, eventId));
+  ipcMain.handle('event:logoData', (_event, eventId: unknown) => getEventLogoDataUrl(userDataPath, eventId));
+  ipcMain.handle('event:chooseLogo', async (_event, eventId: unknown) => {
+    if (typeof eventId !== 'string') throw new Error('Invalid event');
+    const result = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'Logo image', extensions: ['png', 'jpg', 'jpeg'] }] });
+    if (result.canceled || !result.filePaths[0]) return null;
+    setEventLogo(userDataPath, eventId, result.filePaths[0]);
+    return getEventLogoDataUrl(userDataPath, eventId);
+  });
   ipcMain.handle('uploadQueue:list', () => listUploadQueue(userDataPath));
   ipcMain.handle('uploadQueue:enqueueSession', (_event, sessionId: unknown) => enqueueSessionFiles(userDataPath, sessionId));
   ipcMain.handle('download:createShareLink', (_event, sessionId: unknown) => {

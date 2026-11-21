@@ -5,7 +5,7 @@ import type { Server } from 'node:http';
 import { afterEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { initializeStorage } from '../storage/database';
-import { createSession, createSessionShareLink, saveOriginalPhoto, saveSessionOutput } from '../storage/sessions';
+import { createSession, createSessionShareLink, saveOriginalPhoto, saveSessionOutput, setEventLogo } from '../storage/sessions';
 import { createDownloadServer } from './download-server';
 
 const directories: string[] = [];
@@ -51,6 +51,26 @@ describe('private QR download server', () => {
     expect(photo.headers.get('content-type')).toBe('image/jpeg');
     expect(new Uint8Array(await photo.arrayBuffer())).toEqual(tinyJpeg);
     expect((await fetch(`${origin}/api/v1/session/AAAAAAAAAAAAAAAAAAAAAA`)).status).toBe(404);
+  });
+
+  it('uses event branding safely on the guest page and serves its logo only through the private token', async () => {
+    const { token, origin, directory } = await fixture();
+    const database = new Database(path.join(directory, 'photobooth.sqlite'));
+    database.prepare(`UPDATE events SET primary_color = '#123456', accent_color = '#abcdef', welcome_text = ?, thank_you_text = ? WHERE id = 'default-event'`)
+      .run('</script><script>alert(1)</script>', 'Thanks!');
+    database.close();
+    const logoPath = path.join(directory, 'test-logo.png');
+    fs.writeFileSync(logoPath, Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]), Buffer.alloc(8)]));
+    setEventLogo(directory, 'default-event', logoPath);
+    const page = await (await fetch(`${origin}/d/${token}`)).text();
+    expect(page).toContain('border-bottom:3px solid #abcdef');
+    expect(page).toContain('background:#11131c');
+    expect(page).toContain('thankYouText');
+    expect(page).not.toContain('<script>alert(1)</script>');
+    const logo = await fetch(`${origin}/api/v1/logo/${token}`);
+    expect(logo.headers.get('content-type')).toBe('image/png');
+    expect(logo.headers.get('cache-control')).toContain('no-store');
+    expect((await fetch(`${origin}/api/v1/logo/AAAAAAAAAAAAAAAAAAAAAA`)).status).toBe(404);
   });
 
   it('streams a Download all ZIP without writing a ZIP file to disk', async () => {

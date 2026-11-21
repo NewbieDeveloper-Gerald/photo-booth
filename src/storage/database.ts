@@ -108,6 +108,19 @@ const migrations: Array<{ name: string; sql: string }> = [
       CREATE INDEX IF NOT EXISTS idx_upload_queue_due ON upload_queue(status, next_retry_at, created_at);
     `,
   },
+  {
+    name: '007_event_branding',
+    sql: `
+      ALTER TABLE events ADD COLUMN event_date TEXT;
+      ALTER TABLE events ADD COLUMN logo_path TEXT;
+      ALTER TABLE events ADD COLUMN primary_color TEXT NOT NULL DEFAULT '#c90000';
+      ALTER TABLE events ADD COLUMN accent_color TEXT NOT NULL DEFAULT '#f4f0ec';
+      ALTER TABLE events ADD COLUMN welcome_text TEXT NOT NULL DEFAULT 'Ready for your event. Check the preview, then start a session.';
+      ALTER TABLE events ADD COLUMN thank_you_text TEXT NOT NULL DEFAULT 'Your layout is ready.';
+      ALTER TABLE events ADD COLUMN default_layout_id TEXT NOT NULL DEFAULT 'double-strip-3';
+      UPDATE events SET default_layout_id = CASE shots WHEN 2 THEN 'single-2-portrait' WHEN 4 THEN 'double-strip-4' ELSE 'double-strip-3' END;
+    `,
+  },
 ];
 
 export function initializeStorage(userDataPath: string): void {

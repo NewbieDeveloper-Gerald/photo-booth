@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 type DownloadFile = { id: string; name: string; filePath: string; kind: 'photo' | 'layout' };
-type SessionDownload = { eventName: string; files: DownloadFile[] };
+type SessionDownload = { eventName: string; logoPath: string | null; primaryColor: string; accentColor: string; welcomeText: string; thankYouText: string; files: DownloadFile[] };
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 const RATE_WINDOW_MS = 60_000;
 const MAX_REQUESTS_PER_WINDOW = 180;
@@ -41,9 +41,9 @@ function findSession(databasePath: string, photosRoot: string, token: string): S
   if (!TOKEN_PATTERN.test(token)) return null;
   const database = new Database(databasePath, { readonly: true, fileMustExist: true });
   try {
-    const session = database.prepare(`SELECT s.id, e.name AS eventName FROM sessions s JOIN events e ON e.id = s.event_id
+    const session = database.prepare(`SELECT s.id, e.name AS eventName, e.logo_path AS logoPath, e.primary_color AS primaryColor, e.accent_color AS accentColor, e.welcome_text AS welcomeText, e.thank_you_text AS thankYouText FROM sessions s JOIN events e ON e.id = s.event_id
       WHERE s.public_token = ? AND s.status = 'completed' AND s.token_expires_at IS NOT NULL
-        AND julianday(s.token_expires_at) > julianday('now')`).get(token) as { id: string; eventName: string } | undefined;
+        AND julianday(s.token_expires_at) > julianday('now')`).get(token) as { id: string; eventName: string; logoPath: string | null; primaryColor: string; accentColor: string; welcomeText: string; thankYouText: string } | undefined;
     if (!session) return null;
     const photos = database.prepare(`SELECT p.id, p.original_path AS filePath, sl.slot_number AS slotNumber
       FROM sessions s JOIN slots sl ON sl.session_id = s.id JOIN photos p ON p.id = sl.current_photo_id
@@ -59,16 +59,20 @@ function findSession(databasePath: string, photosRoot: string, token: string): S
       const filePath = safePhotosPath(photosRoot, output.filePath);
       if (filePath && fs.existsSync(filePath)) files.push({ id: output.id, name: 'Finished layout.jpg', filePath, kind: 'layout' });
     }
-    return { eventName: session.eventName, files };
+    return { eventName: session.eventName, logoPath: session.logoPath, primaryColor: session.primaryColor, accentColor: session.accentColor, welcomeText: session.welcomeText, thankYouText: session.thankYouText, files };
   } finally { database.close(); }
 }
 
-function htmlPage(token: string): string {
+function htmlPage(token: string, session: SessionDownload): string {
   const safeToken = JSON.stringify(token);
+  const brand = JSON.stringify({ eventName: session.eventName, welcomeText: session.welcomeText, thankYouText: session.thankYouText }).replace(/</g, '\\u003c');
+  const primary = /^#[0-9a-f]{6}$/i.test(session.primaryColor) ? session.primaryColor : '#c90000';
+  const accent = /^#[0-9a-f]{6}$/i.test(session.accentColor) ? session.accentColor : '#f4f0ec';
+  const logo = session.logoPath ? `<img class="event-logo" src="/api/v1/logo/${token}" alt="Event logo">` : '';
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow,noarchive"><title>Your photobooth photos</title><style>
-  *{box-sizing:border-box}body{margin:0;background:#11131c;color:#f5f2fa;font:16px system-ui,-apple-system,"Segoe UI",sans-serif}.wrap{max-width:720px;margin:auto;padding:24px 16px 48px}.card{border:1px solid #ffffff20;border-radius:16px;background:#1a1e2a;padding:18px;margin:16px 0}.head{margin:28px 0}.eyebrow{color:#c9b4ff;font-size:11px;letter-spacing:.16em;font-weight:700}.head h1{font-size:30px;margin:8px 0}.note{color:#aeb4c4;font-size:13px}.files{display:grid;gap:12px}.file{display:flex;align-items:center;justify-content:space-between;gap:14px}.file a,.all{display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:0 16px;border:0;border-radius:9px;background:#c9b4ff;color:#181521;text-decoration:none;font-weight:700;font-size:14px}.name{font-weight:650}.error{color:#ffc1c1}.foot{color:#838a9d;font-size:12px;text-align:center;margin-top:24px}@media(max-width:520px){.file{align-items:flex-start;flex-direction:column}.file a{width:100%}}
-  </style></head><body><main class="wrap"><header class="head"><div class="eyebrow">PHOTOBOOTH STUDIO</div><h1>Your photos are ready</h1><p class="note">Download a photo or the finished layout. This private link works while the booth is online.</p></header><section id="content" class="card" aria-live="polite">Loading your photos…</section><p class="foot">Keep this link private. It expires automatically.</p></main><script>
-  const token=${safeToken}; const root=document.getElementById('content');
+  *{box-sizing:border-box}body{margin:0;background:#11131c;color:#f5f2fa;font:16px system-ui,-apple-system,"Segoe UI",sans-serif}.wrap{--primary:${primary};max-width:720px;margin:auto;padding:24px 16px 48px}.card{border:1px solid #ffffff20;border-radius:16px;background:#1a1e2a;padding:18px;margin:16px 0}.head{margin:28px 0;padding-bottom:14px;border-bottom:3px solid ${accent}}.eyebrow{color:var(--primary);font-size:11px;letter-spacing:.16em;font-weight:700}.head h1{font-size:30px;margin:8px 0}.note{color:#aeb4c4;font-size:13px}.files{display:grid;gap:12px}.file{display:flex;align-items:center;justify-content:space-between;gap:14px}.file a,.all{display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:0 16px;border:0;border-radius:9px;background:var(--primary);color:#181521;text-decoration:none;font-weight:700;font-size:14px}.name{font-weight:650}.error{color:#ffc1c1}.event-logo{max-width:120px;max-height:90px;object-fit:contain;margin:0 0 10px}.foot{color:#838a9d;font-size:12px;text-align:center;margin-top:24px}@media(max-width:520px){.file{align-items:flex-start;flex-direction:column}.file a{width:100%}}
+  </style></head><body><main class="wrap"><header class="head"><div class="eyebrow">PHOTOBOOTH STUDIO</div>${logo}<h1 id="thanks">Your photos are ready</h1><p id="welcome" class="note">Download a photo or the finished layout. This private link works while the booth is online.</p></header><section id="content" class="card" aria-live="polite">Loading your photos…</section><p class="foot">Keep this link private. It expires automatically.</p></main><script>
+  const token=${safeToken}; const brand=${brand}; document.getElementById('thanks').textContent=brand.thankYouText; document.getElementById('welcome').textContent=brand.welcomeText; const root=document.getElementById('content');
   fetch('/api/v1/session/'+encodeURIComponent(token),{cache:'no-store'}).then(async r=>{if(!r.ok)throw new Error(r.status===404?'This link is invalid or has expired.':'Could not load photos.');return r.json()}).then(data=>{
     root.textContent=''; const note=document.createElement('p');note.className='note';note.textContent=data.eventName+' · '+data.files.length+' files';root.append(note);
     if(!data.files.length){const empty=document.createElement('p');empty.textContent='No photos are available on this link.';root.append(empty);return}
@@ -88,7 +92,19 @@ export function createDownloadServer(userDataPath: string, photosRoot: string, p
     if (isLimited(request, buckets)) { response.writeHead(429, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Please wait before trying again.'); return; }
     const url = new URL(request.url ?? '/', 'http://localhost');
     const page = /^\/d\/([A-Za-z0-9_-]{22})$/.exec(url.pathname);
-    if (page) { response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'" }); response.end(request.method === 'HEAD' ? undefined : htmlPage(page[1]!)); return; }
+    if (page) { const session = findSession(databasePath, photosRoot, page[1]!); if (!session) { response.writeHead(404).end('This link is invalid or has expired.'); return; } response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'" }); response.end(request.method === 'HEAD' ? undefined : htmlPage(page[1]!, session)); return; }
+    const logoRoute = /^\/api\/v1\/logo\/([A-Za-z0-9_-]{22})$/.exec(url.pathname);
+    if (logoRoute) {
+      const session = findSession(databasePath, photosRoot, logoRoute[1]!);
+      const logoPath = session?.logoPath;
+      const allowedRoot = path.resolve(path.dirname(databasePath), 'event-assets');
+      const resolved = logoPath ? path.resolve(logoPath) : '';
+      if (!resolved || !resolved.startsWith(`${allowedRoot}${path.sep}`) || !fs.existsSync(resolved)) { response.writeHead(404).end(); return; }
+      const type = path.extname(resolved).toLowerCase() === '.png' ? 'image/png' : 'image/jpeg';
+      response.writeHead(200, { 'Content-Type': type, 'Content-Length': fs.statSync(resolved).size, 'Content-Disposition': 'inline' });
+      if (request.method === 'HEAD') { response.end(); return; }
+      fs.createReadStream(resolved).pipe(response); return;
+    }
     const listing = /^\/api\/v1\/session\/([A-Za-z0-9_-]{22})$/.exec(url.pathname);
     if (listing) {
       const session = findSession(databasePath, photosRoot, listing[1]!);

@@ -1,10 +1,10 @@
 # Progress
 
 ## Current status
-- Features 0–8: accepted and closed. F7 phone/tunnel behavior and F8 local queue restart check were not reported; automated verification passed for both.
-- Feature 9, Consent notice, PIN lock and kiosk basics: Stage 2 (Develop), awaiting user approval to enter Test.
-- F9 decisions: operator creates PIN from settings before guest sessions; app-level kiosk only; consent says local photos stay on booth until removed and QR link expires in 30 days (not automatic local deletion).
-- Latest F9 checks: `npm run build`, `npm run lint`, and `npm test` passed (15 files, 45 tests). Playwright E2E remains unverified in the sandbox because Chromium cannot start without `libnspr4.so`.
+- Features 0–9: accepted and closed. F7 phone/tunnel, F8 local queue restart, and F9 Windows kiosk checks were not reported; automated verification passed for these features.
+- Feature 10, Event setup and branding: Stage 2 (Develop), awaiting user approval to enter Test.
+- F10 decisions: event shot count matches an existing layout (2, 3, or 4); logo picked locally as PNG/JPEG; colors entered as hex. No guest template picker or cloud upload.
+- Latest F10 checks: `npm run build`, `npm run lint`, and `npm test` passed (16 files, 49 tests). Playwright E2E remains unverified in the sandbox because Chromium cannot start without `libnspr4.so`.
 - `npm test` rebuilds better-sqlite3 for local Node then restores the Electron-compatible addon.
 
 ## Feature 0: Project setup

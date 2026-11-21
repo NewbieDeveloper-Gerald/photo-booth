@@ -38,6 +38,10 @@ At first launch, the app creates its SQLite database and `photobooth-paths.json`
 
 The ready and finished screens list Windows system printers; the chosen printer is remembered. After the layout is saved, the app sends it silently at its native 300 dpi page size (4×6 inches, portrait or landscape) with no app-added margins or scaling. The finish screen reports sending/success/failure and offers **Reprint**. Actual borderless output depends on the printer model and driver: select 4×6 borderless media and disable fit-to-page in Windows printer preferences if supported. A successful status means Windows accepted the job, not that paper physically came out. Test using the actual printer and record its model and working driver settings here. Printing does not alter or delete the saved layout.
 
+## Events and branding (F10)
+
+The operator event panel creates, edits, duplicates, and selects events. Event fields include name, optional date, shot count, local PNG/JPEG logo (up to 5 MB), primary/accent hex colors, welcome and thank-you text, and QR-link expiry from 1 to 365 days. Shot counts are currently 2, 3, or 4; choosing one selects a matching built-in layout automatically, with no guest template picker. Logo files are copied into the app's local `event-assets/<event-id>/` folder. Event branding appears on the booth screen, saved finished layout, and token-protected guest download page. Sessions keep the event ID active when they are created.
+
 ## Security and image handling
 
 Session tokens use 16 cryptographically secure random bytes encoded as unpadded base64url (22 characters). Do not log photo contents or personal data. Image pipeline requirements: local-only full-resolution JPEG originals; download copies max 2048px, JPEG quality 80, GPS EXIF stripped; print files 1200×1800 px.

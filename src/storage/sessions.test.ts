@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { initializeStorage } from './database';
-import { abandonSession, commitRetake, createSession, exportEventFolder, getActiveEvent, getLatestSessionPrintInfo, listUnfinishedSessions, loadSession, readOriginalPhoto, revertRetake, saveOriginalPhoto, saveRetakeOriginalPhoto, saveSessionOutput, setActiveEventRetakeLimit } from './sessions';
+import { abandonSession, commitRetake, createSession, exportEventFolder, getActiveEvent, getLatestSessionPrintInfo, listUnfinishedSessions, loadSession, readOriginalPhoto, revertRetake, saveOriginalPhoto, saveRetakeOriginalPhoto, saveSessionOutput, setActiveEventRetakeLimit, saveEventSettings } from './sessions';
 
 const directories: string[] = [];
 function setup(): string {
@@ -23,7 +23,7 @@ describe('session storage', () => {
   it('creates the default event once with required settings and creates three slots', () => {
     const directory = setup();
     initializeStorage(directory);
-    expect(getActiveEvent(directory)).toEqual({ id: 'default-event', name: 'Default Event', shots: 3, retakeLimit: 3, printEnabled: true, expiryDays: 30 });
+    expect(getActiveEvent(directory)).toEqual({ id: 'default-event', name: 'Default Event', shots: 3, retakeLimit: 3, printEnabled: true, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: '#c90000', accentColor: '#f4f0ec', welcomeText: 'Ready for your event. Check the preview, then start a session.', thankYouText: 'Your layout is ready.', defaultLayoutId: 'double-strip-3' });
     const { sessionId } = createSession(directory);
     expect(loadSession(directory, sessionId).slots.map((slot) => slot.slotNumber)).toEqual([1, 2, 3]);
   });
@@ -135,6 +135,7 @@ describe('session storage', () => {
 
   it('saves and records the selected print layout at the session-specific dimensions', async () => {
     const directory = setup();
+    saveEventSettings(directory, { id: 'default-event', name: 'Default Event', shots: 4, expiryDays: 30, eventDate: null, primaryColor: '#c90000', accentColor: '#f4f0ec', welcomeText: 'Welcome', thankYouText: 'Thanks' });
     const { sessionId } = createSession(directory, 'grid-4-landscape');
     expect(loadSession(directory, sessionId)).toMatchObject({ layoutId: 'grid-4-landscape' });
     for (const slot of [1, 2, 3, 4]) await saveOriginalPhoto(directory, sessionId, slot, tinyJpeg, 640, 480);

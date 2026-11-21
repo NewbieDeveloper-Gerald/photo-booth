@@ -1,6 +1,6 @@
 export {};
 
-import type { ActiveEvent, SessionRecord, UnfinishedSession } from '../storage/sessions';
+import type { ActiveEvent, EventSettings, SessionRecord, UnfinishedSession } from '../storage/sessions';
 import type { UploadQueueSummary } from '../cloud/upload-queue';
 
 interface PhotoRecord { photoId: string; width: number; height: number }
@@ -16,6 +16,12 @@ declare global {
       exitKioskWithPin(pin: string): Promise<boolean>;
       onExitRequested(callback: () => void): () => void;
       getActiveEvent(): Promise<ActiveEvent>;
+      listEvents(): Promise<EventSettings[]>;
+      saveEvent(input: unknown): Promise<EventSettings>;
+      duplicateEvent(eventId: string): Promise<EventSettings>;
+      selectActiveEvent(eventId: string): Promise<ActiveEvent>;
+      chooseEventLogo(eventId: string): Promise<string | null>;
+      getEventLogoDataUrl(eventId: string): Promise<string | null>;
       createShareLink(sessionId: string): Promise<{ url: string; expiresAt: string }>;
       getUploadQueue(): Promise<UploadQueueSummary>;
       enqueueSessionUploads(sessionId: string): Promise<number>;

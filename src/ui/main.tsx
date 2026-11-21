@@ -6,7 +6,7 @@ import { captureOriginalJpeg } from '../core/photo-pipeline';
 import { coverCrop } from '../core/layout';
 import { getLayoutPreset, layoutPresets } from '../core/layouts';
 import { BrowserCameraDevice, type CameraInfo, type CameraResolution } from '../hardware/camera';
-import type { ActiveEvent, SessionRecord, SessionSlot, UnfinishedSession } from '../storage/sessions';
+import type { ActiveEvent, EventSettings, SessionRecord, SessionSlot, UnfinishedSession } from '../storage/sessions';
 import type { UploadQueueSummary } from '../cloud/upload-queue';
 import './style.css';
 
@@ -21,6 +21,7 @@ type ReviewImage = { slotNumber: number; photoId: string; url: string };
 
 type PreferenceKey = 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution' | 'lowDiskWarningGB' | 'selectedPrinterName' | 'downloadBaseUrl' | 'consentText';
 const DEFAULT_CONSENT = 'Your photos are stored locally on this booth until the operator removes them. The private QR download link expires after 30 days. Photos are shared only with people who have the link.';
+const DEFAULT_WELCOME = 'Ready for your event. Check the preview, then start a session.';
 async function getPreference(key: PreferenceKey): Promise<string | null> {
   if (window.photobooth) return window.photobooth.getSetting(key);
   return localStorage.getItem(`photobooth.${key}`);
@@ -44,7 +45,7 @@ function bytesBlob(bytes: Uint8Array): Blob {
 }
 function wait(milliseconds: number): Promise<void> { return new Promise((resolve) => window.setTimeout(resolve, milliseconds)); }
 
-async function renderFinishedLayout(record: SessionRecord, eventName: string, layout: ReturnType<typeof getLayoutPreset>, qrDataUrl?: string): Promise<Blob> {
+async function renderFinishedLayout(record: SessionRecord, eventName: string, layout: ReturnType<typeof getLayoutPreset>, qrDataUrl?: string, branding?: { primaryColor: string; accentColor: string; thankYouText: string; logoDataUrl: string | null }): Promise<Blob> {
   const bridge = window.photobooth;
   if (!bridge) throw new Error('Finished layouts are available in the desktop app.');
   const canvas = document.createElement('canvas');
@@ -52,15 +53,21 @@ async function renderFinishedLayout(record: SessionRecord, eventName: string, la
   canvas.height = layout.height;
   const context = canvas.getContext('2d');
   if (!context) throw new Error('Could not prepare the finished layout.');
-  context.fillStyle = layout.background;
+  context.fillStyle = branding?.accentColor ?? layout.background;
   context.fillRect(0, 0, canvas.width, canvas.height);
-  context.fillStyle = layout.frameColor;
+  context.fillStyle = branding?.primaryColor ?? layout.frameColor;
   context.fillRect(0, 0, canvas.width, 112);
   context.fillStyle = '#ffffff';
   context.font = `700 ${layout.header.fontSize}px Inter, Segoe UI, sans-serif`;
   context.textAlign = 'center';
   context.textBaseline = 'middle';
   context.fillText(layout.header.text.replace('{{eventName}}', eventName), qrDataUrl ? (canvas.width - 128) / 2 : canvas.width / 2, 56, canvas.width - (qrDataUrl ? 160 : 80));
+  if (branding?.logoDataUrl) {
+    const logoBitmap = await createImageBitmap(await (await fetch(branding.logoDataUrl)).blob());
+    const scale = Math.min(88 / logoBitmap.width, 88 / logoBitmap.height);
+    context.drawImage(logoBitmap, 12, 12, logoBitmap.width * scale, logoBitmap.height * scale);
+    logoBitmap.close();
+  }
   if (qrDataUrl) {
     const qrBitmap = await createImageBitmap(await (await fetch(qrDataUrl)).blob());
     context.fillStyle = '#ffffff';
@@ -83,13 +90,13 @@ async function renderFinishedLayout(record: SessionRecord, eventName: string, la
     }
   } finally { for (const bitmap of bitmaps) bitmap.close(); }
 
-  context.fillStyle = layout.frameColor;
+  context.fillStyle = branding?.primaryColor ?? layout.frameColor;
   context.fillRect(0, canvas.height - 62, canvas.width, 62);
   context.fillStyle = layout.footer.color;
   context.font = `500 ${layout.footer.fontSize}px Inter, Segoe UI, sans-serif`;
   context.textAlign = 'center';
   context.textBaseline = 'middle';
-  context.fillText(layout.footer.text, canvas.width / 2, canvas.height - 31, canvas.width - 60);
+  context.fillText(branding?.thankYouText ?? layout.footer.text, canvas.width / 2, canvas.height - 31, canvas.width - 60);
   return new Promise((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('Could not encode the finished layout.')), 'image/jpeg', 0.96));
 }
 
@@ -111,6 +118,10 @@ function App(): React.JSX.Element {
   const [actualResolution, setActualResolution] = useState('');
   const [cameraReady, setCameraReady] = useState(false);
   const [event, setEvent] = useState<ActiveEvent | null>(null);
+  const [events, setEvents] = useState<EventSettings[]>([]);
+  const [eventDraft, setEventDraft] = useState<EventSettings | null>(null);
+  const [eventLogoDataUrl, setEventLogoDataUrl] = useState<string | null>(null);
+  const [eventMessage, setEventMessage] = useState('');
   const [retakeLimitDraft, setRetakeLimitDraft] = useState('3');
   const [diskWarningGB, setDiskWarningGB] = useState('2');
   const [printers, setPrinters] = useState<Array<{ name: string; displayName: string; isDefault?: boolean; status?: number }>>([]);
@@ -280,14 +291,18 @@ function App(): React.JSX.Element {
       if (Number.isInteger(seconds) && seconds >= 3 && seconds <= 10) setCountdownSeconds(seconds);
       if (savedResolution && resolutionOptions.some((item) => item.value === savedResolution)) setResolution(savedResolution as CameraResolution);
       if (window.photobooth) {
-        const [activeEvent] = await Promise.all([window.photobooth.getActiveEvent().catch(() => null), refreshUnfinishedSessions(), refreshUploadQueue()]);
+        const [activeEvent, savedEvents] = await Promise.all([window.photobooth.getActiveEvent().catch(() => null), window.photobooth.listEvents().catch(() => []), refreshUnfinishedSessions(), refreshUploadQueue()]);
         if (cancelled) return;
+        setEvents(savedEvents);
         if (activeEvent) {
           setEvent(activeEvent);
+          setEventDraft(activeEvent);
+          setSelectedLayoutId(activeEvent.defaultLayoutId);
+          setEventLogoDataUrl(await window.photobooth.getEventLogoDataUrl(activeEvent.id).catch(() => null));
           setRetakeLimitDraft(activeEvent.retakeLimit === -1 ? '' : String(activeEvent.retakeLimit));
         }
       } else {
-        setEvent({ id: 'preview-event', name: 'Default Event', shots: 3, retakeLimit: 3, printEnabled: true, expiryDays: 30 });
+        setEvent({ id: 'preview-event', name: 'Default Event', shots: 3, retakeLimit: 3, printEnabled: true, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: '#c90000', accentColor: '#f4f0ec', welcomeText: DEFAULT_WELCOME, thankYouText: 'Your layout is ready.', defaultLayoutId: 'double-strip-3' });
         setRetakeLimitDraft('3');
       }
       if (!camera) { setStatus('Camera access is not available.'); return; }
@@ -446,6 +461,61 @@ function App(): React.JSX.Element {
       setScreen('ready');
       setErrorMessage(error instanceof Error ? error.message : 'Could not start the session.');
     } finally { setBusy(false); }
+  };
+
+  const loadEventBrand = async (active: ActiveEvent): Promise<void> => {
+    setEvent(active); setEventDraft(active); setSelectedLayoutId(active.defaultLayoutId);
+    setEventLogoDataUrl(await window.photobooth?.getEventLogoDataUrl(active.id).catch(() => null) ?? null);
+    setRetakeLimitDraft(active.retakeLimit === -1 ? '' : String(active.retakeLimit));
+  };
+
+  const handleSelectEvent = async (eventId: string): Promise<void> => {
+    if (!window.photobooth || !eventId) return;
+    try { await loadEventBrand(await window.photobooth.selectActiveEvent(eventId)); setEvents(await window.photobooth.listEvents()); setEventMessage('Active event changed.'); }
+    catch (error) { setEventMessage(error instanceof Error ? error.message : 'Could not select event.'); }
+  };
+
+  const handleNewEvent = (): void => {
+    setEventDraft({ id: '', name: '', shots: 3, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: '#c90000', accentColor: '#f4f0ec', welcomeText: DEFAULT_WELCOME, thankYouText: 'Your layout is ready.', defaultLayoutId: 'double-strip-3' });
+    setEventLogoDataUrl(null); setEventMessage('New event details are not saved yet.');
+  };
+
+  const handleSaveEvent = async (): Promise<void> => {
+    if (!window.photobooth || !eventDraft) return;
+    try {
+      const saved = await window.photobooth.saveEvent(eventDraft);
+      const active = await window.photobooth.selectActiveEvent(saved.id);
+      await loadEventBrand(active);
+      setEvents(await window.photobooth.listEvents());
+      setEventMessage('Event saved and selected as active.');
+    } catch (error) { setEventMessage(error instanceof Error ? error.message : 'Could not save event.'); }
+  };
+
+  const handleDuplicateEvent = async (): Promise<void> => {
+    if (!window.photobooth || !event?.id) return;
+    try {
+      const duplicate = await window.photobooth.duplicateEvent(event.id);
+      const active = await window.photobooth.selectActiveEvent(duplicate.id);
+      await loadEventBrand(active);
+      setEvents(await window.photobooth.listEvents());
+      setEventMessage('Event duplicated and selected. Edit the copy, then save.');
+    } catch (error) { setEventMessage(error instanceof Error ? error.message : 'Could not duplicate event.'); }
+  };
+
+  const handleChooseEventLogo = async (): Promise<void> => {
+    if (!window.photobooth || !eventDraft) return;
+    try {
+      let eventId = eventDraft.id;
+      if (!eventId) {
+        const saved = await window.photobooth.saveEvent(eventDraft);
+        eventId = saved.id;
+        const active = await window.photobooth.selectActiveEvent(eventId);
+        await loadEventBrand(active);
+        setEvents(await window.photobooth.listEvents());
+      }
+      const logo = await window.photobooth.chooseEventLogo(eventId);
+      if (logo) { const active = await window.photobooth.getActiveEvent(); await loadEventBrand(active); setEvents(await window.photobooth.listEvents()); setEventMessage('Logo copied into the booth event assets.'); }
+    } catch (error) { setEventMessage(error instanceof Error ? error.message : 'Could not add logo.'); }
   };
 
   const savePin = async (): Promise<void> => {
@@ -632,7 +702,7 @@ function App(): React.JSX.Element {
           setShareStatus(`Link expires ${new Date(link.expiresAt).toLocaleDateString()}`);
         } catch (error) { setShareStatus(error instanceof Error ? error.message : 'QR downloads are not available.'); }
       } else setShareStatus('Set the public HTTPS download URL on the start screen to enable QR downloads.');
-      const blob = await renderFinishedLayout(reviewRecord, event.name, layout, qrDataUrl || undefined);
+      const blob = await renderFinishedLayout(reviewRecord, event.name, layout, qrDataUrl || undefined, { primaryColor: event.primaryColor, accentColor: event.accentColor, thankYouText: event.thankYouText, logoDataUrl: eventLogoDataUrl });
       const savedPath = await window.photobooth.saveSessionOutput(sessionId, await blobBytes(blob), layout.width, layout.height);
       await window.photobooth.enqueueSessionUploads(sessionId);
       await refreshUploadQueue();
@@ -718,17 +788,18 @@ function App(): React.JSX.Element {
   const retakeText = reviewRecord ? retakesRemaining(reviewRecord.retakeLimit, reviewRecord.retakesUsed) : 0;
 
   return (
-    <main className="booth-app">
+    <main className="booth-app" style={{ '--event-primary': event?.primaryColor ?? '#c90000', '--event-accent': event?.accentColor ?? '#f4f0ec' } as React.CSSProperties}>
       <header className="topbar">
         <div className="brand"><span className="brand-mark">P</span><span>PHOTOBOOTH <b>STUDIO</b></span></div>
         <div className="connection"><span className={`connection-dot ${cameraReady ? 'online' : ''}`} />{status}</div>
       </header>
       <section className="workspace">
         <div className="stage-heading">
+          {eventLogoDataUrl && <img className="event-brand-logo" src={eventLogoDataUrl} alt={`${event?.name ?? 'Event'} logo`} />}
           <div>
             <p className="eyebrow">{screen === 'ready' ? 'PHOTO SESSION' : screen === 'capturing' ? 'SESSION IN PROGRESS' : screen === 'finished' ? 'FINISHED LAYOUT' : 'REVIEW YOUR PHOTOS'}</p>
-            <h1>{screen === 'ready' ? 'Frame the moment.' : screen === 'capturing' ? `Photo ${currentSlot} of ${slotCount}` : screen === 'finished' ? 'Your layout is ready.' : 'Choose a favorite.'}</h1>
-            <p className="subheading">{screen === 'ready' ? `Ready for ${event?.name ?? 'your event'}. Check the preview, then start a session.` : screen === 'capturing' ? 'Stay in frame. Your original photo is saved directly to the session folder.' : screen === 'finished' ? 'The selected print-size image is saved with this session.' : 'Retake just one slot if needed. Your other photos will stay exactly as they are.'}</p>
+            <h1>{screen === 'ready' ? (event?.welcomeText || 'Frame the moment.') : screen === 'capturing' ? `Photo ${currentSlot} of ${slotCount}` : screen === 'finished' ? (event?.thankYouText || 'Your layout is ready.') : 'Choose a favorite.'}</h1>
+            <p className="subheading">{screen === 'ready' ? `Ready for ${event?.name ?? 'your event'}${event?.eventDate ? ` · ${event.eventDate}` : ''}. Check the preview, then start a session.` : screen === 'capturing' ? 'Stay in frame. Your original photo is saved directly to the session folder.' : screen === 'finished' ? 'The selected print-size image is saved with this session.' : 'Retake just one slot if needed. Your other photos will stay exactly as they are.'}</p>
           </div>
           <div className="live-badge"><span /> {screen === 'capturing' ? 'CAPTURING' : screen === 'review' ? 'SESSION REVIEW' : screen === 'finished' ? 'LAYOUT READY' : 'LOCAL CAMERA'}</div>
         </div>
@@ -744,7 +815,7 @@ function App(): React.JSX.Element {
           <label className="control-field"><span>CAMERA</span><select value={selectedCameraId} onChange={(e) => void handleCameraChange(e.target.value)} disabled={isBusy || screen === 'review' || screen === 'finished' || !cameras.length}><option value="" disabled>Select a camera</option>{cameras.map((item, index) => <option key={item.deviceId || index} value={item.deviceId}>{item.label || `Camera ${index + 1}`}</option>)}</select></label>
           <label className="control-field"><span>PREVIEW QUALITY</span><select value={resolution} onChange={(e) => void handleResolutionChange(e.target.value as CameraResolution)} disabled={isBusy || screen === 'review' || screen === 'finished'}>{resolutionOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
           <label className="control-field countdown-setting"><span>COUNTDOWN</span><select value={countdownSeconds} onChange={(e) => void handleCountdownChange(Number(e.target.value))} disabled={isBusy || screen === 'review' || screen === 'finished'}>{Array.from({ length: 8 }, (_, index) => index + 3).map((seconds) => <option key={seconds} value={seconds}>{seconds} seconds</option>)}</select></label>
-          {screen === 'ready' && <label className="control-field layout-choice"><span>PRINT LAYOUT</span><select aria-label="Print layout" value={selectedLayoutId} onChange={(e) => setSelectedLayoutId(e.target.value)} disabled={busy || unfinishedSessions.length > 0}>{layoutPresets.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.shots} shots · {item.copies} {item.copies === 1 ? 'copy' : 'copies'} · {item.width}×{item.height}</option>)}</select></label>}
+          {screen === 'ready' && <label className="control-field layout-choice"><span>PRINT LAYOUT</span><select aria-label="Print layout" value={selectedLayoutId} onChange={(e) => setSelectedLayoutId(e.target.value)} disabled={busy || unfinishedSessions.length > 0}>{layoutPresets.filter((item) => item.shots === (event?.shots ?? 3)).map((item) => <option key={item.id} value={item.id}>{item.name} · {item.shots} shots · {item.copies} {item.copies === 1 ? 'copy' : 'copies'} · {item.width}×{item.height}</option>)}</select></label>}
           {(screen === 'ready' || screen === 'finished') && <label className="control-field"><span>PRINTER</span><select aria-label="Printer" value={selectedPrinterName} onChange={(e) => handlePrinterChange(e.target.value)} disabled={busy || !window.photobooth}><option value="">Select a printer</option>{printers.map((printer) => <option key={printer.name} value={printer.name}>{printer.displayName || printer.name}{printer.isDefault ? ' · Default' : ''}</option>)}</select></label>}
           {screen === 'ready' && <label className="control-field"><span>PUBLIC DOWNLOAD URL (HTTPS)</span><input aria-label="Public HTTPS download URL" type="url" placeholder="https://photos.example.com" value={downloadBaseUrl} onChange={(e) => setDownloadBaseUrl(e.target.value)} onBlur={() => void savePreference('downloadBaseUrl', downloadBaseUrl.trim().replace(/\/$/, '')).catch(() => setErrorMessage('Enter a valid HTTPS site URL.'))} disabled={busy || !window.photobooth} /></label>}
           {screen === 'ready' && <label className="control-field"><span>LOW-DISK WARNING (GB)</span><input aria-label="Low-disk warning threshold in gigabytes" type="number" min="0" max="1000" step="0.1" value={diskWarningGB} onChange={(e) => handleDiskWarningChange(e.target.value)} onBlur={saveDiskWarning} disabled={busy || !window.photobooth} /></label>}
@@ -753,6 +824,22 @@ function App(): React.JSX.Element {
             : screen === 'finished' ? <><button className="secondary-button" type="button" onClick={() => void handleReprint()} disabled={busy || !selectedPrinterName}>Reprint</button><button className="start-button" type="button" onClick={returnToReady} disabled={busy}>Back to start</button></>
               : <><button className="secondary-button" type="button" onClick={() => void handleExportEvent()} disabled={busy || !event || !window.photobooth}>Export event</button><button className="start-button" type="button" onClick={() => void handleStartSession()} disabled={!cameraReady || !event || !pinConfigured || isBusy || unfinishedSessions.length > 0}>Start session <span aria-hidden="true">→</span></button></>}
         </div>
+        {screen === 'ready' && !adminLocked && <section className="event-manager-card" aria-label="Event setup and branding">
+          <div className="event-manager-heading"><div><p className="eyebrow">EVENT SETUP</p><h2>Event details & branding</h2></div><div className="event-manager-actions"><select aria-label="Active event" disabled={unfinishedSessions.length > 0} value={event?.id ?? ''} onChange={(e) => void handleSelectEvent(e.target.value)}>{events.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><button type="button" className="secondary-button" onClick={handleNewEvent} disabled={unfinishedSessions.length > 0}>New event</button><button type="button" className="secondary-button" onClick={() => void handleDuplicateEvent()} disabled={!event || unfinishedSessions.length > 0}>Duplicate active</button></div></div>
+          {eventDraft && <div className="event-form-grid">
+            <label>Event name<input aria-label="Event name" maxLength={80} value={eventDraft.name} onChange={(e) => setEventDraft({ ...eventDraft, name: e.target.value })} /></label>
+            <label>Event date<input aria-label="Event date" type="date" value={eventDraft.eventDate ?? ''} onChange={(e) => setEventDraft({ ...eventDraft, eventDate: e.target.value || null })} /></label>
+            <label>Photo count<select aria-label="Event photo count" value={eventDraft.shots} onChange={(e) => setEventDraft({ ...eventDraft, shots: Number(e.target.value) })}><option value={2}>2 photos</option><option value={3}>3 photos</option><option value={4}>4 photos</option></select></label>
+            <label>QR link expires after (days)<input aria-label="QR link expiry days" type="number" min={1} max={365} value={eventDraft.expiryDays} onChange={(e) => setEventDraft({ ...eventDraft, expiryDays: Number(e.target.value) })} /></label>
+            <label>Primary color (hex)<input aria-label="Primary color hex" value={eventDraft.primaryColor} maxLength={7} onChange={(e) => setEventDraft({ ...eventDraft, primaryColor: e.target.value })} /></label>
+            <label>Accent color (hex)<input aria-label="Accent color hex" value={eventDraft.accentColor} maxLength={7} onChange={(e) => setEventDraft({ ...eventDraft, accentColor: e.target.value })} /></label>
+            <label>Welcome text<input aria-label="Event welcome text" maxLength={160} value={eventDraft.welcomeText} onChange={(e) => setEventDraft({ ...eventDraft, welcomeText: e.target.value })} /></label>
+            <label>Thank-you text<input aria-label="Event thank-you text" maxLength={160} value={eventDraft.thankYouText} onChange={(e) => setEventDraft({ ...eventDraft, thankYouText: e.target.value })} /></label>
+            <div className="event-logo-field">{eventLogoDataUrl ? <img src={eventLogoDataUrl} alt="Selected event logo preview" /> : <span>No logo selected</span>}<button type="button" className="secondary-button" onClick={() => void handleChooseEventLogo()} disabled={unfinishedSessions.length > 0}>Choose PNG/JPEG logo</button><small>Files are copied locally; limit 5 MB.</small></div>
+            <button type="button" className="start-button" onClick={() => void handleSaveEvent()} disabled={unfinishedSessions.length > 0}>Save and use this event</button>
+          </div>}
+          {eventMessage && <p className="event-message" role="status">{eventMessage}</p>}
+        </section>}
         {screen === 'ready' && <section className="admin-security-card" aria-label="Operator security">
           {!pinConfigured ? <><p className="eyebrow">FIRST-TIME SETUP</p><h2>Create admin PIN</h2><p>Set a PIN before starting guest sessions. Use 6 to 12 digits and keep it private.</p><label>New PIN<input aria-label="New admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinDraft} onChange={(e) => setPinDraft(e.target.value.replace(/\D/g, ''))} /></label><label>Confirm PIN<input aria-label="Confirm admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinConfirm} onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, ''))} /></label><button type="button" onClick={() => void savePin()}>Save admin PIN</button></>
             : adminLocked ? <><p className="eyebrow">GUEST MODE</p><h2>Booth locked</h2><p>Operator settings are hidden. Enter the admin PIN to unlock them.</p>{showUnlock ? <><label>Admin PIN<input aria-label="Admin PIN to unlock settings" type="password" inputMode="numeric" maxLength={12} autoComplete="current-password" value={currentPinDraft} onChange={(e) => setCurrentPinDraft(e.target.value.replace(/\D/g, ''))} onKeyDown={(e) => { if (e.key === 'Enter') void unlockAdmin(); }} /></label><button type="button" onClick={() => void unlockAdmin()}>Unlock settings</button><button type="button" className="secondary-button" onClick={() => { setShowUnlock(false); setCurrentPinDraft(''); setPinError(''); }}>Cancel</button></> : <button type="button" onClick={() => { setShowUnlock(true); setPinError(''); }}>Operator unlock</button>}</>

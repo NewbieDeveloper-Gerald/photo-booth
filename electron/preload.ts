@@ -16,6 +16,12 @@ contextBridge.exposeInMainWorld('photobooth', {
     return () => ipcRenderer.removeListener('kiosk:exitRequested', listener);
   },
   getActiveEvent: () => ipcRenderer.invoke('session:getActiveEvent'),
+  listEvents: () => ipcRenderer.invoke('event:list'),
+  saveEvent: (input: unknown) => ipcRenderer.invoke('event:save', input),
+  duplicateEvent: (eventId: string) => ipcRenderer.invoke('event:duplicate', eventId),
+  selectActiveEvent: (eventId: string) => ipcRenderer.invoke('event:activate', eventId),
+  chooseEventLogo: (eventId: string): Promise<string | null> => ipcRenderer.invoke('event:chooseLogo', eventId),
+  getEventLogoDataUrl: (eventId: string): Promise<string | null> => ipcRenderer.invoke('event:logoData', eventId),
   createShareLink: (sessionId: string): Promise<{ url: string; expiresAt: string }> => ipcRenderer.invoke('download:createShareLink', sessionId),
   getUploadQueue: () => ipcRenderer.invoke('uploadQueue:list'),
   enqueueSessionUploads: (sessionId: string): Promise<number> => ipcRenderer.invoke('uploadQueue:enqueueSession', sessionId),

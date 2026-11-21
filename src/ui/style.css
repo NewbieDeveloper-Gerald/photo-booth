@@ -20,3 +20,23 @@
 .consent-copy { color: #d6d9e2; line-height: 1.6; white-space: pre-wrap; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
 @media (max-width: 620px) { .admin-security-card { grid-template-columns: 1fr; } }
+
+/* Feature 10: event manager and event-specific brand styling */
+.booth-app .start-button { background: var(--event-primary, #c9b4ff); }
+.booth-app .brand-mark { background: var(--event-primary, #c90000); }
+.event-brand-logo { width: 72px; height: 64px; object-fit: contain; flex: 0 0 auto; border-radius: 8px; }
+.event-manager-card { margin-top: 18px; padding: 20px; border: 1px solid #ffffff20; border-radius: 16px; background: #171b27; }
+.event-manager-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.event-manager-heading h2 { margin: 6px 0; }
+.event-manager-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.event-manager-actions select, .event-form-grid input, .event-form-grid select { min-height: 40px; border: 1px solid #ffffff28; border-radius: 8px; padding: 8px 10px; color: #f5f2fa; background: #10131c; font: inherit; }
+.event-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px 16px; margin-top: 18px; }
+.event-form-grid > label { display: grid; gap: 6px; color: #b8bfd0; font-size: 13px; }
+.event-form-grid input[type="color"] { width: 100%; padding: 4px; }
+.event-logo-field { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; color: #aeb4c4; font-size: 13px; }
+.event-logo-field img { max-width: 90px; max-height: 70px; object-fit: contain; }
+.event-logo-field small { width: 100%; }
+.event-message { margin: 12px 0 0; color: #c9b4ff; }
+@media (max-width: 720px) { .event-form-grid { grid-template-columns: 1fr; } .event-manager-heading { align-items: flex-start; flex-direction: column; } }
+.booth-app .stage-heading .eyebrow { color: var(--event-primary, #c90000); }
+.event-manager-card { border-top: 4px solid var(--event-accent, #f4f0ec); }

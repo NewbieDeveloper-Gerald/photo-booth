@@ -6,7 +6,8 @@ import { canRetake, isValidRetakeLimit } from '../core/retakes';
 import { getLayoutPreset } from '../core/layouts';
 import { generateSessionToken } from '../core/token';
 
-export type ActiveEvent = { id: string; name: string; shots: number; retakeLimit: number; printEnabled: boolean; expiryDays: number };
+export type ActiveEvent = { id: string; name: string; shots: number; retakeLimit: number; printEnabled: boolean; expiryDays: number; eventDate: string | null; logoPath: string | null; primaryColor: string; accentColor: string; welcomeText: string; thankYouText: string; defaultLayoutId: string };
+export type EventSettings = Omit<ActiveEvent, 'retakeLimit' | 'printEnabled'>;
 export type UnfinishedSession = { id: string; createdAt: string; capturedSlots: number; totalSlots: number; pendingRetakes: number };
 export type SessionSlot = { slotNumber: number; status: 'empty' | 'captured'; photoId: string | null; previousPhotoId: string | null; pendingPhotoId: string | null; downloadReady: boolean; hasPrevious: boolean; pendingDownloadReady: boolean; width: number | null; height: number | null };
 export type SessionRecord = { id: string; eventId: string; eventName: string; layoutId: string; status: string; retakesUsed: number; retakeLimit: number; slots: SessionSlot[] };
@@ -78,13 +79,139 @@ function toBuffer(data: unknown): Buffer {
   return Buffer.from(data);
 }
 
+const DEFAULTS_BY_SHOTS: Record<number, string> = { 2: 'double-strip-2', 3: 'double-strip-3', 4: 'double-strip-4' };
+function validateEventSettings(value: unknown): Omit<EventSettings, 'id' | 'logoPath'> {
+  if (!value || typeof value !== 'object') throw new Error('Invalid event details');
+  const item = value as Record<string, unknown>;
+  if (typeof item.name !== 'string' || !item.name.trim() || item.name.trim().length > 80) throw new Error('Event name is required (80 characters maximum)');
+  const shots = item.shots;
+  if (typeof shots !== 'number' || !Object.hasOwn(DEFAULTS_BY_SHOTS, shots)) throw new Error('Choose a shot count supported by the current layouts');
+  const eventDate = item.eventDate === '' || item.eventDate === null ? null : item.eventDate;
+  if (eventDate !== null && (typeof eventDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(eventDate) || Number.isNaN(Date.parse(`${eventDate}T00:00:00Z`)) || new Date(`${eventDate}T00:00:00Z`).toISOString().slice(0, 10) !== eventDate)) throw new Error('Enter a valid event date');
+  for (const key of ['primaryColor', 'accentColor'] as const) if (typeof item[key] !== 'string' || !/^#[0-9a-f]{6}$/i.test(item[key])) throw new Error(`${key === 'primaryColor' ? 'Primary' : 'Accent'} color must be a six-digit hex color`);
+  for (const key of ['welcomeText', 'thankYouText'] as const) if (typeof item[key] !== 'string' || item[key].trim().length > 160) throw new Error(`${key === 'welcomeText' ? 'Welcome' : 'Thank-you'} text must be 160 characters or fewer`);
+  const expiryDays = item.expiryDays;
+  if (typeof expiryDays !== 'number' || !Number.isInteger(expiryDays) || expiryDays < 1 || expiryDays > 365) throw new Error('QR link expiry must be from 1 to 365 days');
+  return { name: item.name.trim(), shots, expiryDays, eventDate: eventDate as string | null, primaryColor: item.primaryColor as string, accentColor: item.accentColor as string,
+    welcomeText: (item.welcomeText as string).trim(), thankYouText: (item.thankYouText as string).trim(), defaultLayoutId: DEFAULTS_BY_SHOTS[shots]! };
+}
+
+export function listEvents(userDataPath: string): EventSettings[] {
+  const database = openDatabase(userDataPath);
+  try { return database.prepare(`SELECT id, name, shots, expiry_days AS expiryDays, event_date AS eventDate, logo_path AS logoPath,
+    primary_color AS primaryColor, accent_color AS accentColor, welcome_text AS welcomeText, thank_you_text AS thankYouText,
+    default_layout_id AS defaultLayoutId FROM events ORDER BY name COLLATE NOCASE`).all() as EventSettings[]; }
+  finally { database.close(); }
+}
+
+export function saveEventSettings(userDataPath: string, input: unknown): EventSettings {
+  if (!input || typeof input !== 'object') throw new Error('Invalid event details');
+  const item = input as Record<string, unknown>;
+  const fields = validateEventSettings(input);
+  const id = typeof item.id === 'string' && item.id ? item.id : randomUUID();
+  const database = openDatabase(userDataPath);
+  try {
+    const exists = database.prepare('SELECT 1 FROM events WHERE id = ?').get(id);
+    if (item.id && !exists) throw new Error('Event not found');
+    if (exists) database.prepare(`UPDATE events SET name = ?, shots = ?, expiry_days = ?, event_date = ?, primary_color = ?, accent_color = ?,
+      welcome_text = ?, thank_you_text = ?, default_layout_id = ? WHERE id = ?`).run(fields.name, fields.shots, fields.expiryDays, fields.eventDate,
+      fields.primaryColor, fields.accentColor, fields.welcomeText, fields.thankYouText, fields.defaultLayoutId, id);
+    else database.prepare(`INSERT INTO events (id, name, shots, retake_limit, print_enabled, expiry_days, event_date, primary_color, accent_color,
+      welcome_text, thank_you_text, default_layout_id) VALUES (?, ?, ?, 3, 1, ?, ?, ?, ?, ?, ?, ?)`).run(id, fields.name, fields.shots, fields.expiryDays,
+      fields.eventDate, fields.primaryColor, fields.accentColor, fields.welcomeText, fields.thankYouText, fields.defaultLayoutId);
+    return database.prepare(`SELECT id, name, shots, expiry_days AS expiryDays, event_date AS eventDate, logo_path AS logoPath,
+      primary_color AS primaryColor, accent_color AS accentColor, welcome_text AS welcomeText, thank_you_text AS thankYouText,
+      default_layout_id AS defaultLayoutId FROM events WHERE id = ?`).get(id) as EventSettings;
+  } finally { database.close(); }
+}
+
+export function selectActiveEvent(userDataPath: string, eventId: unknown): ActiveEvent {
+  if (typeof eventId !== 'string' || !/^[a-z0-9-]{1,64}$/i.test(eventId)) throw new Error('Invalid event');
+  const database = openDatabase(userDataPath);
+  try {
+    if (!database.prepare('SELECT 1 FROM events WHERE id = ?').get(eventId)) throw new Error('Event not found');
+    database.prepare("INSERT INTO settings (key, value, updated_at) VALUES ('activeEventId', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')").run(eventId);
+  } finally { database.close(); }
+  return getActiveEvent(userDataPath);
+}
+
+export function duplicateEvent(userDataPath: string, eventId: unknown): EventSettings {
+  if (typeof eventId !== 'string' || !/^[a-z0-9-]{1,64}$/i.test(eventId)) throw new Error('Invalid event');
+  const database = openDatabase(userDataPath);
+  let source: EventSettings | undefined;
+  try { source = database.prepare(`SELECT id, name, shots, expiry_days AS expiryDays, event_date AS eventDate, logo_path AS logoPath,
+    primary_color AS primaryColor, accent_color AS accentColor, welcome_text AS welcomeText, thank_you_text AS thankYouText,
+    default_layout_id AS defaultLayoutId FROM events WHERE id = ?`).get(eventId) as EventSettings | undefined; }
+  finally { database.close(); }
+  if (!source) throw new Error('Event not found');
+  const copy = saveEventSettings(userDataPath, { ...source, id: undefined, name: `${source.name} Copy` });
+  if (source.logoPath && fs.existsSync(source.logoPath)) {
+    const copied = storeEventLogoPath(userDataPath, copy.id, source.logoPath);
+    const update = openDatabase(userDataPath);
+    try { update.prepare('UPDATE events SET logo_path = ? WHERE id = ?').run(copied, copy.id); }
+    finally { update.close(); }
+    return { ...copy, logoPath: copied };
+  }
+  return copy;
+}
+
+function eventAssetsPath(userDataPath: string, eventId: string): string {
+  return ensureInside(userDataPath, path.join(userDataPath, 'event-assets', eventId));
+}
+function storeEventLogoPath(userDataPath: string, eventId: string, sourcePath: string): string {
+  const ext = path.extname(sourcePath).toLowerCase();
+  if (!['.png', '.jpg', '.jpeg'].includes(ext)) throw new Error('Choose a PNG or JPEG logo');
+  const stats = fs.statSync(sourcePath);
+  if (!stats.isFile() || stats.size < 12 || stats.size > 5 * 1024 * 1024) throw new Error('Logo must be an image file no larger than 5 MB');
+  const data = fs.readFileSync(sourcePath);
+  const valid = ext === '.png' ? data.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))
+    : data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff;
+  if (!valid) throw new Error('Logo contents do not match a supported PNG or JPEG file');
+  const dir = eventAssetsPath(userDataPath, eventId);
+  fs.mkdirSync(dir, { recursive: true });
+  const target = path.join(dir, `logo${ext}`);
+  fs.copyFileSync(sourcePath, target);
+  return target;
+}
+
+export function setEventLogo(userDataPath: string, eventId: unknown, sourcePath: unknown): string {
+  if (typeof eventId !== 'string' || !/^[a-z0-9-]{1,64}$/i.test(eventId) || typeof sourcePath !== 'string') throw new Error('Invalid logo request');
+  const db = openDatabase(userDataPath);
+  try { if (!db.prepare('SELECT 1 FROM events WHERE id = ?').get(eventId)) throw new Error('Event not found'); }
+  finally { db.close(); }
+  const logoPath = storeEventLogoPath(userDataPath, eventId, sourcePath);
+  const update = openDatabase(userDataPath);
+  try { update.prepare('UPDATE events SET logo_path = ? WHERE id = ?').run(logoPath, eventId); }
+  finally { update.close(); }
+  return logoPath;
+}
+
+export function getEventLogoDataUrl(userDataPath: string, eventId: unknown): string | null {
+  if (typeof eventId !== 'string' || !/^[a-z0-9-]{1,64}$/i.test(eventId)) return null;
+  const db = openDatabase(userDataPath);
+  let logoPath: string | null;
+  try { logoPath = (db.prepare('SELECT logo_path FROM events WHERE id = ?').get(eventId) as { logo_path: string | null } | undefined)?.logo_path ?? null; }
+  finally { db.close(); }
+  if (!logoPath || !fs.existsSync(logoPath)) return null;
+  const ext = path.extname(logoPath).toLowerCase();
+  if (!['.png', '.jpg', '.jpeg'].includes(ext)) return null;
+  return `data:${ext === '.png' ? 'image/png' : 'image/jpeg'};base64,${fs.readFileSync(logoPath).toString('base64')}`;
+}
+
 export function getActiveEvent(userDataPath: string): ActiveEvent {
   const database = openDatabase(userDataPath);
   try {
-    const row = database.prepare(`SELECT e.id, e.name, e.shots, e.retake_limit, e.print_enabled, e.expiry_days
-      FROM events e JOIN settings s ON s.key = 'activeEventId' AND s.value = e.id LIMIT 1`).get() as EventRow | undefined;
+    const row = database.prepare(`SELECT e.id, e.name, e.shots, e.retake_limit, e.print_enabled, e.expiry_days,
+      e.event_date AS eventDate, e.logo_path AS logoPath, e.primary_color AS primaryColor, e.accent_color AS accentColor,
+      e.welcome_text AS welcomeText, e.thank_you_text AS thankYouText, e.default_layout_id AS defaultLayoutId
+      FROM events e JOIN settings s ON s.key = 'activeEventId' AND s.value = e.id LIMIT 1`).get() as (EventRow & {
+        eventDate: string | null; logoPath: string | null; primaryColor: string; accentColor: string;
+        welcomeText: string; thankYouText: string; defaultLayoutId: string;
+      }) | undefined;
     if (!row) throw new Error('No active event is configured');
-    return { id: row.id, name: row.name, shots: row.shots, retakeLimit: row.retake_limit, printEnabled: Boolean(row.print_enabled), expiryDays: row.expiry_days };
+    return { id: row.id, name: row.name, shots: row.shots, retakeLimit: row.retake_limit, printEnabled: Boolean(row.print_enabled), expiryDays: row.expiry_days,
+      eventDate: row.eventDate, logoPath: row.logoPath, primaryColor: row.primaryColor, accentColor: row.accentColor,
+      welcomeText: row.welcomeText, thankYouText: row.thankYouText, defaultLayoutId: row.defaultLayoutId };
   } finally {
     database.close();
   }
@@ -106,6 +233,7 @@ export function setActiveEventRetakeLimit(userDataPath: string, limit: unknown):
 export function createSession(userDataPath: string, layoutIdValue: unknown = 'double-strip-3'): { sessionId: string; event: ActiveEvent; shots: number; layoutId: string } {
   const event = getActiveEvent(userDataPath);
   const layout = getLayoutPreset(layoutIdValue);
+  if (layout.shots !== event.shots) throw new Error('Selected layout does not match the active event shot count');
   const sessionId = randomUUID();
   const database = openDatabase(userDataPath);
   try {
