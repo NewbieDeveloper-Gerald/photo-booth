@@ -54,6 +54,25 @@ const migrations: Array<{ name: string; sql: string }> = [
       );
     `,
   },
+  {
+    name: '002_capture_sessions',
+    sql: `
+      ALTER TABLE events ADD COLUMN shots INTEGER NOT NULL DEFAULT 3;
+      ALTER TABLE events ADD COLUMN retake_limit INTEGER NOT NULL DEFAULT 3;
+      ALTER TABLE events ADD COLUMN print_enabled INTEGER NOT NULL DEFAULT 1;
+      ALTER TABLE events ADD COLUMN expiry_days INTEGER NOT NULL DEFAULT 30;
+      ALTER TABLE sessions ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now'));
+      ALTER TABLE slots ADD COLUMN captured_at TEXT;
+      ALTER TABLE photos ADD COLUMN download_path TEXT;
+      ALTER TABLE photos ADD COLUMN width INTEGER;
+      ALTER TABLE photos ADD COLUMN height INTEGER;
+      INSERT OR IGNORE INTO events (id, name, shots, retake_limit, print_enabled, expiry_days)
+        VALUES ('default-event', 'Default Event', 3, 3, 1, 30);
+      INSERT OR IGNORE INTO settings (key, value) VALUES ('activeEventId', 'default-event');
+      CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
+      CREATE INDEX IF NOT EXISTS idx_slots_session ON slots(session_id, slot_number);
+    `,
+  },
 ];
 
 export function initializeStorage(userDataPath: string): void {

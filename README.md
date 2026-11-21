@@ -30,7 +30,7 @@ Playwright is configured for browser UI flows. Install its browser once with `np
 
 ## Local data
 
-At first launch, the app creates its SQLite database and `photobooth-paths.json` under Electron's user data directory. That JSON file configures the `photosDirectory` and `backupDirectory`; by default both folders are created beside the database. Originals must be written to disk before any processing.
+At first launch, the app creates its SQLite database and `photobooth-paths.json` under Electron's user data directory. That JSON file configures the `photosDirectory` and `backupDirectory`; by default both folders are created beside the database. Each session photo is written as a full-resolution JPEG under `photos/<event>/<session>/` before the app creates a reduced download copy (max 2048px, JPEG quality 80). Canvas re-encoding creates a metadata-free copy; webcam video frames do not carry source GPS EXIF. Timed-out or discarded sessions copy originals into `backup/<event>/<session>/`; they are not deleted.
 
 ## Security and image handling
 
