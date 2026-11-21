@@ -4,6 +4,7 @@ dist-electron/
 playwright-report/
 test-results/
 coverage/
+*.tsbuildinfo
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
