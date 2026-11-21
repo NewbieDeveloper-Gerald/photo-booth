@@ -25,6 +25,19 @@ function getPaths(userDataPath: string): StoragePaths {
   return { photosDirectory: config.photosDirectory, backupDirectory: config.backupDirectory };
 }
 
+export function getConfiguredStoragePaths(userDataPath: string): StoragePaths { return getPaths(userDataPath); }
+
+async function copyBackupVersion(paths: StoragePaths, eventId: string, sessionId: string, sourcePath: string): Promise<void> {
+  const source = storedPhotoPath(paths, sourcePath);
+  const folder = ensureInside(paths.backupDirectory, path.join(paths.backupDirectory, eventId, sessionId));
+  const destination = ensureInside(paths.backupDirectory, path.join(folder, path.basename(source)));
+  await fs.promises.mkdir(folder, { recursive: true });
+  if (fs.existsSync(destination)) return;
+  const temporaryPath = `${destination}.${randomUUID()}.tmp`;
+  await fs.promises.copyFile(source, temporaryPath);
+  await fs.promises.rename(temporaryPath, destination);
+}
+
 function ensureInside(parent: string, child: string): string {
   const resolvedParent = path.resolve(parent);
   const resolvedChild = path.resolve(child);
@@ -178,6 +191,7 @@ export async function saveOriginalPhoto(
   const folder = ensureInside(paths.photosDirectory, path.join(paths.photosDirectory, slot.event_id, sessionId));
   const originalPath = ensureInside(paths.photosDirectory, path.join(folder, `slot-${String(slotNumber).padStart(2, '0')}-original.jpg`));
   await writeAtomically(originalPath, bytes);
+  await copyBackupVersion(paths, slot.event_id, sessionId, originalPath);
 
   const recordDatabase = openDatabase(userDataPath);
   try {
@@ -299,6 +313,8 @@ export async function commitRetake(userDataPath: string, sessionId: unknown, slo
   const newDownload = pendingDownload ? path.join(folder, `${nextVersion}-download.jpg`) : null;
   await moveWithinPhotos(paths, pendingOriginal, newOriginal);
   if (pendingDownload && newDownload) await moveWithinPhotos(paths, pendingDownload, newDownload);
+  await copyBackupVersion(paths, row.event_id, sessionId, keptOriginal);
+  await copyBackupVersion(paths, row.event_id, sessionId, newOriginal);
 
   const update = openDatabase(userDataPath);
   try {
@@ -351,6 +367,27 @@ export async function revertRetake(userDataPath: string, sessionId: unknown, slo
   } finally { update.close(); }
 }
 
+export async function saveSessionOutput(userDataPath: string, sessionIdValue: unknown, data: unknown, widthValue: unknown, heightValue: unknown): Promise<string> {
+  if (typeof sessionIdValue !== 'string' || !/^[0-9a-f-]{36}$/i.test(sessionIdValue) ||
+      widthValue !== 1200 || heightValue !== 1800) throw new Error('Finished image must be 1200 by 1800 pixels');
+  const bytes = toBuffer(data);
+  const database = openDatabase(userDataPath);
+  const paths = getPaths(userDataPath);
+  let eventId: string | undefined;
+  try {
+    const row = database.prepare("SELECT event_id FROM sessions WHERE id = ? AND status = 'completed'").get(sessionIdValue) as { event_id: string } | undefined;
+    eventId = row?.event_id;
+  } finally { database.close(); }
+  if (!eventId) throw new Error('Only completed sessions can save a finished image');
+  const folder = ensureInside(paths.photosDirectory, path.join(paths.photosDirectory, eventId, sessionIdValue));
+  const outputPath = ensureInside(folder, path.join(folder, `finished-4x6-${randomUUID()}.jpg`));
+  await writeAtomically(outputPath, bytes);
+  const outputDatabase = openDatabase(userDataPath);
+  try { outputDatabase.prepare('INSERT INTO outputs (id, session_id, output_path, kind) VALUES (?, ?, ?, ?)').run(randomUUID(), sessionIdValue, outputPath, 'finished-4x6'); }
+  finally { outputDatabase.close(); }
+  return outputPath;
+}
+
 export async function saveDownloadCopy(userDataPath: string, photoId: unknown, data: unknown): Promise<void> {
   if (typeof photoId !== 'string' || !/^[0-9a-f-]{36}$/i.test(photoId)) throw new Error('Invalid photo id');
   const bytes = toBuffer(data);
@@ -401,6 +438,44 @@ export function readOriginalPhoto(userDataPath: string, photoId: unknown): Uint8
   }
 }
 
+export async function exportEventFolder(userDataPath: string, eventIdValue: unknown, destinationRootValue: unknown): Promise<string> {
+  if (typeof eventIdValue !== 'string' || !/^[a-zA-Z0-9-]{1,100}$/.test(eventIdValue) || typeof destinationRootValue !== 'string') throw new Error('Invalid export request');
+  const paths = getPaths(userDataPath);
+  const database = openDatabase(userDataPath);
+  let event: { id: string; name: string } | undefined;
+  try { event = database.prepare('SELECT id, name FROM events WHERE id = ?').get(eventIdValue) as typeof event; }
+  finally { database.close(); }
+  if (!event) throw new Error('Event not found');
+  const destinationRoot = path.resolve(destinationRootValue);
+  const overlaps = (first: string, second: string): boolean => {
+    const a = path.resolve(first); const b = path.resolve(second);
+    return a === b || a.startsWith(`${b}${path.sep}`) || b.startsWith(`${a}${path.sep}`);
+  };
+  if (overlaps(destinationRoot, paths.photosDirectory) || overlaps(destinationRoot, paths.backupDirectory)) {
+    throw new Error('Choose an export folder outside the booth photos and backup folders');
+  }
+  const photosSource = ensureInside(paths.photosDirectory, path.join(paths.photosDirectory, event.id));
+  const backupSource = ensureInside(paths.backupDirectory, path.join(paths.backupDirectory, event.id));
+  const photosTarget = path.join(destinationRoot, 'photos', event.id);
+  const backupTarget = path.join(destinationRoot, 'backup', event.id);
+  await fs.promises.mkdir(destinationRoot, { recursive: true });
+  for (const [source, target] of [[photosSource, photosTarget], [backupSource, backupTarget]] as const) {
+    if (fs.existsSync(source)) await fs.promises.cp(source, target, { recursive: true, force: true, errorOnExist: false });
+  }
+  // Ensure sessions created before automatic backups are protected too.
+  if (fs.existsSync(photosSource)) {
+    for (const sessionEntry of await fs.promises.readdir(photosSource, { withFileTypes: true })) {
+      if (!sessionEntry.isDirectory()) continue;
+      const sessionFolder = path.join(photosSource, sessionEntry.name);
+      for (const file of await fs.promises.readdir(sessionFolder, { withFileTypes: true })) {
+        if (file.isFile() && file.name.toLowerCase().endsWith('.jpg')) await copyBackupVersion(paths, event.id, sessionEntry.name, path.join(sessionFolder, file.name));
+      }
+    }
+    await fs.promises.cp(backupSource, backupTarget, { recursive: true, force: true, errorOnExist: false }).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') throw error; });
+  }
+  return destinationRoot;
+}
+
 async function copySessionOriginalsToBackup(userDataPath: string, sessionId: string, newStatus: 'abandoned' | 'discarded'): Promise<void> {
   const database = openDatabase(userDataPath);
   const paths = getPaths(userDataPath);
@@ -412,7 +487,7 @@ async function copySessionOriginalsToBackup(userDataPath: string, sessionId: str
     for (const row of rows) {
       const source = storedPhotoPath(paths, row.original_path);
       const destination = ensureInside(paths.backupDirectory, path.join(backupFolder, path.basename(source)));
-      if (source !== destination) {
+      if (source !== destination && !fs.existsSync(destination)) {
         const temporaryPath = `${destination}.${randomUUID()}.tmp`;
         await fs.promises.copyFile(source, temporaryPath);
         await fs.promises.rename(temporaryPath, destination);

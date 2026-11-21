@@ -1,9 +1,9 @@
 import Database from 'better-sqlite3';
 import path from 'node:path';
 
-export type BoothSettingKey = 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution';
+export type BoothSettingKey = 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution' | 'lowDiskWarningGB';
 
-const allowedKeys = new Set<BoothSettingKey>(['selectedCameraId', 'countdownSeconds', 'cameraResolution']);
+const allowedKeys = new Set<BoothSettingKey>(['selectedCameraId', 'countdownSeconds', 'cameraResolution', 'lowDiskWarningGB']);
 
 function isAllowedKey(key: unknown): key is BoothSettingKey {
   return typeof key === 'string' && allowedKeys.has(key as BoothSettingKey);
@@ -35,6 +35,9 @@ export function writeBoothSetting(userDataPath: string, key: unknown, value: unk
   }
   if (key === 'cameraResolution' && !['best', '1280x720', '1920x1080', '3840x2160'].includes(value)) {
     throw new Error('Unsupported camera resolution');
+  }
+  if (key === 'lowDiskWarningGB' && (!/^(?:\d{1,4})(?:\.\d{1,2})?$/.test(value) || Number(value) > 1000)) {
+    throw new Error('Disk warning threshold must be between 0 and 1000 GB');
   }
   const database = openDatabase(userDataPath);
   try {

@@ -1,0 +1,15 @@
+{
+  "id": "default-4x6-three-photo",
+  "name": "Classic Three Photo",
+  "width": 1200,
+  "height": 1800,
+  "background": "#f5f1ec",
+  "header": { "x": 60, "y": 52, "width": 1080, "height": 142, "text": "{{eventName}}", "fontSize": 46, "color": "#302d38" },
+  "photoSlots": [
+    { "slot": 1, "x": 60, "y": 220, "width": 1080, "height": 420 },
+    { "slot": 2, "x": 60, "y": 668, "width": 1080, "height": 420 },
+    { "slot": 3, "x": 60, "y": 1116, "width": 1080, "height": 420 }
+  ],
+  "qrPlaceholder": { "x": 930, "y": 1620, "width": 210, "height": 120, "label": "QR CODE" },
+  "footer": { "x": 60, "y": 1632, "width": 820, "height": 80, "text": "A moment to remember", "fontSize": 25, "color": "#746d7a" }
+}

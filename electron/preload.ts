@@ -1,12 +1,14 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
-type SettingKey = 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution';
+type SettingKey = 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution' | 'lowDiskWarningGB';
 type PhotoBytes = Uint8Array;
 
 contextBridge.exposeInMainWorld('photobooth', {
   getSetting: (key: SettingKey): Promise<string | null> => ipcRenderer.invoke('settings:get', key),
   setSetting: (key: SettingKey, value: string): Promise<void> => ipcRenderer.invoke('settings:set', key, value),
   getActiveEvent: () => ipcRenderer.invoke('session:getActiveEvent'),
+  exportEvent: (eventId: string): Promise<string | null> => ipcRenderer.invoke('session:exportEvent', eventId),
+  checkDiskSpace: (thresholdGB: number): Promise<boolean> => ipcRenderer.invoke('session:checkDiskSpace', thresholdGB),
   setActiveEventRetakeLimit: (limit: number) => ipcRenderer.invoke('session:setRetakeLimit', limit),
   createSession: () => ipcRenderer.invoke('session:create'),
   listUnfinishedSessions: () => ipcRenderer.invoke('session:listUnfinished'),
@@ -20,6 +22,8 @@ contextBridge.exposeInMainWorld('photobooth', {
   revertRetake: (sessionId: string, slotNumber: number) => ipcRenderer.invoke('session:revertRetake', sessionId, slotNumber),
 
   readOriginalPhoto: (photoId: string): Promise<PhotoBytes> => ipcRenderer.invoke('session:readOriginal', photoId),
+  saveSessionOutput: (sessionId: string, bytes: PhotoBytes, width: number, height: number): Promise<string> =>
+    ipcRenderer.invoke('session:saveOutput', sessionId, bytes, width, height),
   abandonSession: (sessionId: string): Promise<void> => ipcRenderer.invoke('session:abandon', sessionId),
   discardSession: (sessionId: string): Promise<void> => ipcRenderer.invoke('session:discard', sessionId),
 });

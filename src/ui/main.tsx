@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client';
 import { canRetake, isValidRetakeLimit, retakesRemaining } from '../core/retakes';
 import { captureOriginalJpeg } from '../core/photo-pipeline';
+import { coverCrop } from '../core/layout';
+import template from '../../templates/default-4x6.json';
 import { BrowserCameraDevice, type CameraInfo, type CameraResolution } from '../hardware/camera';
 import type { ActiveEvent, SessionRecord, SessionSlot, UnfinishedSession } from '../storage/sessions';
 import './style.css';
@@ -12,14 +14,15 @@ const resolutionOptions: Array<{ value: CameraResolution; label: string }> = [
   { value: '1920x1080', label: 'Full HD · 1920 × 1080' },
   { value: '3840x2160', label: '4K · 3840 × 2160' },
 ];
-type Screen = 'ready' | 'capturing' | 'review';
+type Screen = 'ready' | 'capturing' | 'review' | 'finished';
 type ReviewImage = { slotNumber: number; photoId: string; url: string };
 
-async function getPreference(key: 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution'): Promise<string | null> {
+type PreferenceKey = 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution' | 'lowDiskWarningGB';
+async function getPreference(key: PreferenceKey): Promise<string | null> {
   if (window.photobooth) return window.photobooth.getSetting(key);
   return localStorage.getItem(`photobooth.${key}`);
 }
-async function savePreference(key: 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution', value: string): Promise<void> {
+async function savePreference(key: PreferenceKey, value: string): Promise<void> {
   if (window.photobooth) return window.photobooth.setSetting(key, value);
   localStorage.setItem(`photobooth.${key}`, value);
 }
@@ -37,6 +40,56 @@ function bytesBlob(bytes: Uint8Array): Blob {
   return new Blob([copy.buffer], { type: 'image/jpeg' });
 }
 function wait(milliseconds: number): Promise<void> { return new Promise((resolve) => window.setTimeout(resolve, milliseconds)); }
+
+async function renderFinishedLayout(record: SessionRecord, eventName: string): Promise<Blob> {
+  const bridge = window.photobooth;
+  if (!bridge) throw new Error('Finished layouts are available in the desktop app.');
+  const canvas = document.createElement('canvas');
+  canvas.width = template.width;
+  canvas.height = template.height;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Could not prepare the finished layout.');
+  context.fillStyle = template.background;
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = template.header.color;
+  context.font = `600 ${template.header.fontSize}px Inter, Segoe UI, sans-serif`;
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.fillText(template.header.text.replace('{{eventName}}', eventName), template.header.x + template.header.width / 2,
+    template.header.y + template.header.height / 2, template.header.width);
+
+  const bitmaps: ImageBitmap[] = [];
+  try {
+    for (const region of template.photoSlots) {
+      const slot = record.slots.find((item) => item.slotNumber === region.slot);
+      if (!slot?.photoId) throw new Error(`Photo ${region.slot} is missing from this session.`);
+      const bitmap = await createImageBitmap(bytesBlob(await bridge.readOriginalPhoto(slot.photoId)));
+      bitmaps.push(bitmap);
+      const crop = coverCrop(bitmap.width, bitmap.height, region.width, region.height);
+      context.drawImage(bitmap, crop.sx, crop.sy, crop.sw, crop.sh, region.x, region.y, region.width, region.height);
+    }
+  } finally { for (const bitmap of bitmaps) bitmap.close(); }
+
+  const qr = template.qrPlaceholder;
+  context.save();
+  context.strokeStyle = '#9b94a2';
+  context.lineWidth = 3;
+  context.setLineDash([12, 9]);
+  context.strokeRect(qr.x, qr.y, qr.width, qr.height);
+  context.setLineDash([]);
+  context.fillStyle = '#817a88';
+  context.font = '600 22px Inter, Segoe UI, sans-serif';
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.fillText(qr.label, qr.x + qr.width / 2, qr.y + qr.height / 2);
+  context.restore();
+  context.fillStyle = template.footer.color;
+  context.font = `500 ${template.footer.fontSize}px Inter, Segoe UI, sans-serif`;
+  context.textAlign = 'left';
+  context.textBaseline = 'middle';
+  context.fillText(template.footer.text, template.footer.x, template.footer.y + template.footer.height / 2, template.footer.width);
+  return new Promise((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('Could not encode the finished layout.')), 'image/jpeg', 0.96));
+}
 
 function App(): React.JSX.Element {
   const camera = useMemo(() => typeof navigator !== 'undefined' && navigator.mediaDevices ? new BrowserCameraDevice() : null, []);
@@ -57,10 +110,12 @@ function App(): React.JSX.Element {
   const [cameraReady, setCameraReady] = useState(false);
   const [event, setEvent] = useState<ActiveEvent | null>(null);
   const [retakeLimitDraft, setRetakeLimitDraft] = useState('3');
+  const [diskWarningGB, setDiskWarningGB] = useState('2');
   const [screen, setScreen] = useState<Screen>('ready');
   const [sessionId, setSessionId] = useState('');
   const [reviewRecord, setReviewRecord] = useState<SessionRecord | null>(null);
   const [reviewImages, setReviewImages] = useState<ReviewImage[]>([]);
+  const [finalOutputUrl, setFinalOutputUrl] = useState('');
   const [unfinishedSessions, setUnfinishedSessions] = useState<UnfinishedSession[]>([]);
   const [capturedSlots, setCapturedSlots] = useState<Set<number>>(new Set());
   const [currentSlot, setCurrentSlot] = useState(0);
@@ -166,11 +221,13 @@ function App(): React.JSX.Element {
   useEffect(() => {
     let cancelled = false;
     const initialize = async (): Promise<void> => {
-      const [savedCamera, savedCountdown, savedResolution] = await Promise.all([
+      const [savedCamera, savedCountdown, savedResolution, savedDiskWarning] = await Promise.all([
         getPreference('selectedCameraId').catch(() => null),
         getPreference('countdownSeconds').catch(() => null),
         getPreference('cameraResolution').catch(() => null),
+        getPreference('lowDiskWarningGB').catch(() => null),
       ]);
+      if (savedDiskWarning !== null && Number.isFinite(Number(savedDiskWarning)) && Number(savedDiskWarning) >= 0 && Number(savedDiskWarning) <= 1000) setDiskWarningGB(savedDiskWarning);
       if (cancelled) return;
       const seconds = Number(savedCountdown);
       if (Number.isInteger(seconds) && seconds >= 3 && seconds <= 10) setCountdownSeconds(seconds);
@@ -201,6 +258,7 @@ function App(): React.JSX.Element {
       cancelCountdown.current?.();
       stopCurrentStream();
       if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl);
+      if (finalOutputUrl) URL.revokeObjectURL(finalOutputUrl);
       clearReviewUrls();
     };
     // Initial preferences load once; camera and session changes are handled separately.
@@ -319,6 +377,7 @@ function App(): React.JSX.Element {
     setCapturedSlots(new Set());
     clearReviewUrls();
     try {
+      if (!await window.photobooth.checkDiskSpace(Number(diskWarningGB))) return;
       const created = await window.photobooth.createSession();
       setEvent(created.event);
       setSessionId(created.sessionId);
@@ -448,15 +507,49 @@ function App(): React.JSX.Element {
     } finally { setBusy(false); }
   };
 
-  const handleContinue = (): void => {
+  const handleContinue = async (): Promise<void> => {
+    if (!reviewRecord || !sessionId || !window.photobooth || !event) return;
+    setBusy(true);
+    setErrorMessage('');
+    setStatus('Building your 4 × 6 layout…');
+    try {
+      const blob = await renderFinishedLayout(reviewRecord, event.name);
+      const savedPath = await window.photobooth.saveSessionOutput(sessionId, await blobBytes(blob), template.width, template.height);
+      setFinalOutputUrl((current) => { if (current) URL.revokeObjectURL(current); return URL.createObjectURL(blob); });
+      setStatus(`Finished layout saved · ${savedPath}`);
+      setScreen('finished');
+    } catch (error) { setErrorMessage(error instanceof Error ? error.message : 'Could not build the finished layout. Your photos are safe.'); }
+    finally { setBusy(false); }
+  };
+
+  const returnToReady = (): void => {
     setScreen('ready');
     setSessionId('');
     setReviewRecord(null);
     clearReviewUrls();
+    setFinalOutputUrl((current) => { if (current) URL.revokeObjectURL(current); return ''; });
     setPhotoPreviewUrl((current) => { if (current) URL.revokeObjectURL(current); return ''; });
     setErrorMessage('');
     setStatus('Camera is ready');
     void refreshUnfinishedSessions();
+  };
+
+  const handleDiskWarningChange = (value: string): void => setDiskWarningGB(value);
+  const saveDiskWarning = (): void => {
+    const threshold = Number(diskWarningGB);
+    if (!Number.isFinite(threshold) || threshold < 0 || threshold > 1000) { setDiskWarningGB('2'); return; }
+    setDiskWarningGB(String(threshold));
+    void savePreference('lowDiskWarningGB', String(threshold)).catch(() => setErrorMessage('Could not save the disk warning threshold.'));
+  };
+  const handleExportEvent = async (): Promise<void> => {
+    if (!window.photobooth || !event) return;
+    setBusy(true);
+    setErrorMessage('');
+    try {
+      const exportedTo = await window.photobooth.exportEvent(event.id);
+      if (exportedTo) setStatus(`Event exported to ${exportedTo}`);
+    } catch (error) { setErrorMessage(error instanceof Error ? error.message : 'Event export failed. Your photos remain safe.'); }
+    finally { setBusy(false); }
   };
 
   const handleRetakeLimitChange = async (limit: number): Promise<void> => {
@@ -509,26 +602,29 @@ function App(): React.JSX.Element {
       <section className="workspace">
         <div className="stage-heading">
           <div>
-            <p className="eyebrow">{screen === 'ready' ? 'PHOTO SESSION' : screen === 'capturing' ? 'SESSION IN PROGRESS' : 'REVIEW YOUR PHOTOS'}</p>
-            <h1>{screen === 'ready' ? 'Frame the moment.' : screen === 'capturing' ? `Photo ${currentSlot} of ${slotCount}` : 'Choose a favorite.'}</h1>
-            <p className="subheading">{screen === 'ready' ? `Ready for ${event?.name ?? 'your event'}. Check the preview, then start a session.` : screen === 'capturing' ? 'Stay in frame. Your original photo is saved directly to the session folder.' : 'Retake just one slot if needed. Your other photos will stay exactly as they are.'}</p>
+            <p className="eyebrow">{screen === 'ready' ? 'PHOTO SESSION' : screen === 'capturing' ? 'SESSION IN PROGRESS' : screen === 'finished' ? 'FINISHED LAYOUT' : 'REVIEW YOUR PHOTOS'}</p>
+            <h1>{screen === 'ready' ? 'Frame the moment.' : screen === 'capturing' ? `Photo ${currentSlot} of ${slotCount}` : screen === 'finished' ? 'Your 4 × 6 layout is ready.' : 'Choose a favorite.'}</h1>
+            <p className="subheading">{screen === 'ready' ? `Ready for ${event?.name ?? 'your event'}. Check the preview, then start a session.` : screen === 'capturing' ? 'Stay in frame. Your original photo is saved directly to the session folder.' : screen === 'finished' ? 'The print-size image is saved with this session.' : 'Retake just one slot if needed. Your other photos will stay exactly as they are.'}</p>
           </div>
-          <div className="live-badge"><span /> {screen === 'capturing' ? 'CAPTURING' : screen === 'review' ? 'SESSION REVIEW' : 'LOCAL CAMERA'}</div>
+          <div className="live-badge"><span /> {screen === 'capturing' ? 'CAPTURING' : screen === 'review' ? 'SESSION REVIEW' : screen === 'finished' ? 'LAYOUT READY' : 'LOCAL CAMERA'}</div>
         </div>
         <div className="preview-card">
           <video ref={videoRef} className="camera-video" autoPlay playsInline muted aria-label="Mirrored live camera preview" />
           {!cameraReady && <div className="preview-empty"><div className="camera-glyph">◉</div><strong>{cameras.length ? 'Connecting to your camera…' : 'No camera preview yet'}</strong><span>Connect a webcam or select a camera below.</span></div>}
+          {screen === 'finished' && finalOutputUrl && <div className="final-output"><img src={finalOutputUrl} alt="Finished 4 by 6 photo layout" /></div>}
           {photoPreviewUrl && <div className="captured-photo"><img src={photoPreviewUrl} alt={`Saved photo ${currentSlot}`} /><span>PHOTO {currentSlot} SAVED</span></div>}
           {countdown !== null && <div className="countdown-overlay" aria-live="assertive"><span>{countdown}</span></div>}
           <div className="preview-meta"><span>{actualResolution || (cameraReady ? 'Camera ready' : 'Waiting for camera')}</span><span className="mirror-label">MIRRORED</span></div>
         </div>
         <div className="controls-grid">
-          <label className="control-field"><span>CAMERA</span><select value={selectedCameraId} onChange={(e) => void handleCameraChange(e.target.value)} disabled={isBusy || screen === 'review' || !cameras.length}><option value="" disabled>Select a camera</option>{cameras.map((item, index) => <option key={item.deviceId || index} value={item.deviceId}>{item.label || `Camera ${index + 1}`}</option>)}</select></label>
-          <label className="control-field"><span>PREVIEW QUALITY</span><select value={resolution} onChange={(e) => void handleResolutionChange(e.target.value as CameraResolution)} disabled={isBusy || screen === 'review'}>{resolutionOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
-          <label className="control-field countdown-setting"><span>COUNTDOWN</span><select value={countdownSeconds} onChange={(e) => void handleCountdownChange(Number(e.target.value))} disabled={isBusy || screen === 'review'}>{Array.from({ length: 8 }, (_, index) => index + 3).map((seconds) => <option key={seconds} value={seconds}>{seconds} seconds</option>)}</select></label>
+          <label className="control-field"><span>CAMERA</span><select value={selectedCameraId} onChange={(e) => void handleCameraChange(e.target.value)} disabled={isBusy || screen === 'review' || screen === 'finished' || !cameras.length}><option value="" disabled>Select a camera</option>{cameras.map((item, index) => <option key={item.deviceId || index} value={item.deviceId}>{item.label || `Camera ${index + 1}`}</option>)}</select></label>
+          <label className="control-field"><span>PREVIEW QUALITY</span><select value={resolution} onChange={(e) => void handleResolutionChange(e.target.value as CameraResolution)} disabled={isBusy || screen === 'review' || screen === 'finished'}>{resolutionOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+          <label className="control-field countdown-setting"><span>COUNTDOWN</span><select value={countdownSeconds} onChange={(e) => void handleCountdownChange(Number(e.target.value))} disabled={isBusy || screen === 'review' || screen === 'finished'}>{Array.from({ length: 8 }, (_, index) => index + 3).map((seconds) => <option key={seconds} value={seconds}>{seconds} seconds</option>)}</select></label>
+          {screen === 'ready' && <label className="control-field"><span>LOW-DISK WARNING (GB)</span><input aria-label="Low-disk warning threshold in gigabytes" type="number" min="0" max="1000" step="0.1" value={diskWarningGB} onChange={(e) => handleDiskWarningChange(e.target.value)} onBlur={saveDiskWarning} disabled={busy || !window.photobooth} /></label>}
           {screen === 'ready' && <label className="control-field"><span>RETAKES PER SESSION</span><div className="retake-limit-control"><input aria-label="Retakes per session" type="number" min="0" step="1" value={retakeLimitDraft} placeholder="0+" onChange={(e) => handleRetakeLimitInput(e.target.value)} onBlur={saveRetakeLimitDraft} disabled={busy || !window.photobooth || event?.retakeLimit === -1} /><button type="button" className="unlimited-button" onClick={() => void handleRetakeLimitChange(event?.retakeLimit === -1 ? 3 : -1)} disabled={busy || !window.photobooth}>{event?.retakeLimit === -1 ? 'Use a limit' : 'Unlimited'}</button></div></label>}
-          {screen === 'review' ? <button className="start-button" type="button" onClick={handleContinue} disabled={isBusy}>Continue <span aria-hidden="true">→</span></button>
-            : <button className="start-button" type="button" onClick={() => void handleStartSession()} disabled={!cameraReady || !event || isBusy || unfinishedSessions.length > 0}>Start session <span aria-hidden="true">→</span></button>}
+          {screen === 'review' ? <button className="start-button" type="button" onClick={() => void handleContinue()} disabled={isBusy}>Continue <span aria-hidden="true">→</span></button>
+            : screen === 'finished' ? <button className="start-button" type="button" onClick={returnToReady}>Back to start</button>
+              : <><button className="secondary-button" type="button" onClick={() => void handleExportEvent()} disabled={busy || !event || !window.photobooth}>Export event</button><button className="start-button" type="button" onClick={() => void handleStartSession()} disabled={!cameraReady || !event || isBusy || unfinishedSessions.length > 0}>Start session <span aria-hidden="true">→</span></button></>}
         </div>
         {screen === 'capturing' && <div className="slot-progress" aria-label="Photo slot progress">{Array.from({ length: slotCount }, (_, index) => index + 1).map((slot) => <div className={`slot-chip ${capturedSlots.has(slot) ? 'saved' : currentSlot === slot ? 'current' : ''}`} key={slot}><b>{String(slot).padStart(2, '0')}</b><span>{capturedSlots.has(slot) ? 'Saved' : currentSlot === slot ? 'Now' : 'Next'}</span></div>)}</div>}
         {screen === 'review' && reviewRecord && <section className="review-section">

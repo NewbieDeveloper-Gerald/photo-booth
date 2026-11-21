@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { initializeStorage } from './database';
-import { abandonSession, commitRetake, createSession, getActiveEvent, listUnfinishedSessions, loadSession, readOriginalPhoto, revertRetake, saveOriginalPhoto, saveRetakeOriginalPhoto, setActiveEventRetakeLimit } from './sessions';
+import { abandonSession, commitRetake, createSession, exportEventFolder, getActiveEvent, listUnfinishedSessions, loadSession, readOriginalPhoto, revertRetake, saveOriginalPhoto, saveRetakeOriginalPhoto, saveSessionOutput, setActiveEventRetakeLimit } from './sessions';
 
 const directories: string[] = [];
 function setup(): string {
@@ -100,7 +100,23 @@ describe('session storage', () => {
     expect(fs.readdirSync(sessionFolder).sort()).toEqual(expect.arrayContaining([
       'slot-01-original.jpg', 'slot-02-original.jpg', 'slot-02-retake-01.jpg', 'slot-02-retake-02.jpg', 'slot-03-original.jpg',
     ]));
-    expect(fs.existsSync(path.join(directory, 'backup', 'default-event', sessionId))).toBe(false);
+    const backupFolder = path.join(directory, 'backup', 'default-event', sessionId);
+    expect(fs.readdirSync(backupFolder).sort()).toEqual(['slot-01-original.jpg', 'slot-02-original.jpg', 'slot-02-retake-01.jpg', 'slot-02-retake-02.jpg', 'slot-03-original.jpg']);
+    expect(new Uint8Array(fs.readFileSync(path.join(backupFolder, 'slot-02-original.jpg')))).toEqual(originals.get(2));
+    expect(fs.existsSync(path.join(directory, 'backup', 'default-event', sessionId, 'not-a-photo.jpg'))).toBe(false);
+  });
+
+  it('exports an event with photos and a full-size backup copy without moving originals', async () => {
+    const directory = setup();
+    const { sessionId } = createSession(directory);
+    const original = new Uint8Array([0xff, 0xd8, 0x31, 0x32, 0xd9]);
+    for (const slot of [1, 2, 3]) await saveOriginalPhoto(directory, sessionId, slot, original, 640, 480);
+    const destination = path.join(directory, 'handoff');
+    expect(await exportEventFolder(directory, 'default-event', destination)).toBe(destination);
+    const relative = path.join('default-event', sessionId, 'slot-01-original.jpg');
+    expect(new Uint8Array(fs.readFileSync(path.join(destination, 'photos', relative)))).toEqual(original);
+    expect(new Uint8Array(fs.readFileSync(path.join(destination, 'backup', relative)))).toEqual(original);
+    expect(fs.existsSync(path.join(directory, 'photos', relative))).toBe(true);
   });
 
   it('exposes a pending retake for recovery after an interrupted retake', async () => {
@@ -115,6 +131,20 @@ describe('session storage', () => {
     await commitRetake(directory, sessionId, 2, pending.photoId);
     expect(listUnfinishedSessions(directory)).toEqual([]);
     expect(loadSession(directory, sessionId).slots[1]).toMatchObject({ photoId: pending.photoId, pendingPhotoId: null });
+  });
+
+  it('saves and records a finished 1200 by 1800 layout in the session folder', async () => {
+    const directory = setup();
+    const { sessionId } = createSession(directory);
+    for (const slot of [1, 2, 3]) await saveOriginalPhoto(directory, sessionId, slot, tinyJpeg, 640, 480);
+    const outputBytes = new Uint8Array([0xff, 0xd8, 0x55, 0xd9]);
+    const outputPath = await saveSessionOutput(directory, sessionId, outputBytes, 1200, 1800);
+    expect(fs.readFileSync(outputPath)).toEqual(Buffer.from(outputBytes));
+    expect(path.dirname(outputPath)).toBe(path.join(directory, 'photos', 'default-event', sessionId));
+    const database = new Database(path.join(directory, 'photobooth.sqlite'));
+    expect(database.prepare('SELECT output_path, kind FROM outputs WHERE session_id = ?').get(sessionId)).toEqual({ output_path: outputPath, kind: 'finished-4x6' });
+    database.close();
+    await expect(saveSessionOutput(directory, sessionId, outputBytes, 800, 1200)).rejects.toThrow(/1200 by 1800/);
   });
 
   it('snapshots the event retake limit for a session and blocks zero-retake sessions', async () => {

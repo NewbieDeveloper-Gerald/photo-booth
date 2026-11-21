@@ -7,9 +7,11 @@ interface PhotoRecord { photoId: string; width: number; height: number }
 declare global {
   interface Window {
     photobooth?: {
-      getSetting(key: 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution'): Promise<string | null>;
-      setSetting(key: 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution', value: string): Promise<void>;
+      getSetting(key: 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution' | 'lowDiskWarningGB'): Promise<string | null>;
+      setSetting(key: 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution' | 'lowDiskWarningGB', value: string): Promise<void>;
       getActiveEvent(): Promise<ActiveEvent>;
+      exportEvent(eventId: string): Promise<string | null>;
+      checkDiskSpace(thresholdGB: number): Promise<boolean>;
       setActiveEventRetakeLimit(limit: number): Promise<ActiveEvent>;
       createSession(): Promise<{ sessionId: string; event: ActiveEvent }>;
       listUnfinishedSessions(): Promise<UnfinishedSession[]>;
@@ -20,6 +22,7 @@ declare global {
       commitRetake(sessionId: string, slotNumber: number, photoId: string): Promise<void>;
       revertRetake(sessionId: string, slotNumber: number): Promise<void>;
       readOriginalPhoto(photoId: string): Promise<Uint8Array>;
+      saveSessionOutput(sessionId: string, bytes: Uint8Array, width: number, height: number): Promise<string>;
       abandonSession(sessionId: string): Promise<void>;
       discardSession(sessionId: string): Promise<void>;
     };
