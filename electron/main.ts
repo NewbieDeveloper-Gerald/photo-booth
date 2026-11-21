@@ -1,6 +1,13 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, ipcMain, session } from 'electron';
 import path from 'node:path';
 import { initializeStorage } from '../src/storage/database.js';
+import { readBoothSetting, writeBoothSetting } from '../src/storage/settings.js';
+
+const settingKeys = new Set(['selectedCameraId', 'countdownSeconds', 'cameraResolution']);
+
+function validateSettingKey(key: unknown): void {
+  if (typeof key !== 'string' || !settingKeys.has(key)) throw new Error('Unsupported setting');
+}
 
 function createWindow(): void {
   const window = new BrowserWindow({
@@ -13,6 +20,7 @@ function createWindow(): void {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      preload: path.join(__dirname, 'preload.js'),
     },
   });
 
@@ -24,7 +32,22 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
-  initializeStorage(app.getPath('userData'));
+  const userDataPath = app.getPath('userData');
+  initializeStorage(userDataPath);
+
+  ipcMain.handle('settings:get', (_event, key: unknown) => {
+    validateSettingKey(key);
+    return readBoothSetting(userDataPath, key);
+  });
+  ipcMain.handle('settings:set', (_event, key: unknown, value: unknown) => {
+    validateSettingKey(key);
+    writeBoothSetting(userDataPath, key, value);
+  });
+
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    callback(permission === 'media');
+  });
+
   createWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

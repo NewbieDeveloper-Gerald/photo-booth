@@ -1,7 +1,8 @@
 import { expect, test } from '@playwright/test';
 
-test('placeholder home screen loads', async ({ page }) => {
+test('camera setup screen loads without requiring a physical camera', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: /your booth/i })).toBeVisible();
-  await expect(page.getByText('Booth is ready')).toBeVisible();
+  await expect(page.getByRole('heading', { name: /frame the moment/i })).toBeVisible();
+  await expect(page.getByLabel('COUNTDOWN')).toHaveValue('3');
+  await expect(page.getByRole('button', { name: /start countdown/i })).toBeDisabled();
 });
