@@ -1,6 +1,5 @@
-import Database from 'better-sqlite3';
 import fs from 'node:fs';
-import path from 'node:path';
+import { openDatabase } from '../features/storage/database/connection';
 import { toErrorMessage } from '../shared/errors';
 import { isSessionId } from '../shared/validation/identifiers';
 import { MAX_UPLOAD_ERROR_LENGTH, UPLOAD_INITIAL_RETRY_MS, UPLOAD_MAX_BACKOFF_EXPONENT, UPLOAD_MAX_RETRY_MS } from '../shared/constants/limits';
@@ -8,12 +7,6 @@ import { MAX_UPLOAD_ERROR_LENGTH, UPLOAD_INITIAL_RETRY_MS, UPLOAD_MAX_BACKOFF_EX
 export type UploadQueueItem = { id: string; sessionId: string; filePath: string; status: 'pending' | 'uploading' | 'uploaded' | 'failed'; attempts: number; nextRetryAt: string | null; lastError: string | null; createdAt: string };
 export type UploadQueueSummary = { pending: number; uploading: number; uploaded: number; failed: number; lastError: string | null; providerConfigured: false };
 export type UploadAdapter = { upload(item: UploadQueueItem): Promise<void> };
-function openDatabase(userDataPath: string): Database.Database {
-  const database = new Database(path.join(userDataPath, 'photobooth.sqlite'));
-  database.pragma('foreign_keys = ON');
-  return database;
-}
-
 function mapItem(row: Record<string, unknown>): UploadQueueItem {
   return { id: String(row.id), sessionId: String(row.session_id), filePath: String(row.file_path), status: row.status as UploadQueueItem['status'], attempts: Number(row.attempts), nextRetryAt: row.next_retry_at === null ? null : String(row.next_retry_at), lastError: row.last_error === null ? null : String(row.last_error), createdAt: String(row.created_at) };
 }

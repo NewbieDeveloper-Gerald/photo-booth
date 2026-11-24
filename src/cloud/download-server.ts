@@ -1,5 +1,5 @@
 import { ZipFile } from 'yazl';
-import Database from 'better-sqlite3';
+import { openReadOnlyDatabase } from '../features/storage/database/connection';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import http from 'node:http';
 import fs from 'node:fs';
@@ -52,7 +52,7 @@ function isLimited(request: IncomingMessage, pathname: string, buckets: Map<stri
 
 function findSession(databasePath: string, photosRoot: string, token: string): SessionDownload | null {
   if (!isShareToken(token)) return null;
-  const database = new Database(databasePath, { readonly: true, fileMustExist: true });
+  const database = openReadOnlyDatabase(databasePath);
   try {
     const session = database.prepare(`SELECT s.id, e.name AS eventName, e.logo_path AS logoPath, e.primary_color AS primaryColor, e.accent_color AS accentColor, e.welcome_text AS welcomeText, e.thank_you_text AS thankYouText FROM sessions s JOIN events e ON e.id = s.event_id
       WHERE s.public_token = ? AND s.status = 'completed' AND s.token_expires_at IS NOT NULL

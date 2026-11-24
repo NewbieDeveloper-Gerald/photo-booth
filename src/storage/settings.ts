@@ -1,19 +1,12 @@
-import Database from 'better-sqlite3';
-import path from 'node:path';
 import { isBoothSettingKey, type BoothSettingKey } from '../shared/constants/settings-keys';
 import { MAX_CONSENT_LENGTH, MAX_DISK_WARNING_GB, MAX_SETTING_VALUE_LENGTH } from '../shared/constants/limits';
+import { openDatabase } from '../features/storage/database/connection';
 
 export type { BoothSettingKey } from '../shared/constants/settings-keys';
 
 const COUNTDOWN_PATTERN = /^(?:[3-9]|10)$/;
 const CAMERA_RESOLUTIONS = ['best', '1280x720', '1920x1080', '3840x2160'];
 const DISK_WARNING_PATTERN = /^(?:\d{1,4})(?:\.\d{1,2})?$/;
-
-function openDatabase(userDataPath: string): Database.Database {
-  const database = new Database(path.join(userDataPath, 'photobooth.sqlite'));
-  database.pragma('foreign_keys = ON');
-  return database;
-}
 
 function assertValidValue(key: BoothSettingKey, value: string): void {
   if (value.length > MAX_SETTING_VALUE_LENGTH && key !== 'consentText') throw new Error('Invalid setting');

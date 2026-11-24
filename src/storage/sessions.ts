@@ -1,80 +1,28 @@
-import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { openDatabase } from '../features/storage/database/connection';
+import { getConfiguredStoragePaths, type StoragePaths } from '../features/storage/database/storage-paths';
+
+export { getConfiguredStoragePaths };
+export type { StoragePaths };
+import {
+  copyBackupVersion, moveWithinPhotos, storedPhotoPath, toPhotoBuffer, writeAtomically,
+} from '../features/capture/data/photo-files';
 import { canRetake, isValidRetakeLimit } from '../core/retakes';
 import { getLayoutPreset } from '../core/layouts';
 import { generateSessionToken } from '../core/token';
 import { ensureInside } from '../shared/fs/safe-paths';
 import { isEventId, isRecordId, isSessionId } from '../shared/validation/identifiers';
 import { isOverlappingPath } from '../shared/validation/paths';
-import { MAX_EVENT_NAME_LENGTH, MAX_EVENT_TEXT_LENGTH, MAX_LOGO_BYTES, MAX_PHOTO_BYTES } from '../shared/constants/limits';
+import { MAX_EVENT_NAME_LENGTH, MAX_EVENT_TEXT_LENGTH, MAX_LOGO_BYTES } from '../shared/constants/limits';
 
 export type ActiveEvent = { id: string; name: string; shots: number; retakeLimit: number; printEnabled: boolean; expiryDays: number; eventDate: string | null; logoPath: string | null; primaryColor: string; accentColor: string; welcomeText: string; thankYouText: string; defaultLayoutId: string };
 export type EventSettings = Omit<ActiveEvent, 'retakeLimit' | 'printEnabled'>;
 export type UnfinishedSession = { id: string; createdAt: string; capturedSlots: number; totalSlots: number; pendingRetakes: number };
 export type SessionSlot = { slotNumber: number; status: 'empty' | 'captured'; photoId: string | null; previousPhotoId: string | null; pendingPhotoId: string | null; downloadReady: boolean; hasPrevious: boolean; pendingDownloadReady: boolean; width: number | null; height: number | null };
 export type SessionRecord = { id: string; eventId: string; eventName: string; layoutId: string; status: string; retakesUsed: number; retakeLimit: number; slots: SessionSlot[] };
-type StoragePaths = { photosDirectory: string; backupDirectory: string };
-
 type EventRow = { id: string; name: string; shots: number; retake_limit: number; print_enabled: number; expiry_days: number };
-
-function openDatabase(userDataPath: string): Database.Database {
-  const database = new Database(path.join(userDataPath, 'photobooth.sqlite'));
-  database.pragma('foreign_keys = ON');
-  return database;
-}
-
-function getPaths(userDataPath: string): StoragePaths {
-  const configPath = path.join(userDataPath, 'photobooth-paths.json');
-  const config = JSON.parse(fs.readFileSync(configPath, 'utf8')) as Partial<StoragePaths>;
-  if (!config.photosDirectory || !config.backupDirectory) throw new Error('Photo and backup paths are not configured');
-  return { photosDirectory: config.photosDirectory, backupDirectory: config.backupDirectory };
-}
-
-export function getConfiguredStoragePaths(userDataPath: string): StoragePaths { return getPaths(userDataPath); }
-
-async function copyBackupVersion(paths: StoragePaths, eventId: string, sessionId: string, sourcePath: string): Promise<void> {
-  const source = storedPhotoPath(paths, sourcePath);
-  const folder = ensureInside(paths.backupDirectory, path.join(paths.backupDirectory, eventId, sessionId));
-  const destination = ensureInside(paths.backupDirectory, path.join(folder, path.basename(source)));
-  await fs.promises.mkdir(folder, { recursive: true });
-  if (fs.existsSync(destination)) return;
-  const temporaryPath = `${destination}.${randomUUID()}.tmp`;
-  await fs.promises.copyFile(source, temporaryPath);
-  await fs.promises.rename(temporaryPath, destination);
-}
-
-function storedPhotoPath(paths: StoragePaths, filePath: string): string {
-  try { return ensureInside(paths.photosDirectory, filePath); }
-  catch { return ensureInside(paths.backupDirectory, filePath); }
-}
-
-async function writeAtomically(filePath: string, bytes: Uint8Array): Promise<void> {
-  const directory = path.dirname(filePath);
-  await fs.promises.mkdir(directory, { recursive: true });
-  const temporaryPath = `${filePath}.${randomUUID()}.tmp`;
-  await fs.promises.writeFile(temporaryPath, bytes, { flag: 'wx' });
-  await fs.promises.rename(temporaryPath, filePath);
-}
-
-async function moveWithinPhotos(paths: StoragePaths, sourcePath: string, destinationPath: string): Promise<void> {
-  const source = storedPhotoPath(paths, sourcePath);
-  const destination = ensureInside(paths.photosDirectory, destinationPath);
-  if (source === destination) return;
-  await fs.promises.mkdir(path.dirname(destination), { recursive: true });
-  if (fs.existsSync(destination)) throw new Error(`Photo version already exists: ${path.basename(destination)}`);
-  const temporaryPath = `${destination}.${randomUUID()}.tmp`;
-  await fs.promises.copyFile(source, temporaryPath);
-  await fs.promises.rename(temporaryPath, destination);
-}
-
-function toBuffer(data: unknown): Buffer {
-  if (!(data instanceof Uint8Array) || data.byteLength < 4 || data.byteLength > MAX_PHOTO_BYTES) {
-    throw new Error('Invalid photo data');
-  }
-  return Buffer.from(data);
-}
 
 const DEFAULTS_BY_SHOTS: Record<number, string> = { 2: 'double-strip-2', 3: 'double-strip-3', 4: 'double-strip-4' };
 function validateEventSettings(value: unknown): Omit<EventSettings, 'id' | 'logoPath'> {
@@ -303,9 +251,9 @@ export async function saveOriginalPhoto(
   if (!isSessionId(sessionId) || !Number.isInteger(slotNumber) ||
       !Number.isInteger(width) || !Number.isInteger(height) || (width as number) < 1 || (height as number) < 1 ||
       (width as number) > 20000 || (height as number) > 20000) throw new Error('Invalid capture details');
-  const bytes = toBuffer(data);
+  const bytes = toPhotoBuffer(data);
   const database = openDatabase(userDataPath);
-  const paths = getPaths(userDataPath);
+  const paths = getConfiguredStoragePaths(userDataPath);
   let slot: { id: string; event_id: string } | undefined;
   try {
     slot = database.prepare(`SELECT sl.id, s.event_id FROM slots sl JOIN sessions s ON s.id = sl.session_id
@@ -352,9 +300,9 @@ export async function saveRetakeOriginalPhoto(
   if (!isSessionId(sessionId) || !Number.isInteger(slotNumber) ||
       !Number.isInteger(width) || !Number.isInteger(height) || (width as number) < 1 || (height as number) < 1 ||
       (width as number) > 20000 || (height as number) > 20000) throw new Error('Invalid retake details');
-  const bytes = toBuffer(data);
+  const bytes = toPhotoBuffer(data);
   const database = openDatabase(userDataPath);
-  const paths = getPaths(userDataPath);
+  const paths = getConfiguredStoragePaths(userDataPath);
   let slot: { id: string; event_id: string } | undefined;
   try {
     slot = database.prepare(`SELECT sl.id, s.event_id FROM slots sl JOIN sessions s ON s.id = sl.session_id
@@ -389,7 +337,7 @@ export async function saveRetakeOriginalPhoto(
 export async function commitRetake(userDataPath: string, sessionId: unknown, slotNumber: unknown, newPhotoId: unknown): Promise<void> {
   if (!isSessionId(sessionId) || !Number.isInteger(slotNumber) || !isRecordId(newPhotoId)) throw new Error('Invalid retake request');
   const database = openDatabase(userDataPath);
-  const paths = getPaths(userDataPath);
+  const paths = getConfiguredStoragePaths(userDataPath);
   let row: { slot_id: string; event_id: string; current_id: string; previous_id: string | null; retake_limit: number; used: number;
     old_original: string; old_download: string | null; pending_download: string | null; previous_original: string | null } | undefined;
   try {
@@ -496,9 +444,9 @@ export async function revertRetake(userDataPath: string, sessionId: unknown, slo
 
 export async function saveSessionOutput(userDataPath: string, sessionIdValue: unknown, data: unknown, widthValue: unknown, heightValue: unknown): Promise<string> {
   if (!isSessionId(sessionIdValue) || !Number.isInteger(widthValue) || !Number.isInteger(heightValue)) throw new Error('Invalid finished image details');
-  const bytes = toBuffer(data);
+  const bytes = toPhotoBuffer(data);
   const database = openDatabase(userDataPath);
-  const paths = getPaths(userDataPath);
+  const paths = getConfiguredStoragePaths(userDataPath);
   let session: { event_id: string; layout_id: string } | undefined;
   try { session = database.prepare("SELECT event_id, layout_id FROM sessions WHERE id = ? AND status = 'completed'").get(sessionIdValue) as typeof session; }
   finally { database.close(); }
@@ -534,7 +482,7 @@ export function createSessionShareLink(userDataPath: string, sessionIdValue: unk
 export function getLatestSessionPrintInfo(userDataPath: string, sessionIdValue: unknown): { imagePath: string; width: number; height: number } {
   if (!isSessionId(sessionIdValue)) throw new Error('Invalid session id');
   const database = openDatabase(userDataPath);
-  const paths = getPaths(userDataPath);
+  const paths = getConfiguredStoragePaths(userDataPath);
   try {
     const row = database.prepare(`SELECT o.output_path AS imagePath, s.layout_id AS layoutId
       FROM outputs o JOIN sessions s ON s.id = o.session_id
@@ -548,10 +496,10 @@ export function getLatestSessionPrintInfo(userDataPath: string, sessionIdValue: 
 
 export async function saveDownloadCopy(userDataPath: string, photoId: unknown, data: unknown): Promise<void> {
   if (!isRecordId(photoId)) throw new Error('Invalid photo id');
-  const bytes = toBuffer(data);
+  const bytes = toPhotoBuffer(data);
   const database = openDatabase(userDataPath);
   let row: { original_path: string; session_id: string; photo_state: string } | undefined;
-  const paths = getPaths(userDataPath);
+  const paths = getConfiguredStoragePaths(userDataPath);
   try {
     row = database.prepare(`SELECT p.original_path, p.photo_state, s.id AS session_id
       FROM photos p JOIN slots sl ON sl.id = p.slot_id JOIN sessions s ON s.id = sl.session_id
@@ -585,7 +533,7 @@ export async function saveDownloadCopy(userDataPath: string, photoId: unknown, d
 export function readOriginalPhoto(userDataPath: string, photoId: unknown): Uint8Array {
   if (!isRecordId(photoId)) throw new Error('Invalid photo id');
   const database = openDatabase(userDataPath);
-  const paths = getPaths(userDataPath);
+  const paths = getConfiguredStoragePaths(userDataPath);
   try {
     const row = database.prepare('SELECT original_path FROM photos WHERE id = ?').get(photoId) as { original_path: string } | undefined;
     if (!row) throw new Error('Photo not found');
@@ -598,7 +546,7 @@ export function readOriginalPhoto(userDataPath: string, photoId: unknown): Uint8
 
 export async function exportEventFolder(userDataPath: string, eventIdValue: unknown, destinationRootValue: unknown): Promise<string> {
   if (typeof eventIdValue !== 'string' || !/^[a-zA-Z0-9-]{1,100}$/.test(eventIdValue) || typeof destinationRootValue !== 'string') throw new Error('Invalid export request');
-  const paths = getPaths(userDataPath);
+  const paths = getConfiguredStoragePaths(userDataPath);
   const database = openDatabase(userDataPath);
   let event: { id: string; name: string } | undefined;
   try { event = database.prepare('SELECT id, name FROM events WHERE id = ?').get(eventIdValue) as typeof event; }
@@ -633,7 +581,7 @@ export async function exportEventFolder(userDataPath: string, eventIdValue: unkn
 
 async function copySessionOriginalsToBackup(userDataPath: string, sessionId: string, newStatus: 'abandoned' | 'discarded'): Promise<void> {
   const database = openDatabase(userDataPath);
-  const paths = getPaths(userDataPath);
+  const paths = getConfiguredStoragePaths(userDataPath);
   try {
     const rows = database.prepare(`SELECT s.event_id, p.original_path FROM sessions s
       JOIN slots sl ON sl.session_id = s.id JOIN photos p ON p.slot_id = sl.id WHERE s.id = ?`).all(sessionId) as Array<{ event_id: string; original_path: string }>;

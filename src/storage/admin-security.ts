@@ -1,14 +1,8 @@
-import Database from 'better-sqlite3';
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
-import path from 'node:path';
+import { openDatabase } from '../features/storage/database/connection';
 
 const KEY = 'adminPinHash';
 const PIN_PATTERN = /^\d{6,12}$/;
-function openDatabase(userDataPath: string): Database.Database {
-  const db = new Database(path.join(userDataPath, 'photobooth.sqlite'));
-  db.pragma('foreign_keys = ON');
-  return db;
-}
 export function hasAdminPin(userDataPath: string): boolean {
   const db = openDatabase(userDataPath);
   try { return Boolean(db.prepare('SELECT 1 FROM settings WHERE key = ?').get(KEY)); }

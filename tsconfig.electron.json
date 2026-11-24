@@ -16,7 +16,8 @@
   "include": [
     "electron/**/*.ts",
     "src/storage/**/*.ts",
-    "src/shared/**/*.ts"
+    "src/shared/**/*.ts",
+    "src/features/**/*.ts"
   ],
   "exclude": ["src/**/*.test.ts", "tests/**"]
 }
