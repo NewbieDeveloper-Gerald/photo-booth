@@ -34,7 +34,7 @@ At first launch, the app creates its SQLite database and `photobooth-paths.json`
 
 ## Layout output and printing
 
-`templates/layouts.json` is the six-layout catalog. The operator selects one before a session; it sets the shot count and describes photo placements, duplicate-strip copies, dimensions, frame colors, and text. It includes 4-photo double strips, 4-photo portrait and landscape grids, 2-photo double strips, a single 2-photo portrait, and 3-photo double strips. Photo sources are center-cropped into their frames. Pressing **Continue** on review renders a metadata-free JPEG at the selected layout's dimensions and saves it as `finished-<layout-id>-<id>.jpg` in the session folder; the path and layout kind are recorded in SQLite `outputs`. The rendered result is shown on screen. The first-pass layouts use a simple red-and-white treatment; custom Canva artwork and logo files are not imported.
+The layout catalog is code, not data: `src/features/layouts/catalog.ts` defines the six presets (4-photo double strips, 4-photo portrait and landscape grids, 2-photo double strips, a single 2-photo portrait, and 3-photo double strips). The operator selects one before a session; it sets the shot count and describes photo placements, duplicate-strip copies, dimensions, frame colors, and text. Photo sources are center-cropped into their frames. Pressing **Continue** on review renders a metadata-free JPEG at the selected layout's dimensions and saves it as `finished-<layout-id>-<id>.jpg` in the session folder; the path and layout kind are recorded in SQLite `outputs`. The rendered result is shown on screen. The first-pass layouts use a simple red-and-white treatment; custom Canva artwork and logo files are not imported.
 
 The ready and finished screens list Windows system printers; the chosen printer is remembered. After the layout is saved, the app sends it silently at its native 300 dpi page size (4×6 inches, portrait or landscape) with no app-added margins or scaling. The finish screen reports sending/success/failure and offers **Reprint**. Actual borderless output depends on the printer model and driver: select 4×6 borderless media and disable fit-to-page in Windows printer preferences if supported. A successful status means Windows accepted the job, not that paper physically came out. Test using the actual printer and record its model and working driver settings here. Printing does not alter or delete the saved layout.
 
@@ -48,12 +48,29 @@ Session tokens use 16 cryptographically secure random bytes encoded as unpadded 
 
 ## Project structure
 
-- `src/ui`: React renderer
-- `src/core`: session/domain logic and token utility
-- `src/hardware`: camera/printer adapter boundary
-- `src/storage`: SQLite database and migrations
-- `src/cloud`: isolated future cloud integration
-- `electron`: desktop main process
+Code is organised by feature first, then by layer. Each feature has a renderer-safe
+barrel (`index.ts`) and a main-process barrel (`node.ts`), so the React bundle can
+never pull in SQLite or `node:fs`.
+
+- `src/shared`: types, constants, validation, error format, safe paths
+- `src/features/capture`: camera device, countdown, retakes, session and photo storage
+- `src/features/events`: event settings, logos, export
+- `src/features/layouts`: layout catalog, cover-crop maths, finished-layout drawing
+- `src/features/printing`: printer seam, auto-print rule, print jobs
+- `src/features/sharing`: share tokens, guest page, download server, upload queue
+- `src/features/storage`: SQLite connection, migrations, settings, disk space
+- `src/features/security`: admin PIN hashing and verification
+- `src/renderer`: components, hooks and renderer helpers
+- `src/ui`: the React shell that composes the screens
+- `electron/ipc`, `electron/windows`, `electron/devices`: main process, one module per area
+
+Every IPC channel lives in `electron/ipc/<area>-handlers.ts` and is registered once in
+`electron/ipc/registry.ts`. The renderer only talks to `window.photobooth`
+(typed in `src/ui/electron.d.ts`).
+
+Full detail — dependency rules, naming, where new code belongs, known debt — is in
+[`docs/architecture.md`](docs/architecture.md). The old-to-new file map is in
+[`docs/refactor-migration-map.md`](docs/refactor-migration-map.md).
 
 ## QR downloads without cloud storage
 
