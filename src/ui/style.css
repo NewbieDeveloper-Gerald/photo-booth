@@ -98,3 +98,10 @@
 .danger-button { height: 36px; padding: 0 12px; border: 0; border-radius: 8px; background: #b3424a; color: #fff5f5; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
 .danger-button:disabled { opacity: 0.5; cursor: not-allowed; }
 .retention-note { margin: 10px 0 0; color: #7c8397; font-size: 11px; }
+
+/* F16 · guest gallery controls in event setup. */
+.gallery-field { grid-column: 1 / -1; display: grid; gap: 8px; padding: 12px 14px; border: 1px solid #ffffff1c; border-radius: 10px; }
+.gallery-field .eyebrow { margin: 0; }
+.gallery-hint { margin: 4px 0 0; color: #8d94a7; font-size: 12px; }
+.gallery-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.gallery-field input[readonly] { font-size: 12px; color: #c8c1d7; }

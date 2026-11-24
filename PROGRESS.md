@@ -1,6 +1,6 @@
 # Progress
 
-Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`; F15 implemented on `arena/8a405925-photo-booth`.
+Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`; F16 implemented on `arena/8a405925-photo-booth`.
 
 ## Current status
 
@@ -17,11 +17,12 @@ Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `4215
   two-layout session test below.
 - **F14 (offline queue and sync status): merged** (`dc20c12`), awaiting a real upload
   provider before the offline/online manual test can run.
-- **F15 (expiry, deletion and cleanup): implemented**, awaiting the manual 1-day-expiry
-  test below.
-- **F16–F29: not started.**
+- **F15 (expiry, deletion and cleanup): merged** (`bcb73f7`), awaiting the manual
+  1-day-expiry test below.
+- **F16 (guest gallery per event): implemented**, awaiting the manual phone test below.
+- **F17–F29: not started.**
 - Automated verification today: `npm run typecheck`, `npm run lint`, `npm test`
-  (**267 tests in 45 files**), `npm run build` (Vite production build) all pass.
+  (**277 tests in 47 files**), `npm run build` (Vite production build) all pass.
   `npm run test:e2e` exists but cannot run in this environment (no browser runtime).
 
 ## Verification gaps (unrecorded or impossible here)
@@ -227,6 +228,38 @@ Also delete one session and one event from the booth and confirm the files are g
 Cloud storage/cloud database deletion is only the `beforeDelete` hook — no provider exists
 yet (same position as F14). Scheduled cleanup for early app versions, an undo window and a
 per-session retention override are not implemented. The guest gallery is F16.
+
+## F16. Guest gallery per event (implemented)
+
+- **One stable link per event** (`features/sharing/gallery/gallery-repository.ts`,
+  migration `012_event_gallery`): `createEventGalleryLink` mints a 128-bit token once and
+  reuses it, so a printed sign keeps working; the token is unique per event and a duplicated
+  event starts with no gallery.
+- **Optional password per event**: stored as a scrypt hash (`shared/crypto/secret-hash.ts`,
+  now shared with the admin PIN) and never returned to the renderer — the event only exposes
+  `galleryPasswordSet`. The passive input is part of the event form: type to set/replace,
+  **Remove gallery password** to clear it.
+- **Gallery page** (`/g/<token>`): mobile-first, no-index, lists every completed session of
+  the event newest-first with thumbnails linking to the guest copies. The page never puts
+  the password in a URL: it unlocks through `POST /api/v1/gallery/<token>/unlock`, which
+  returns a random 30-minute grant used as a header/query for the listing and the photos.
+  A grant is bound to that one gallery and expires.
+- **API**: `GET /api/v1/gallery/<token>` (401 while locked), `GET .../photo/<photoId>`
+  (only photos whose session belongs to that event, guest copy preferred),
+  `POST .../unlock`. An unknown gallery link shows the friendly 404 page from F15.
+- **UI**: event setup gained a *Guest gallery* block with the password field, **Show gallery
+  link** (needs the public HTTPS URL from the settings) and the link itself for copying.
+
+### F16 manual check
+
+Create a gallery link for an event, open it on a phone without a password (all sessions
+visible), then set a password: the page must ask for it, reject a wrong one, and reveal the
+photos after the right one. Confirm the page refuses to be indexed.
+
+### F16 out of scope (later features)
+
+Thumbnails are the 2048 px guest copies (no separate thumbnail pipeline), there is no
+gallery ZIP download, no per-guest links and no moderation. The watermark is F17.
 
 ## Feature log
 

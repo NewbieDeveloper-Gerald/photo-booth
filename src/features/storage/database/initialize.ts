@@ -184,6 +184,14 @@ const migrations: Array<{ name: string; sql: string }> = [
       ALTER TABLE events ADD COLUMN contact_text TEXT NOT NULL DEFAULT '';
     `,
   },
+  {
+    name: '012_event_gallery',
+    sql: `
+      ALTER TABLE events ADD COLUMN gallery_token TEXT;
+      ALTER TABLE events ADD COLUMN gallery_password_hash TEXT;
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_events_gallery_token ON events(gallery_token) WHERE gallery_token IS NOT NULL;
+    `,
+  },
 ];
 
 export function initializeStorage(userDataPath: string): void {
