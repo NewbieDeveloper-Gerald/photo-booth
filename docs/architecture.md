@@ -81,6 +81,7 @@ and keeps blob URLs for the lifetime of that event, so a 25 MB clip is not re-re
 | A new IPC channel | `electron/ipc/<area>-handlers.ts`, registered in `electron/ipc/registry.ts`, typed in `src/ui/electron.d.ts` and `electron/preload.ts` |
 | A new window | `electron/windows/` |
 | A new animated output (GIF, boomerang, something else) | `features/animation/domain/animation-plan.ts` for the shape, then `renderer/lib/animation-builder.ts` for the pixels |
+| A new number on the dashboard | a sub-select in `analytics/data/stats-repository.ts`, a column in `domain/stats.ts` and the CSV, then the table in `admin/admin-html.ts` |
 | A new tablet-facing screen or route | `src/features/remote-guest/data/remote-server.ts` + the page in `remote-page-html.ts`, gated by the same token |
 | An operator hotkey | a row in `src/renderer/lib/hotkeys.ts` (the key map the handler and the help screen both read), then handle the action in `src/ui/main.tsx` |
 | A new setting | `src/shared/constants/settings-keys.ts`, then read it in the handler |
@@ -88,6 +89,27 @@ and keeps blob URLs for the lifetime of that event, so a 25 MB clip is not re-re
 | A new background job | `src/shared/scheduling/interval-job.ts` (no overlap, unref'd timer), started from the feature scheduler and `electron/main.ts` |
 | A new hardware device | `src/features/<feature>/devices/` behind an interface, with a mock |
 | A rule that must hold for every caller (lockouts, limits) | `src/features/<feature>/domain/`, called from the node-layer data module so no IPC handler can bypass it |
+
+## Booth numbers (F24)
+
+- `features/analytics/` splits the same way as everything else: `domain/stats.ts` (weighted
+  totals, durations, RFC 4180 CSV — pure and tested), `data/stats-repository.ts` (one query per
+  dashboard load, plus `recordDownloadEvent`), and `admin/` (the login and dashboard pages and
+  their request handling).
+- **One port, two audiences.** The dashboard lives on the share server at `/admin`, so it
+  inherits the tunnel the guest links already use; the guest token routes are untouched and the
+  dashboard never sees a share token. Dashboard routes are matched before any token route and
+  are not part of the guest rate-limit buckets, because the PIN lockout is what protects them.
+- **Authentication is the booth's own.** `attemptAdminPin` (scrypt + the F21 lockout) is the
+  only check, so there is no second password to forget and no weaker path in. The session is a
+  random 24-byte token in an in-memory map (two hours, at most eight screens), in an HttpOnly,
+  SameSite=Strict cookie scoped to `/admin`. Restart the booth and every screen is signed out.
+- **Counting downloads** happens in the share server's file and ZIP routes: `recordDownloadEvent`
+  writes one row per GET (never a HEAD or an inline preview request that a browser may repeat),
+  with the session, event, kind and time. It swallows its own errors — a counter must never
+  break a guest's download.
+- The dashboard's numbers are SQL sub-selects over the booth's own tables, so it cannot drift
+  from the sessions it describes; nothing is cached between loads.
 
 ## Animated extras (F23)
 

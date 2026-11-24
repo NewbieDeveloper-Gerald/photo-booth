@@ -246,6 +246,21 @@ const migrations: Array<{ name: string; sql: string }> = [
       ALTER TABLE events ADD COLUMN animated_output TEXT NOT NULL DEFAULT 'gif';
     `,
   },
+  {
+    // F24: guest download hits, so the dashboard can count them. Ids and a kind only — never an
+    // address or a browser, because nothing here should identify a person.
+    name: '018_download_events',
+    sql: `
+      CREATE TABLE download_events (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_download_events_event ON download_events(event_id, created_at);
+    `,
+  },
 ];
 
 export function initializeStorage(userDataPath: string): void {
