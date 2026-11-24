@@ -6,6 +6,7 @@ import { cameraErrorMessage } from '../features/capture/domain/camera-messages';
 import { renderFinishedLayout } from '../features/layouts/domain/render-finished-layout';
 import { blobToBytes, bytesToJpegBlob } from '../shared/dom/blob';
 import { saveGuestDownloadCopy } from '../renderer/lib/guest-download-copy';
+import { useIdleTimeout } from '../renderer/hooks/useIdleTimeout';
 import { readPreference, savePreference } from '../renderer/lib/preferences';
 import { ConsentDialog } from '../renderer/components/ConsentDialog';
 import { ExitDialog } from '../renderer/components/ExitDialog';
@@ -88,7 +89,6 @@ function App(): React.JSX.Element {
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [retakeBusySlot, setRetakeBusySlot] = useState<number | null>(null);
-  const [lastActivity, setLastActivity] = useState(Date.now());
 
   const clearReviewUrls = useCallback(() => {
     for (const url of reviewUrls.current) URL.revokeObjectURL(url);
@@ -273,13 +273,6 @@ function App(): React.JSX.Element {
     return () => window.clearInterval(retry);
   }, [errorMessage, resolution, selectedCameraId, startCamera]);
 
-  useEffect(() => {
-    const registerActivity = (): void => setLastActivity(Date.now());
-    window.addEventListener('pointerdown', registerActivity);
-    window.addEventListener('keydown', registerActivity);
-    return () => { window.removeEventListener('pointerdown', registerActivity); window.removeEventListener('keydown', registerActivity); };
-  }, []);
-
   const abandonForIdle = useCallback(async (activeSessionId: string): Promise<void> => {
     sequenceCancelled.current = true;
     cancelCountdown.current?.();
@@ -296,12 +289,11 @@ function App(): React.JSX.Element {
     await refreshUnfinishedSessions();
   }, [clearReviewUrls, pinConfigured, refreshUnfinishedSessions]);
 
-  useEffect(() => {
-    if ((screen !== 'capturing' && screen !== 'review') || !sessionId || retakeBusySlot !== null) return undefined;
-    const remaining = Math.max(0, SESSION_IDLE_TIMEOUT_MS - (Date.now() - lastActivity));
-    const timer = window.setTimeout(() => { void abandonForIdle(sessionId); }, remaining);
-    return () => window.clearTimeout(timer);
-  }, [abandonForIdle, lastActivity, retakeBusySlot, screen, sessionId]);
+  const { resetActivity } = useIdleTimeout({
+    timeoutMs: SESSION_IDLE_TIMEOUT_MS,
+    enabled: (screen === 'capturing' || screen === 'review') && Boolean(sessionId) && retakeBusySlot === null,
+    onIdle: () => { void abandonForIdle(sessionId); },
+  });
 
   const setPreviewImage = (blob: Blob): void => {
     setPhotoPreviewUrl((current) => { if (current) URL.revokeObjectURL(current); return URL.createObjectURL(blob); });
@@ -361,7 +353,7 @@ function App(): React.JSX.Element {
     setCurrentSlot(0);
     setStatus('Review your photos');
     setScreen('review');
-    setLastActivity(Date.now());
+    resetActivity();
     await loadReviewSession(activeSessionId);
     await refreshUnfinishedSessions();
   };
@@ -389,7 +381,7 @@ function App(): React.JSX.Element {
       setSessionId(created.sessionId);
       setSessionShotCount(created.shots);
       setScreen('capturing');
-      setLastActivity(Date.now());
+      resetActivity();
       await captureSlots(created.sessionId, Array.from({ length: created.shots }, (_, index) => index + 1), created.shots);
     } catch (error) {
       setScreen('ready');
@@ -495,14 +487,14 @@ function App(): React.JSX.Element {
       setSessionId(saved.id);
       setSelectedLayoutId(saved.layoutId);
       setSessionShotCount(saved.slots.length);
-      setLastActivity(Date.now());
+      resetActivity();
       if (saved.status === 'completed') {
         setScreen('review');
         const pendingRetakes = saved.slots.filter((slot) => slot.pendingPhotoId);
         if (pendingRetakes.length) setRetakeBusySlot(pendingRetakes[0]!.slotNumber);
         for (const slot of pendingRetakes) await finishPendingRetake(saved.id, slot);
         setRetakeBusySlot(null);
-        setLastActivity(Date.now());
+        resetActivity();
         await loadReviewSession(saved.id);
         await refreshUnfinishedSessions();
         return;
@@ -550,7 +542,7 @@ function App(): React.JSX.Element {
       setRetakeBusySlot(slot.slotNumber);
       try {
         await finishPendingRetake(sessionId, slot);
-        setLastActivity(Date.now());
+        resetActivity();
         await loadReviewSession(sessionId);
         await refreshUnfinishedSessions();
       } catch (error) { setErrorMessage(toErrorMessage(error, 'Could not finish the saved retake.')); }
@@ -574,7 +566,7 @@ function App(): React.JSX.Element {
       await bridge.commitRetake(sessionId, slot.slotNumber, pending.photoId);
       await loadReviewSession(sessionId);
       setStatus(`Photo ${slot.slotNumber} replaced · previous version saved`);
-      setLastActivity(Date.now());
+      resetActivity();
       await wait(700);
       setPhotoPreviewUrl((current) => { if (current) URL.revokeObjectURL(current); return ''; });
       await refreshUnfinishedSessions();
