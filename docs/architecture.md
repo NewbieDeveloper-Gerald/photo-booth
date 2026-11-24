@@ -17,7 +17,7 @@ renderer (src/ui, src/renderer)  →  window.photobooth  →  main process (elec
 | Path | Holds | Runs in |
 | --- | --- | --- |
 | `src/shared/` | Types, constants, validation, error handling, safe-path helpers, browser-only DOM helpers (`shared/dom/`) | Both |
-| `src/features/<name>/domain/` | Pure rules: retake limits, countdown, cover-crop maths, auto-print decision, disk-space threshold | Both |
+| `src/features/<name>/domain/` | Pure rules: retake limits, countdown, cover-crop maths, auto-print decision, disk-space threshold, template model and paint plan | Both |
 | `src/features/<name>/devices/` | Swappable hardware seams: camera, printer | Renderer (camera), main (printer) |
 | `src/features/<name>/data/` | SQLite and file-system persistence | Main only |
 | `src/features/<name>/index.ts` | Renderer-safe barrel (the only import surface for UI code) | Renderer |
@@ -69,6 +69,7 @@ Features: `capture`, `events`, `layouts`, `printing`, `sharing`, `storage`, `sec
 | A new IPC channel | `electron/ipc/<area>-handlers.ts`, registered in `electron/ipc/registry.ts`, typed in `src/ui/electron.d.ts` and `electron/preload.ts` |
 | A new window | `electron/windows/` |
 | A new setting | `src/shared/constants/settings-keys.ts`, then read it in the handler |
+| A new print size | `pagePresets` in `features/layouts/domain/template-document.ts`, then add it to the seeding list in `features/layouts/data/template-repository.ts` |
 | A new hardware device | `src/features/<feature>/devices/` behind an interface, with a mock |
 
 ## Testing
@@ -88,9 +89,12 @@ Features: `capture`, `events`, `layouts`, `printing`, `sharing`, `storage`, `sec
   own form state.
 - `src/features/capture/data/session-repository.ts` imports an events data module
   directly (see rule 3).
-- `features/layouts/domain/render-finished-layout.ts` has no automated test: canvas
-  drawing needs a canvas implementation. It is covered indirectly by the manual
+- The canvas painter (`features/layouts/domain/render-template-layout.ts`) has no unit
+  test — jsdom has no canvas. Its geometry lives in `template-paint-plan.ts`, which is
+  tested against the Phase 1 numbers, and the rest is covered by the per-page-size manual
   print checklist in the README.
+- Templates can be read and saved from the main process, but nothing edits them in the app
+  yet: the picker only consumes seeded templates until F12's editor lands.
 - The upload queue is a mock: `processDueUploads` exists but nothing schedules it, and
   `UploadQueueCard` says so on screen.
 - `events.print_enabled` is stored but not enforced; the operator decides via the

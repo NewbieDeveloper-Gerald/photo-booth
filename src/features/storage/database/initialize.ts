@@ -121,6 +121,51 @@ const migrations: Array<{ name: string; sql: string }> = [
       UPDATE events SET default_layout_id = CASE shots WHEN 2 THEN 'single-2-portrait' WHEN 4 THEN 'double-strip-4' ELSE 'double-strip-3' END;
     `,
   },
+  {
+    name: '008_templates',
+    sql: `
+      CREATE TABLE templates (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        shots INTEGER NOT NULL CHECK (shots BETWEEN 1 AND 6),
+        copies INTEGER NOT NULL DEFAULT 1 CHECK (copies >= 1),
+        page_preset TEXT NOT NULL,
+        page_width_px INTEGER NOT NULL,
+        page_height_px INTEGER NOT NULL,
+        dpi INTEGER NOT NULL DEFAULT 300,
+        margin_px INTEGER NOT NULL,
+        header_height_px INTEGER NOT NULL,
+        footer_height_px INTEGER NOT NULL,
+        is_builtin INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE template_elements (
+        template_id TEXT NOT NULL REFERENCES templates(id) ON DELETE CASCADE,
+        element_id TEXT NOT NULL,
+        position INTEGER NOT NULL,
+        kind TEXT NOT NULL,
+        layer INTEGER NOT NULL,
+        x INTEGER NOT NULL,
+        y INTEGER NOT NULL,
+        width INTEGER NOT NULL,
+        height INTEGER NOT NULL,
+        slot_number INTEGER,
+        text TEXT,
+        color TEXT,
+        font_size INTEGER,
+        font_weight INTEGER,
+        align TEXT,
+        max_width INTEGER,
+        qr_avoid INTEGER,
+        frame_gutter INTEGER,
+        inset INTEGER,
+        panel_color TEXT,
+        PRIMARY KEY (template_id, element_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_template_elements_order ON template_elements(template_id, layer);
+    `,
+  },
 ];
 
 export function initializeStorage(userDataPath: string): void {
