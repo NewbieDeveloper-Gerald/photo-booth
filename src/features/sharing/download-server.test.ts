@@ -5,9 +5,9 @@ import type { Server } from 'node:http';
 import { afterEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { initializeStorage } from '../storage/database/initialize';
-import { createSession, saveDownloadCopy, saveOriginalPhoto, saveSessionOutput } from '../capture';
-import { setEventLogo } from '../events';
-import { createSessionShareLink } from '../sharing';
+import { createSession, saveDownloadCopy, saveOriginalPhoto, saveSessionOutput } from '../capture/node';
+import { setEventLogo } from '../events/node';
+import { createSessionShareLink } from './node';
 import { createDownloadServer } from './download-server';
 
 const directories: string[] = [];

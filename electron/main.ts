@@ -1,7 +1,7 @@
 import { app, BrowserWindow, session } from 'electron';
 import type { Server } from 'node:http';
-import { initializeStorage } from '../src/features/storage/index.js';
-import { recoverInterruptedUploads } from '../src/features/sharing/index.js';
+import { initializeStorage } from '../src/features/storage/node.js';
+import { recoverInterruptedUploads } from '../src/features/sharing/node.js';
 import { registerIpcHandlers } from './ipc/registry.js';
 import { startDownloadServer } from './download-service.js';
 import { createBoothWindowController } from './windows/booth-window.js';

@@ -1,8 +1,8 @@
 import { BrowserWindow, dialog, ipcMain } from 'electron';
 import fs from 'node:fs';
-import { getConfiguredStoragePaths } from '../../src/features/storage/index.js';
-import { isBelowDiskWarningThreshold } from '../../src/features/storage/index.js';
-import { exportEventFolder } from '../../src/features/events/index.js';
+import { getConfiguredStoragePaths } from '../../src/features/storage/node.js';
+import { isBelowDiskWarningThreshold } from '../../src/features/storage/node.js';
+import { exportEventFolder } from '../../src/features/events/node.js';
 import { BYTES_PER_GIGABYTE, MAX_DISK_WARNING_GB } from '../../src/shared/constants/limits.js';
 import type { IpcContext } from './context.js';
 

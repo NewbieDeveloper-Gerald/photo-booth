@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron';
-import { hasAdminPin, setAdminPin, verifyAdminPin } from '../../src/features/security/index.js';
+import { hasAdminPin, setAdminPin, verifyAdminPin } from '../../src/features/security/node.js';
 import type { IpcContext } from './context.js';
 
 export function registerSecurityHandlers({ userDataPath, requestAppQuit }: IpcContext): void {

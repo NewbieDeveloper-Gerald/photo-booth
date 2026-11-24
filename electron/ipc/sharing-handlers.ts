@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron';
-import { readBoothSetting } from '../../src/features/storage/index.js';
-import { createSessionShareLink } from '../../src/features/sharing/index.js';
-import { enqueueSessionFiles, listUploadQueue } from '../../src/features/sharing/index.js';
+import { readBoothSetting } from '../../src/features/storage/node.js';
+import { createSessionShareLink } from '../../src/features/sharing/node.js';
+import { enqueueSessionFiles, listUploadQueue } from '../../src/features/sharing/node.js';
 import type { IpcContext } from './context.js';
 
 export function registerSharingHandlers({ userDataPath, getDownloadServer }: IpcContext): void {

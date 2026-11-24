@@ -2,8 +2,8 @@ import { ipcMain } from 'electron';
 import {
   abandonSession, commitRetake, createSession, discardSession, listUnfinishedSessions, loadSession,
   readOriginalPhoto, revertRetake, saveDownloadCopy, saveOriginalPhoto, saveRetakeOriginalPhoto, saveSessionOutput,
-} from '../../src/features/capture/index.js';
-import { setActiveEventRetakeLimit } from '../../src/features/events/index.js';
+} from '../../src/features/capture/node.js';
+import { setActiveEventRetakeLimit } from '../../src/features/events/node.js';
 import type { IpcContext } from './context.js';
 
 export function registerSessionHandlers({ userDataPath }: IpcContext): void {

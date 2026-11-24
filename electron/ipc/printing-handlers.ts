@@ -1,6 +1,7 @@
 import { BrowserWindow, ipcMain } from 'electron';
 import { ElectronSystemPrinter } from '../devices/system-printer.js';
-import { getLatestSessionPrintInfo, pageSizeMicrons } from '../../src/features/printing/index.js';
+import { pageSizeMicrons } from '../../src/features/printing/index.js';
+import { getLatestSessionPrintInfo } from '../../src/features/printing/node.js';
 import type { IpcContext } from './context.js';
 
 const MAX_PRINTER_NAME_LENGTH = 256;

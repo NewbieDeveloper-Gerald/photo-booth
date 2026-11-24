@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron';
-import { readBoothSetting, writeBoothSetting } from '../../src/features/storage/index.js';
+import { readBoothSetting, writeBoothSetting } from '../../src/features/storage/node.js';
 import { isBoothSettingKey } from '../../src/shared/constants/settings-keys.js';
 import type { IpcContext } from './context.js';
 

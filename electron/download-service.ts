@@ -1,6 +1,6 @@
 import type { Server } from 'node:http';
-import { createDownloadServer } from '../src/features/sharing/index.js';
-import { getConfiguredStoragePaths } from '../src/features/storage/index.js';
+import { createDownloadServer } from '../src/features/sharing/node.js';
+import { getConfiguredStoragePaths } from '../src/features/storage/node.js';
 
 /** The share server is optional: the booth keeps working (without QR downloads) if the port is taken. */
 export async function startDownloadServer(userDataPath: string): Promise<Server | null> {

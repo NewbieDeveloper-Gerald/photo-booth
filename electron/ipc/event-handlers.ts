@@ -1,7 +1,7 @@
 import { dialog, ipcMain } from 'electron';
 import {
   duplicateEvent, getActiveEvent, getEventLogoDataUrl, listEvents, saveEventSettings, selectActiveEvent, setEventLogo,
-} from '../../src/features/events/index.js';
+} from '../../src/features/events/node.js';
 import type { IpcContext } from './context.js';
 
 export function registerEventHandlers({ userDataPath }: IpcContext): void {

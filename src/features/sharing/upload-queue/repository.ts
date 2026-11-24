@@ -5,9 +5,8 @@ import { isSessionId } from '../../../shared/validation/identifiers';
 import { MAX_UPLOAD_ERROR_LENGTH } from '../../../shared/constants/limits';
 import { nextRetryDelayMs } from './retry-policy';
 
-export type UploadQueueItem = { id: string; sessionId: string; filePath: string; status: 'pending' | 'uploading' | 'uploaded' | 'failed'; attempts: number; nextRetryAt: string | null; lastError: string | null; createdAt: string };
-export type UploadQueueSummary = { pending: number; uploading: number; uploaded: number; failed: number; lastError: string | null; providerConfigured: false };
-export type UploadAdapter = { upload(item: UploadQueueItem): Promise<void> };
+import type { UploadAdapter, UploadQueueItem, UploadQueueSummary } from './types';
+export type { UploadAdapter, UploadQueueItem, UploadQueueSummary };
 function mapItem(row: Record<string, unknown>): UploadQueueItem {
   return { id: String(row.id), sessionId: String(row.session_id), filePath: String(row.file_path), status: row.status as UploadQueueItem['status'], attempts: Number(row.attempts), nextRetryAt: row.next_retry_at === null ? null : String(row.next_retry_at), lastError: row.last_error === null ? null : String(row.last_error), createdAt: String(row.created_at) };
 }
