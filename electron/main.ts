@@ -58,7 +58,7 @@ app.whenReady().then(async () => {
   recoverInterruptedUploads(userDataPath);
   try {
     const { photosDirectory } = getConfiguredStoragePaths(userDataPath);
-    downloadServer = await createDownloadServer(userDataPath, photosDirectory, 47625, '127.0.0.1');
+    downloadServer = await createDownloadServer(userDataPath, photosDirectory);
   } catch {
     console.warn('Private download service could not start; QR downloads are unavailable until the app is restarted.');
   }

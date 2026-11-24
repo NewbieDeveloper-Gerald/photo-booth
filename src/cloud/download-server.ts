@@ -10,6 +10,14 @@ type SessionDownload = { eventName: string; logoPath: string | null; primaryColo
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 const RATE_WINDOW_MS = 60_000;
 const MAX_REQUESTS_PER_WINDOW = 180;
+/** Matches every route that carries a share token, so limits can be applied per guest link. */
+const TOKEN_ROUTE_PATTERN = /^\/(?:d|api\/v1\/(?:session|all|file|logo))\/([A-Za-z0-9_-]{22})(?:\/|$)/;
+
+export type DownloadServerOptions = {
+  port?: number;
+  host?: string;
+  rateLimit?: { windowMs: number; maxRequests: number };
+};
 
 function noIndex(response: ServerResponse): void {
   response.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
@@ -18,17 +26,27 @@ function noIndex(response: ServerResponse): void {
   response.setHeader('Referrer-Policy', 'no-referrer');
 }
 
-function isLimited(request: IncomingMessage, buckets: Map<string, { started: number; count: number }>): boolean {
-  const key = request.socket.remoteAddress ?? 'unknown';
+/**
+ * Share tokens get their own bucket; everything else is grouped by address. A tunnel (Cloudflare,
+ * ngrok) makes every guest look like 127.0.0.1, so address-only limits would throttle a whole event.
+ */
+function rateLimitKey(request: IncomingMessage, pathname: string): string {
+  const token = TOKEN_ROUTE_PATTERN.exec(pathname)?.[1];
+  return token ? `token:${token}` : `address:${request.socket.remoteAddress ?? 'unknown'}`;
+}
+
+function isLimited(request: IncomingMessage, pathname: string, buckets: Map<string, { started: number; count: number }>,
+  windowMs: number, maxRequests: number): boolean {
+  const key = rateLimitKey(request, pathname);
   const now = Date.now();
   if (buckets.size > 2048) {
-    for (const [address, value] of buckets) if (now - value.started >= RATE_WINDOW_MS) buckets.delete(address);
+    for (const [bucketKey, value] of buckets) if (now - value.started >= windowMs) buckets.delete(bucketKey);
     if (buckets.size > 4096 && !buckets.has(key)) return true;
   }
   const bucket = buckets.get(key);
-  if (!bucket || now - bucket.started >= RATE_WINDOW_MS) { buckets.set(key, { started: now, count: 1 }); return false; }
+  if (!bucket || now - bucket.started >= windowMs) { buckets.set(key, { started: now, count: 1 }); return false; }
   bucket.count += 1;
-  return bucket.count > MAX_REQUESTS_PER_WINDOW;
+  return bucket.count > maxRequests;
 }
 
 function safePhotosPath(photosRoot: string, filePath: string): string | null {
@@ -86,14 +104,15 @@ function htmlPage(token: string, session: SessionDownload): string {
   </script></body></html>`;
 }
 
-export function createDownloadServer(userDataPath: string, photosRoot: string, port = 47625, host = '127.0.0.1'): Promise<http.Server> {
+export function createDownloadServer(userDataPath: string, photosRoot: string, options: DownloadServerOptions = {}): Promise<http.Server> {
+  const { port = 47625, host = '127.0.0.1', rateLimit = { windowMs: RATE_WINDOW_MS, maxRequests: MAX_REQUESTS_PER_WINDOW } } = options;
   const databasePath = path.join(userDataPath, 'photobooth.sqlite');
   const buckets = new Map<string, { started: number; count: number }>();
   const server = http.createServer((request, response) => {
     noIndex(response);
     if (request.method !== 'GET' && request.method !== 'HEAD') { response.writeHead(405).end(); return; }
-    if (isLimited(request, buckets)) { response.writeHead(429, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Please wait before trying again.'); return; }
     const url = new URL(request.url ?? '/', 'http://localhost');
+    if (isLimited(request, url.pathname, buckets, rateLimit.windowMs, rateLimit.maxRequests)) { response.writeHead(429, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Please wait before trying again.'); return; }
     const page = /^\/d\/([A-Za-z0-9_-]{22})$/.exec(url.pathname);
     if (page) { const session = findSession(databasePath, photosRoot, page[1]!); if (!session) { response.writeHead(404).end('This link is invalid or has expired.'); return; } response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'" }); response.end(request.method === 'HEAD' ? undefined : htmlPage(page[1]!, session)); return; }
     const logoRoute = /^\/api\/v1\/logo\/([A-Za-z0-9_-]{22})$/.exec(url.pathname);
