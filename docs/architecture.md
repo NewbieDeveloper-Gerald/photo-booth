@@ -80,6 +80,7 @@ and keeps blob URLs for the lifetime of that event, so a 25 MB clip is not re-re
 | A table, query or file write | `src/features/<feature>/data/`, exported from `node.ts` |
 | A new IPC channel | `electron/ipc/<area>-handlers.ts`, registered in `electron/ipc/registry.ts`, typed in `src/ui/electron.d.ts` and `electron/preload.ts` |
 | A new window | `electron/windows/` |
+| A new animated output (GIF, boomerang, something else) | `features/animation/domain/animation-plan.ts` for the shape, then `renderer/lib/animation-builder.ts` for the pixels |
 | A new tablet-facing screen or route | `src/features/remote-guest/data/remote-server.ts` + the page in `remote-page-html.ts`, gated by the same token |
 | An operator hotkey | a row in `src/renderer/lib/hotkeys.ts` (the key map the handler and the help screen both read), then handle the action in `src/ui/main.tsx` |
 | A new setting | `src/shared/constants/settings-keys.ts`, then read it in the handler |
@@ -87,6 +88,24 @@ and keeps blob URLs for the lifetime of that event, so a 25 MB clip is not re-re
 | A new background job | `src/shared/scheduling/interval-job.ts` (no overlap, unref'd timer), started from the feature scheduler and `electron/main.ts` |
 | A new hardware device | `src/features/<feature>/devices/` behind an interface, with a mock |
 | A rule that must hold for every caller (lockouts, limits) | `src/features/<feature>/domain/`, called from the node-layer data module so no IPC handler can bypass it |
+
+## Animated extras (F23)
+
+- `features/animation/` is pure and renderer-safe: `domain/gif-encoder.ts` writes GIF89a (header,
+  one 3-3-2 global palette, NETSCAPE2.0 loop, standard LZW with the code-width growth a decoder
+  expects), and `domain/animation-plan.ts` decides the shape — which extra an event wants, the
+  boomerang frame order, the burst sampling, the 320 px size, the delays and the size budget.
+- **Canvas work is not in the feature.** `renderer/lib/animation-builder.ts` decodes the photos
+  (or the burst) with `createImageBitmap`, scales them on a canvas and hands raw RGBA frames to
+  the encoder. That keeps the encoder testable in Node: the tests decode what it writes and
+  compare pixels.
+- **Saving is an output, not a special case.** `capture/data/output-repository.ts` stores
+  `gif-*.gif` / `boomerang-*.gif` in the session folder and records `outputs.kind` (validating
+  the GIF signature first), which is exactly what the download server already reads — so the
+  guest page, the ZIP and the file route picked both up without a second delivery path.
+- **Order of work:** the layout is saved and the print queued first, then the animation is
+  built. A loop that fails changes a note on the finished screen; it never costs a photo or a
+  print.
 
 ## Tablet guest screen (F22)
 

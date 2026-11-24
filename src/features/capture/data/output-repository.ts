@@ -29,6 +29,33 @@ export async function saveSessionOutput(userDataPath: string, sessionIdValue: un
 }
 
 /**
+ * The animated extra (F23): a GIF loop or a boomerang, stored next to the session's photos so
+ * the guest page can offer it like any other file. The bytes must really be a GIF — the type is
+ * what the download page and the phone's image viewer will trust.
+ */
+export async function saveSessionAnimation(userDataPath: string, sessionIdValue: unknown, data: unknown, kindValue: unknown): Promise<string> {
+  if (!isSessionId(sessionIdValue)) throw new Error('Invalid session id');
+  if (kindValue !== 'gif' && kindValue !== 'boomerang') throw new Error('Animated extras are a GIF or a boomerang');
+  const bytes = toPhotoBuffer(data);
+  if (bytes.length < 13 || bytes.subarray(0, 4).toString('latin1') !== 'GIF8') throw new Error('Animated extra must be a GIF file');
+  const database = openDatabase(userDataPath);
+  const paths = getConfiguredStoragePaths(userDataPath);
+  let session: { event_id: string } | undefined;
+  try { session = database.prepare("SELECT event_id FROM sessions WHERE id = ? AND status = 'completed'").get(sessionIdValue) as typeof session; }
+  finally { database.close(); }
+  if (!session) throw new Error('Only completed sessions can save an animated extra');
+  const folder = ensureInside(paths.photosDirectory, path.join(paths.photosDirectory, session.event_id, sessionIdValue));
+  const outputPath = ensureInside(folder, path.join(folder, `${kindValue}-${randomUUID()}.gif`));
+  await writeAtomically(outputPath, bytes);
+  const outputDatabase = openDatabase(userDataPath);
+  try {
+    outputDatabase.prepare('INSERT INTO outputs (id, session_id, output_path, kind, width, height) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(randomUUID(), sessionIdValue, outputPath, kindValue, bytes.readUInt16LE(6), bytes.readUInt16LE(8));
+  } finally { outputDatabase.close(); }
+  return outputPath;
+}
+
+/**
  * A cut sheet is what actually goes through the printer for a 2 × 6 strip: the strip drawn
  * twice side by side on one 4 × 6 sheet, so two guests' copies come out of one piece of paper
  * (F18). It is stored next to the finished layout and printed in preference to it.

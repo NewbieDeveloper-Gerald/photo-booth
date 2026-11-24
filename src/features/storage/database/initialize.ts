@@ -239,6 +239,13 @@ const migrations: Array<{ name: string; sql: string }> = [
       ALTER TABLE sessions ADD COLUMN filter_id TEXT NOT NULL DEFAULT 'none';
     `,
   },
+  {
+    // F23: the animated extra each session gets — a slideshow GIF, a boomerang, both or none.
+    name: '017_animated_outputs',
+    sql: `
+      ALTER TABLE events ADD COLUMN animated_output TEXT NOT NULL DEFAULT 'gif';
+    `,
+  },
 ];
 
 export function initializeStorage(userDataPath: string): void {

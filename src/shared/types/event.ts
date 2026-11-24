@@ -1,3 +1,4 @@
+import type { AnimatedOutput } from '../../features/animation/domain/animation-plan';
 import type { PhotoFilterId } from './photo-filter';
 import type { WatermarkPosition } from './watermark';
 
@@ -31,5 +32,7 @@ export type ActiveEvent = {
   /** F20: the look every session uses, and whether guests may pick another one. */
   filterId: PhotoFilterId;
   filterChoiceEnabled: boolean;
+  /** F23: the animated extra saved next to the photos for the guest's download page. */
+  animatedOutput: AnimatedOutput;
 };
 export type EventSettings = Omit<ActiveEvent, 'retakeLimit' | 'printEnabled'>;

@@ -90,6 +90,8 @@ contextBridge.exposeInMainWorld('photobooth', {
   readOriginalPhoto: (photoId: string): Promise<PhotoBytes> => ipcRenderer.invoke('session:readOriginal', photoId),
   savePrintSheet: (sessionId: string, bytes: PhotoBytes, width: number, height: number): Promise<string> =>
     ipcRenderer.invoke('session:savePrintSheet', sessionId, bytes, width, height),
+  saveSessionAnimation: (sessionId: string, bytes: PhotoBytes, kind: 'gif' | 'boomerang'): Promise<string> =>
+    ipcRenderer.invoke('session:saveAnimation', sessionId, bytes, kind),
   saveSessionOutput: (sessionId: string, bytes: PhotoBytes, width: number, height: number): Promise<string> =>
     ipcRenderer.invoke('session:saveOutput', sessionId, bytes, width, height),
   abandonSession: (sessionId: string): Promise<void> => ipcRenderer.invoke('session:abandon', sessionId),

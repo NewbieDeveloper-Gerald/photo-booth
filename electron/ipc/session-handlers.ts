@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron';
 import {
   abandonSession, commitRetake, createSession, discardSession, listUnfinishedSessions, loadSession,
-  readOriginalPhoto, revertRetake, saveDownloadCopy, saveOriginalPhoto, saveRetakeOriginalPhoto, savePrintSheet, saveSessionOutput,
+  readOriginalPhoto, revertRetake, saveDownloadCopy, saveOriginalPhoto, saveRetakeOriginalPhoto, savePrintSheet, saveSessionAnimation, saveSessionOutput,
 } from '../../src/features/capture/node.js';
 import { setActiveEventRetakeLimit } from '../../src/features/events/node.js';
 import type { IpcContext } from './context.js';
@@ -21,6 +21,9 @@ export function registerSessionHandlers({ userDataPath }: IpcContext): void {
   ipcMain.handle('session:readOriginal', (_event, photoId: unknown) => readOriginalPhoto(userDataPath, photoId));
   ipcMain.handle('session:savePrintSheet', (_event, sessionId: unknown, bytes: unknown, width: unknown, height: unknown) =>
     savePrintSheet(userDataPath, sessionId, bytes, width, height));
+  // F23: the animated extra is stored like any other output, so the guest page lists it.
+  ipcMain.handle('session:saveAnimation', (_event, sessionId: unknown, bytes: unknown, kind: unknown) =>
+    saveSessionAnimation(userDataPath, sessionId, bytes, kind));
   ipcMain.handle('session:saveOutput', (_event, sessionId: unknown, bytes: unknown, width: unknown, height: unknown) =>
     saveSessionOutput(userDataPath, sessionId, bytes, width, height));
   ipcMain.handle('session:abandon', (_event, sessionId: unknown) => abandonSession(userDataPath, sessionId));
