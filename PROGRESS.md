@@ -38,7 +38,7 @@ Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `4215
   booths are not supported yet, and nothing in the app pretends they are.
 - **F28 (email and SMS link): merged** (`f4a18d0`), awaiting the real send below.
 - **F29: not started.**
-- **Developer experience: VS Code setup** (`PENDING-VSCODE`). `.vscode/tasks.json` (install / vite /
+- **Developer experience: VS Code setup** (`caf99d2`). `.vscode/tasks.json` (install / vite /
   dev / build / test / lint / typecheck), `launch.json` (F5 = Vite + Electron with main-process
   breakpoints, attach to a running booth, run the current Vitest file), `settings.json`,
   `extensions.json`, a `dev:debug` script (`electron --inspect=9229`) and `docs/vscode-setup.md`
