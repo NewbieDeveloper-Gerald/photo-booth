@@ -14,6 +14,10 @@ import { ReviewSection } from '../renderer/components/ReviewSection';
 import { SlotProgress } from '../renderer/components/SlotProgress';
 import { TemplateEditor } from '../renderer/components/TemplateEditor';
 import { UploadQueueCard } from '../renderer/components/UploadQueueCard';
+import { GuestLayoutField } from '../renderer/components/GuestLayoutField';
+import { LayoutPicker } from '../renderer/components/LayoutPicker';
+import { boothLayoutChoices } from '../renderer/lib/offered-layouts';
+import { defaultLayoutIdForShots } from '../features/events';
 import { wait } from '../renderer/lib/timing';
 import { DEFAULT_ACCENT_COLOR, DEFAULT_CONSENT_TEXT, DEFAULT_PRIMARY_COLOR, DEFAULT_THANK_YOU_TEXT, DEFAULT_WELCOME_TEXT } from '../shared/constants/branding-defaults';
 import { toErrorMessage } from '../shared/errors';
@@ -68,6 +72,8 @@ function App(): React.JSX.Element {
   const [sessionId, setSessionId] = useState('');
   const [selectedLayoutId, setSelectedLayoutId] = useState('double-strip-3');
   const [templates, setTemplates] = useState<TemplateSummary[]>([]);
+  /** Documents for the offered layouts, fetched once per event so the picker can draw them. */
+  const [layoutDocuments, setLayoutDocuments] = useState<Record<string, TemplateDocument>>({});
   const [editorOpen, setEditorOpen] = useState(false);
   const [sessionShotCount, setSessionShotCount] = useState(3);
   const [reviewRecord, setReviewRecord] = useState<SessionRecord | null>(null);
@@ -97,6 +103,29 @@ function App(): React.JSX.Element {
     if (window.photobooth) return window.photobooth.getTemplate(templateId);
     return templateFromCatalogPreset(getLayoutPreset(templateId));
   }, []);
+
+  const layoutChoices = useMemo(() => event ? boothLayoutChoices(event, templates) : [], [event, templates]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const offered = layoutChoices.filter((choice) => !layoutDocuments[choice.id]);
+    if (offered.length === 0) return;
+    void Promise.all(offered.map(async (choice) => ({ id: choice.id, document: await loadLayoutDocument(choice.id).catch(() => null) })))
+      .then((loaded) => {
+        if (cancelled) return;
+        const usable = loaded.filter((item): item is { id: string; document: TemplateDocument } => item.document !== null);
+        if (usable.length > 0) setLayoutDocuments((current) => ({ ...current, ...Object.fromEntries(usable.map((item) => [item.id, item.document])) }));
+      });
+    return () => { cancelled = true; };
+    // `layoutDocuments` is read as a cache guard; adding it would loop on every fetch.
+  }, [layoutChoices, loadLayoutDocument]);
+
+  /** The picker's choice must always be a layout the active event actually offers. */
+  useEffect(() => {
+    const first = layoutChoices[0];
+    if (!first || layoutChoices.some((choice) => choice.id === selectedLayoutId)) return;
+    setSelectedLayoutId(first.id);
+  }, [layoutChoices, selectedLayoutId]);
 
   const clearReviewUrls = useCallback(() => {
     for (const url of reviewUrls.current) URL.revokeObjectURL(url);
@@ -249,7 +278,9 @@ function App(): React.JSX.Element {
         }
       } else {
         setTemplates(layoutPresets.map((preset) => ({ id: preset.id, name: preset.name, shots: preset.shots, copies: preset.copies, pagePreset: '4x6' as const, pageLabel: '4 × 6 in', builtIn: true })));
-        setEvent({ id: 'preview-event', name: 'Default Event', shots: 3, retakeLimit: 3, printEnabled: true, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: 'double-strip-3', offeredLayoutIds: ['double-strip-3'] });
+        // The browser preview has no event storage, so it offers three catalog layouts and
+        // makes the guest picker visible while developing the UI.
+        setEvent({ id: 'preview-event', name: 'Default Event', shots: 3, retakeLimit: 3, printEnabled: true, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: 'double-strip-3', offeredLayoutIds: ['double-strip-3', 'double-strip-4', 'grid-4-portrait'] });
         setRetakeLimitDraft('3');
       }
       if (!camera) { setStatus('Camera access is not available.'); return; }
@@ -416,7 +447,7 @@ function App(): React.JSX.Element {
   };
 
   const handleNewEvent = (): void => {
-    setEventDraft({ id: '', name: '', shots: 3, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: 'double-strip-3', offeredLayoutIds: ['double-strip-3'] });
+    setEventDraft({ id: '', name: '', shots: 3, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: defaultLayoutIdForShots(3), offeredLayoutIds: [defaultLayoutIdForShots(3)] });
     setEventLogoDataUrl(null); setEventMessage('New event details are not saved yet.');
   };
 
@@ -756,11 +787,11 @@ function App(): React.JSX.Element {
           {countdown !== null && <div className="countdown-overlay" aria-live="assertive"><span>{countdown}</span></div>}
           <div className="preview-meta"><span>{actualResolution || (cameraReady ? 'Camera ready' : 'Waiting for camera')}</span><span className="mirror-label">MIRRORED</span></div>
         </div>
+        {screen === 'ready' && <LayoutPicker choices={layoutChoices.map((summary) => ({ summary, document: layoutDocuments[summary.id] ?? null }))} selectedId={selectedLayoutId} onSelect={setSelectedLayoutId} disabled={isBusy || unfinishedSessions.length > 0} />}
         <div className={`controls-grid ${screen === 'ready' && adminLocked ? 'settings-locked' : ''}`}>
           <label className="control-field"><span>CAMERA</span><select value={selectedCameraId} onChange={(e) => void handleCameraChange(e.target.value)} disabled={isBusy || screen === 'review' || screen === 'finished' || !cameras.length}><option value="" disabled>Select a camera</option>{cameras.map((item, index) => <option key={item.deviceId || index} value={item.deviceId}>{item.label || `Camera ${index + 1}`}</option>)}</select></label>
           <label className="control-field"><span>PREVIEW QUALITY</span><select value={resolution} onChange={(e) => void handleResolutionChange(e.target.value as CameraResolution)} disabled={isBusy || screen === 'review' || screen === 'finished'}>{resolutionOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
           <label className="control-field countdown-setting"><span>COUNTDOWN</span><select value={countdownSeconds} onChange={(e) => void handleCountdownChange(Number(e.target.value))} disabled={isBusy || screen === 'review' || screen === 'finished'}>{Array.from({ length: 8 }, (_, index) => index + 3).map((seconds) => <option key={seconds} value={seconds}>{seconds} seconds</option>)}</select></label>
-          {screen === 'ready' && <label className="control-field layout-choice"><span>PRINT LAYOUT</span><select aria-label="Print layout" value={selectedLayoutId} onChange={(e) => setSelectedLayoutId(e.target.value)} disabled={busy || unfinishedSessions.length > 0}>{[...new Set(templates.map((item) => item.pageLabel))].map((pageLabel) => <optgroup key={pageLabel} label={pageLabel}>{templates.filter((item) => item.pageLabel === pageLabel).map((item) => <option key={item.id} value={item.id}>{item.name} · {item.copies === 1 ? '1 copy' : `${item.copies} copies`}</option>)}</optgroup>)}</select></label>}
           {(screen === 'ready' || screen === 'finished') && <label className="control-field"><span>PRINTER</span><select aria-label="Printer" value={selectedPrinterName} onChange={(e) => handlePrinterChange(e.target.value)} disabled={busy || !window.photobooth}><option value="">Select a printer</option>{printers.map((printer) => <option key={printer.name} value={printer.name}>{printer.displayName || printer.name}{printer.isDefault ? ' · Default' : ''}</option>)}</select></label>}
           {screen === 'ready' && <label className="control-field"><span>PUBLIC DOWNLOAD URL (HTTPS)</span><input aria-label="Public HTTPS download URL" type="url" placeholder="https://photos.example.com" value={downloadBaseUrl} onChange={(e) => setDownloadBaseUrl(e.target.value)} onBlur={() => void savePreference('downloadBaseUrl', downloadBaseUrl.trim().replace(/\/$/, '')).catch(() => setErrorMessage('Enter a valid HTTPS site URL.'))} disabled={busy || !window.photobooth} /></label>}
           {screen === 'ready' && <label className="control-field"><span>LOW-DISK WARNING (GB)</span><input aria-label="Low-disk warning threshold in gigabytes" type="number" min="0" max="1000" step="0.1" value={diskWarningGB} onChange={(e) => handleDiskWarningChange(e.target.value)} onBlur={saveDiskWarning} disabled={busy || !window.photobooth} /></label>}
@@ -774,12 +805,13 @@ function App(): React.JSX.Element {
           {eventDraft && <div className="event-form-grid">
             <label>Event name<input aria-label="Event name" maxLength={80} value={eventDraft.name} onChange={(e) => setEventDraft({ ...eventDraft, name: e.target.value })} /></label>
             <label>Event date<input aria-label="Event date" type="date" value={eventDraft.eventDate ?? ''} onChange={(e) => setEventDraft({ ...eventDraft, eventDate: e.target.value || null })} /></label>
-            <label>Photo count<select aria-label="Event photo count" value={eventDraft.shots} onChange={(e) => setEventDraft({ ...eventDraft, shots: Number(e.target.value) })}>{[1, 2, 3, 4, 5, 6].map((shots) => <option key={shots} value={shots}>{shots} {shots === 1 ? 'photo' : 'photos'}</option>)}</select></label>
+            <label>Photo count<select aria-label="Event photo count" value={eventDraft.shots} onChange={(e) => setEventDraft({ ...eventDraft, shots: Number(e.target.value), defaultLayoutId: defaultLayoutIdForShots(Number(e.target.value)) })}>{[1, 2, 3, 4, 5, 6].map((shots) => <option key={shots} value={shots}>{shots} {shots === 1 ? 'photo' : 'photos'}</option>)}</select></label>
             <label>QR link expires after (days)<input aria-label="QR link expiry days" type="number" min={1} max={365} value={eventDraft.expiryDays} onChange={(e) => setEventDraft({ ...eventDraft, expiryDays: Number(e.target.value) })} /></label>
             <label>Primary color (hex)<input aria-label="Primary color hex" value={eventDraft.primaryColor} maxLength={7} onChange={(e) => setEventDraft({ ...eventDraft, primaryColor: e.target.value })} /></label>
             <label>Accent color (hex)<input aria-label="Accent color hex" value={eventDraft.accentColor} maxLength={7} onChange={(e) => setEventDraft({ ...eventDraft, accentColor: e.target.value })} /></label>
             <label>Welcome text<input aria-label="Event welcome text" maxLength={160} value={eventDraft.welcomeText} onChange={(e) => setEventDraft({ ...eventDraft, welcomeText: e.target.value })} /></label>
             <label>Thank-you text<input aria-label="Event thank-you text" maxLength={160} value={eventDraft.thankYouText} onChange={(e) => setEventDraft({ ...eventDraft, thankYouText: e.target.value })} /></label>
+            <GuestLayoutField templates={templates} defaultLayoutId={eventDraft.defaultLayoutId} offeredLayoutIds={eventDraft.offeredLayoutIds} onChange={(offeredLayoutIds) => setEventDraft({ ...eventDraft, offeredLayoutIds })} />
             <div className="event-logo-field">{eventLogoDataUrl ? <img src={eventLogoDataUrl} alt="Selected event logo preview" /> : <span>No logo selected</span>}<button type="button" className="secondary-button" onClick={() => void handleChooseEventLogo()} disabled={unfinishedSessions.length > 0}>Choose PNG/JPEG logo</button><small>Files are copied locally; limit 5 MB.</small></div>
             <button type="button" className="start-button" onClick={() => void handleSaveEvent()} disabled={unfinishedSessions.length > 0}>Save and use this event</button>
           </div>}

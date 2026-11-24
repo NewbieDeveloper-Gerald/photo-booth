@@ -66,6 +66,7 @@ Features: `capture`, `events`, `layouts`, `printing`, `sharing`, `storage`, `sec
 | Reusable renderer state logic | `src/renderer/hooks/` (e.g. `useTemplateEditor` for history + autosave) |
 | A template editing rule (snapping, adding an element kind) | `features/layouts/domain/template-editing.ts`, then surface it in `TemplateEditor.tsx` |
 | A pure rule (pricing, limits, geometry) | `src/features/<feature>/domain/` with a test beside it |
+| Which layouts the booth offers for an event | `features/events/domain/default-layouts.ts` (default) and `renderer/lib/offered-layouts.ts` (the guest list) |
 | A table, query or file write | `src/features/<feature>/data/`, exported from `node.ts` |
 | A new IPC channel | `electron/ipc/<area>-handlers.ts`, registered in `electron/ipc/registry.ts`, typed in `src/ui/electron.d.ts` and `electron/preload.ts` |
 | A new window | `electron/windows/` |

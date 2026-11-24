@@ -28,6 +28,7 @@ export const MAX_SETTING_VALUE_LENGTH = 256;
 export const MAX_CONSENT_LENGTH = 1200;
 export const MAX_EVENT_NAME_LENGTH = 80;
 export const MAX_EVENT_TEXT_LENGTH = 160;
+export const MAX_OFFERED_LAYOUTS = 12;
 
 // Upload queue retry policy
 export const UPLOAD_INITIAL_RETRY_MS = 30_000;
