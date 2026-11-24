@@ -1,0 +1,10 @@
+{
+  // Open this folder in VS Code and accept these; they are the only ones the project assumes.
+  "recommendations": [
+    "dbaeumer.vscode-eslint",
+    "vitest.explorer",
+    "ms-playwright.playwright",
+    "editorconfig.editorconfig",
+    "redhat.vscode-yaml"
+  ]
+}

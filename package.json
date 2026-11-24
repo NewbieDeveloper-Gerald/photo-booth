@@ -20,6 +20,7 @@
     "test:e2e": "playwright test",
     "lint": "eslint .",
     "dev:web": "vite --host 0.0.0.0",
+    "dev:debug": "npm run build:main && concurrently -k \"vite --host 0.0.0.0\" \"wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron --inspect=9229 .\"",
     "postinstall": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {

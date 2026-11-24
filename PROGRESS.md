@@ -38,6 +38,12 @@ Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `4215
   booths are not supported yet, and nothing in the app pretends they are.
 - **F28 (email and SMS link): merged** (`f4a18d0`), awaiting the real send below.
 - **F29: not started.**
+- **Developer experience: VS Code setup** (`PENDING-VSCODE`). `.vscode/tasks.json` (install / vite /
+  dev / build / test / lint / typecheck), `launch.json` (F5 = Vite + Electron with main-process
+  breakpoints, attach to a running booth, run the current Vitest file), `settings.json`,
+  `extensions.json`, a `dev:debug` script (`electron --inspect=9229`) and `docs/vscode-setup.md`
+  with the per-platform C++ toolchain `better-sqlite3` needs and a troubleshooting table. Nothing in
+  the app changed; the configs are validated as JSON but have not been opened in VS Code here.
 - **F22 extension, APK follow-up: landscape + an installable APK** (`677cada`). The app is now
   `sensorLandscape`, `BoothScreen-debug.apk` is committed and built without Gradle
   (`tools/build_apk.py`: aapt2 + a hand-assembled `classes.dex` + apkforge signing v1/v2/v3), and

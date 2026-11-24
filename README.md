@@ -16,6 +16,8 @@ npm run dev
 
 This starts the Vite renderer and opens the Electron desktop app. For a browser-only UI preview during development, use `npm run dev:web`.
 
+Working in VS Code? [`docs/vscode-setup.md`](docs/vscode-setup.md) has the prerequisites per platform (including the C++ toolchain `better-sqlite3` needs), and the repository ships `.vscode/` tasks and launch configs: **F5** starts Vite + Electron with main-process breakpoints, `Ctrl+Shift+B` builds, and *Tasks: Run Task* has install / test / lint / typecheck.
+
 ## Build and checks
 
 ```sh
