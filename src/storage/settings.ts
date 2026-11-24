@@ -1,13 +1,13 @@
 import Database from 'better-sqlite3';
 import path from 'node:path';
+import { isBoothSettingKey, type BoothSettingKey } from '../shared/constants/settings-keys';
+import { MAX_CONSENT_LENGTH, MAX_DISK_WARNING_GB, MAX_SETTING_VALUE_LENGTH } from '../shared/constants/limits';
 
-export type BoothSettingKey = 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution' | 'lowDiskWarningGB' | 'selectedPrinterName' | 'downloadBaseUrl' | 'consentText';
+export type { BoothSettingKey } from '../shared/constants/settings-keys';
 
-const allowedKeys = new Set<BoothSettingKey>(['selectedCameraId', 'countdownSeconds', 'cameraResolution', 'lowDiskWarningGB', 'selectedPrinterName', 'downloadBaseUrl', 'consentText']);
-
-function isAllowedKey(key: unknown): key is BoothSettingKey {
-  return typeof key === 'string' && allowedKeys.has(key as BoothSettingKey);
-}
+const COUNTDOWN_PATTERN = /^(?:[3-9]|10)$/;
+const CAMERA_RESOLUTIONS = ['best', '1280x720', '1920x1080', '3840x2160'];
+const DISK_WARNING_PATTERN = /^(?:\d{1,4})(?:\.\d{1,2})?$/;
 
 function openDatabase(userDataPath: string): Database.Database {
   const database = new Database(path.join(userDataPath, 'photobooth.sqlite'));
@@ -15,8 +15,30 @@ function openDatabase(userDataPath: string): Database.Database {
   return database;
 }
 
+function assertValidValue(key: BoothSettingKey, value: string): void {
+  if (value.length > MAX_SETTING_VALUE_LENGTH && key !== 'consentText') throw new Error('Invalid setting');
+  if (key === 'countdownSeconds' && !COUNTDOWN_PATTERN.test(value)) throw new Error('Countdown must be from 3 to 10 seconds');
+  if (key === 'cameraResolution' && !CAMERA_RESOLUTIONS.includes(value)) throw new Error('Unsupported camera resolution');
+  if (key === 'lowDiskWarningGB' && (!DISK_WARNING_PATTERN.test(value) || Number(value) > MAX_DISK_WARNING_GB)) {
+    throw new Error(`Disk warning threshold must be between 0 and ${MAX_DISK_WARNING_GB} GB`);
+  }
+  if (key === 'consentText' && !value.trim()) throw new Error('Consent notice cannot be blank');
+  if (key === 'consentText' && value.trim().length > MAX_CONSENT_LENGTH) throw new Error(`Consent notice must be ${MAX_CONSENT_LENGTH} characters or fewer`);
+  if (key === 'downloadBaseUrl' && value !== '') assertSiteOrigin(value);
+}
+
+/** The QR links are built as `<origin>/d/<token>`, so only a bare HTTPS origin is accepted. */
+function assertSiteOrigin(value: string): void {
+  let url: URL;
+  try { url = new URL(value); } catch { throw new Error('Download URL must be a valid HTTPS URL'); }
+  if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) {
+    throw new Error('Download URL must use HTTPS and contain no credentials, query, or fragment');
+  }
+  if (value !== url.origin) throw new Error('Enter only the HTTPS site origin, for example https://photos.example.com');
+}
+
 export function readBoothSetting(userDataPath: string, key: unknown): string | null {
-  if (!isAllowedKey(key)) throw new Error('Unsupported setting');
+  if (!isBoothSettingKey(key)) throw new Error('Unsupported setting');
   const database = openDatabase(userDataPath);
   try {
     const row = database.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined;
@@ -27,26 +49,8 @@ export function readBoothSetting(userDataPath: string, key: unknown): string | n
 }
 
 export function writeBoothSetting(userDataPath: string, key: unknown, value: unknown): void {
-  if (!isAllowedKey(key) || typeof value !== 'string' || (value.length > 256 && key !== 'consentText')) {
-    throw new Error('Invalid setting');
-  }
-  if (key === 'countdownSeconds' && !/^(?:[3-9]|10)$/.test(value)) {
-    throw new Error('Countdown must be from 3 to 10 seconds');
-  }
-  if (key === 'cameraResolution' && !['best', '1280x720', '1920x1080', '3840x2160'].includes(value)) {
-    throw new Error('Unsupported camera resolution');
-  }
-  if (key === 'lowDiskWarningGB' && (!/^(?:\d{1,4})(?:\.\d{1,2})?$/.test(value) || Number(value) > 1000)) {
-    throw new Error('Disk warning threshold must be between 0 and 1000 GB');
-  }
-  if (key === 'consentText' && !value.trim()) throw new Error('Consent notice cannot be blank');
-  if (key === 'consentText' && value.trim().length > 1200) throw new Error('Consent notice must be 1200 characters or fewer');
-  if (key === 'downloadBaseUrl' && value !== '') {
-    let url: URL;
-    try { url = new URL(value); } catch { throw new Error('Download URL must be a valid HTTPS URL'); }
-    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) throw new Error('Download URL must use HTTPS and contain no credentials, query, or fragment');
-    if (value !== url.origin) throw new Error('Enter only the HTTPS site origin, for example https://photos.example.com');
-  }
+  if (!isBoothSettingKey(key) || typeof value !== 'string') throw new Error('Invalid setting');
+  assertValidValue(key, value);
   const database = openDatabase(userDataPath);
   try {
     database.prepare(`INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))

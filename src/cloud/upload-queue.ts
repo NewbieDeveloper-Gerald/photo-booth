@@ -1,13 +1,13 @@
 import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
+import { toErrorMessage } from '../shared/errors';
+import { isSessionId } from '../shared/validation/identifiers';
+import { MAX_UPLOAD_ERROR_LENGTH, UPLOAD_INITIAL_RETRY_MS, UPLOAD_MAX_BACKOFF_EXPONENT, UPLOAD_MAX_RETRY_MS } from '../shared/constants/limits';
 
 export type UploadQueueItem = { id: string; sessionId: string; filePath: string; status: 'pending' | 'uploading' | 'uploaded' | 'failed'; attempts: number; nextRetryAt: string | null; lastError: string | null; createdAt: string };
 export type UploadQueueSummary = { pending: number; uploading: number; uploaded: number; failed: number; lastError: string | null; providerConfigured: false };
 export type UploadAdapter = { upload(item: UploadQueueItem): Promise<void> };
-const MAX_RETRY_MS = 6 * 60 * 60 * 1000;
-const MAX_ERROR_LENGTH = 500;
-
 function openDatabase(userDataPath: string): Database.Database {
   const database = new Database(path.join(userDataPath, 'photobooth.sqlite'));
   database.pragma('foreign_keys = ON');
@@ -19,7 +19,7 @@ function mapItem(row: Record<string, unknown>): UploadQueueItem {
 }
 
 export function enqueueSessionFiles(userDataPath: string, sessionId: unknown): number {
-  if (typeof sessionId !== 'string' || !/^[0-9a-f-]{36}$/i.test(sessionId)) throw new Error('Invalid session id');
+  if (!isSessionId(sessionId)) throw new Error('Invalid session id');
   const database = openDatabase(userDataPath);
   try {
     const session = database.prepare("SELECT id FROM sessions WHERE id = ? AND status = 'completed'").get(sessionId);
@@ -67,8 +67,8 @@ export async function processDueUploads(userDataPath: string, adapter: UploadAda
         database.prepare("UPDATE upload_queue SET status = 'uploaded', attempts = attempts + 1, next_retry_at = NULL, last_error = NULL WHERE id = ?").run(item.id);
       } catch (error) {
         const attempts = item.attempts + 1;
-        const delay = Math.min(30_000 * (2 ** Math.min(attempts - 1, 10)), MAX_RETRY_MS);
-        const message = (error instanceof Error ? error.message : 'Upload failed').slice(0, MAX_ERROR_LENGTH);
+        const delay = Math.min(UPLOAD_INITIAL_RETRY_MS * (2 ** Math.min(attempts - 1, UPLOAD_MAX_BACKOFF_EXPONENT)), UPLOAD_MAX_RETRY_MS);
+        const message = toErrorMessage(error, 'Upload failed').slice(0, MAX_UPLOAD_ERROR_LENGTH);
         database.prepare("UPDATE upload_queue SET status = 'pending', attempts = ?, next_retry_at = ?, last_error = ? WHERE id = ?")
           .run(attempts, new Date(now + delay).toISOString(), message, item.id);
       }

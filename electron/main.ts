@@ -8,14 +8,14 @@ import { isBelowDiskWarningThreshold } from '../src/core/disk-space.js';
 import { ElectronSystemPrinter } from './printer.js';
 import { pageSizeMicrons } from '../src/hardware/printer.js';
 import { createDownloadServer } from '../src/cloud/download-server.js';
+import { isBoothSettingKey } from '../src/shared/constants/settings-keys.js';
+import { BYTES_PER_GIGABYTE, MAX_DISK_WARNING_GB } from '../src/shared/constants/limits.js';
 import { enqueueSessionFiles, listUploadQueue, recoverInterruptedUploads } from '../src/cloud/upload-queue.js';
 import type { Server } from 'node:http';
 import { abandonSession, commitRetake, createSession, discardSession, exportEventFolder, getActiveEvent, getConfiguredStoragePaths, createSessionShareLink, getLatestSessionPrintInfo, listUnfinishedSessions, loadSession, readOriginalPhoto, revertRetake, saveDownloadCopy, saveOriginalPhoto, saveRetakeOriginalPhoto, saveSessionOutput, setActiveEventRetakeLimit, listEvents, saveEventSettings, duplicateEvent, selectActiveEvent, setEventLogo, getEventLogoDataUrl } from '../src/storage/sessions.js';
 
-const settingKeys = new Set(['selectedCameraId', 'countdownSeconds', 'cameraResolution', 'lowDiskWarningGB', 'selectedPrinterName', 'downloadBaseUrl', 'consentText']);
-
 function validateSettingKey(key: unknown): void {
-  if (typeof key !== 'string' || !settingKeys.has(key)) throw new Error('Unsupported setting');
+  if (!isBoothSettingKey(key)) throw new Error('Unsupported setting');
 }
 
 let mainWindow: BrowserWindow | null = null;
@@ -123,14 +123,14 @@ app.whenReady().then(async () => {
     return exportEventFolder(userDataPath, eventId, selection.filePaths[0]);
   });
   ipcMain.handle('session:checkDiskSpace', async (_event, thresholdGB: unknown) => {
-    if (typeof thresholdGB !== 'number' || !Number.isFinite(thresholdGB) || thresholdGB < 0 || thresholdGB > 1000) throw new Error('Invalid disk warning threshold');
+    if (typeof thresholdGB !== 'number' || !Number.isFinite(thresholdGB) || thresholdGB < 0 || thresholdGB > MAX_DISK_WARNING_GB) throw new Error('Invalid disk warning threshold');
     const { photosDirectory } = getConfiguredStoragePaths(userDataPath);
     const stats = fs.statfsSync(photosDirectory);
     const freeBytes = Number(stats.bavail) * Number(stats.bsize);
     if (!isBelowDiskWarningThreshold(freeBytes, thresholdGB)) return true;
     const options = {
       type: 'warning' as const, title: 'Low disk space', buttons: ['Continue anyway', 'Cancel'], defaultId: 1, cancelId: 1,
-      message: `Only ${(freeBytes / 1024 ** 3).toFixed(2)} GB is free on the photo drive.`,
+      message: `Only ${(freeBytes / BYTES_PER_GIGABYTE).toFixed(2)} GB is free on the photo drive.`,
       detail: `The warning threshold is ${thresholdGB} GB. Continue only if you have enough room for this session.`,
     };
     const focusedWindow = BrowserWindow.getFocusedWindow();

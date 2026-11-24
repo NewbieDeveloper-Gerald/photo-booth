@@ -5,6 +5,10 @@ import { randomUUID } from 'node:crypto';
 import { canRetake, isValidRetakeLimit } from '../core/retakes';
 import { getLayoutPreset } from '../core/layouts';
 import { generateSessionToken } from '../core/token';
+import { ensureInside } from '../shared/fs/safe-paths';
+import { isEventId, isRecordId, isSessionId } from '../shared/validation/identifiers';
+import { isOverlappingPath } from '../shared/validation/paths';
+import { MAX_EVENT_NAME_LENGTH, MAX_EVENT_TEXT_LENGTH, MAX_LOGO_BYTES, MAX_PHOTO_BYTES } from '../shared/constants/limits';
 
 export type ActiveEvent = { id: string; name: string; shots: number; retakeLimit: number; printEnabled: boolean; expiryDays: number; eventDate: string | null; logoPath: string | null; primaryColor: string; accentColor: string; welcomeText: string; thankYouText: string; defaultLayoutId: string };
 export type EventSettings = Omit<ActiveEvent, 'retakeLimit' | 'printEnabled'>;
@@ -41,13 +45,6 @@ async function copyBackupVersion(paths: StoragePaths, eventId: string, sessionId
   await fs.promises.rename(temporaryPath, destination);
 }
 
-function ensureInside(parent: string, child: string): string {
-  const resolvedParent = path.resolve(parent);
-  const resolvedChild = path.resolve(child);
-  if (!resolvedChild.startsWith(`${resolvedParent}${path.sep}`)) throw new Error('Invalid photo path');
-  return resolvedChild;
-}
-
 function storedPhotoPath(paths: StoragePaths, filePath: string): string {
   try { return ensureInside(paths.photosDirectory, filePath); }
   catch { return ensureInside(paths.backupDirectory, filePath); }
@@ -73,7 +70,7 @@ async function moveWithinPhotos(paths: StoragePaths, sourcePath: string, destina
 }
 
 function toBuffer(data: unknown): Buffer {
-  if (!(data instanceof Uint8Array) || data.byteLength < 4 || data.byteLength > 100 * 1024 * 1024) {
+  if (!(data instanceof Uint8Array) || data.byteLength < 4 || data.byteLength > MAX_PHOTO_BYTES) {
     throw new Error('Invalid photo data');
   }
   return Buffer.from(data);
@@ -83,13 +80,13 @@ const DEFAULTS_BY_SHOTS: Record<number, string> = { 2: 'double-strip-2', 3: 'dou
 function validateEventSettings(value: unknown): Omit<EventSettings, 'id' | 'logoPath'> {
   if (!value || typeof value !== 'object') throw new Error('Invalid event details');
   const item = value as Record<string, unknown>;
-  if (typeof item.name !== 'string' || !item.name.trim() || item.name.trim().length > 80) throw new Error('Event name is required (80 characters maximum)');
+  if (typeof item.name !== 'string' || !item.name.trim() || item.name.trim().length > MAX_EVENT_NAME_LENGTH) throw new Error('Event name is required (80 characters maximum)');
   const shots = item.shots;
   if (typeof shots !== 'number' || !Object.hasOwn(DEFAULTS_BY_SHOTS, shots)) throw new Error('Choose a shot count supported by the current layouts');
   const eventDate = item.eventDate === '' || item.eventDate === null ? null : item.eventDate;
   if (eventDate !== null && (typeof eventDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(eventDate) || Number.isNaN(Date.parse(`${eventDate}T00:00:00Z`)) || new Date(`${eventDate}T00:00:00Z`).toISOString().slice(0, 10) !== eventDate)) throw new Error('Enter a valid event date');
   for (const key of ['primaryColor', 'accentColor'] as const) if (typeof item[key] !== 'string' || !/^#[0-9a-f]{6}$/i.test(item[key])) throw new Error(`${key === 'primaryColor' ? 'Primary' : 'Accent'} color must be a six-digit hex color`);
-  for (const key of ['welcomeText', 'thankYouText'] as const) if (typeof item[key] !== 'string' || item[key].trim().length > 160) throw new Error(`${key === 'welcomeText' ? 'Welcome' : 'Thank-you'} text must be 160 characters or fewer`);
+  for (const key of ['welcomeText', 'thankYouText'] as const) if (typeof item[key] !== 'string' || item[key].trim().length > MAX_EVENT_TEXT_LENGTH) throw new Error(`${key === 'welcomeText' ? 'Welcome' : 'Thank-you'} text must be 160 characters or fewer`);
   const expiryDays = item.expiryDays;
   if (typeof expiryDays !== 'number' || !Number.isInteger(expiryDays) || expiryDays < 1 || expiryDays > 365) throw new Error('QR link expiry must be from 1 to 365 days');
   return { name: item.name.trim(), shots, expiryDays, eventDate: eventDate as string | null, primaryColor: item.primaryColor as string, accentColor: item.accentColor as string,
@@ -126,7 +123,7 @@ export function saveEventSettings(userDataPath: string, input: unknown): EventSe
 }
 
 export function selectActiveEvent(userDataPath: string, eventId: unknown): ActiveEvent {
-  if (typeof eventId !== 'string' || !/^[a-z0-9-]{1,64}$/i.test(eventId)) throw new Error('Invalid event');
+  if (!isEventId(eventId)) throw new Error('Invalid event');
   const database = openDatabase(userDataPath);
   try {
     if (!database.prepare('SELECT 1 FROM events WHERE id = ?').get(eventId)) throw new Error('Event not found');
@@ -136,7 +133,7 @@ export function selectActiveEvent(userDataPath: string, eventId: unknown): Activ
 }
 
 export function duplicateEvent(userDataPath: string, eventId: unknown): EventSettings {
-  if (typeof eventId !== 'string' || !/^[a-z0-9-]{1,64}$/i.test(eventId)) throw new Error('Invalid event');
+  if (!isEventId(eventId)) throw new Error('Invalid event');
   const database = openDatabase(userDataPath);
   let source: EventSettings | undefined;
   try { source = database.prepare(`SELECT id, name, shots, expiry_days AS expiryDays, event_date AS eventDate, logo_path AS logoPath,
@@ -162,7 +159,7 @@ function storeEventLogoPath(userDataPath: string, eventId: string, sourcePath: s
   const ext = path.extname(sourcePath).toLowerCase();
   if (!['.png', '.jpg', '.jpeg'].includes(ext)) throw new Error('Choose a PNG or JPEG logo');
   const stats = fs.statSync(sourcePath);
-  if (!stats.isFile() || stats.size < 12 || stats.size > 5 * 1024 * 1024) throw new Error('Logo must be an image file no larger than 5 MB');
+  if (!stats.isFile() || stats.size < 12 || stats.size > MAX_LOGO_BYTES) throw new Error('Logo must be an image file no larger than 5 MB');
   const data = fs.readFileSync(sourcePath);
   const valid = ext === '.png' ? data.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))
     : data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff;
@@ -175,7 +172,7 @@ function storeEventLogoPath(userDataPath: string, eventId: string, sourcePath: s
 }
 
 export function setEventLogo(userDataPath: string, eventId: unknown, sourcePath: unknown): string {
-  if (typeof eventId !== 'string' || !/^[a-z0-9-]{1,64}$/i.test(eventId) || typeof sourcePath !== 'string') throw new Error('Invalid logo request');
+  if (!isEventId(eventId) || typeof sourcePath !== 'string') throw new Error('Invalid logo request');
   const db = openDatabase(userDataPath);
   try { if (!db.prepare('SELECT 1 FROM events WHERE id = ?').get(eventId)) throw new Error('Event not found'); }
   finally { db.close(); }
@@ -187,7 +184,7 @@ export function setEventLogo(userDataPath: string, eventId: unknown, sourcePath:
 }
 
 export function getEventLogoDataUrl(userDataPath: string, eventId: unknown): string | null {
-  if (typeof eventId !== 'string' || !/^[a-z0-9-]{1,64}$/i.test(eventId)) return null;
+  if (!isEventId(eventId)) return null;
   const db = openDatabase(userDataPath);
   let logoPath: string | null;
   try { logoPath = (db.prepare('SELECT logo_path FROM events WHERE id = ?').get(eventId) as { logo_path: string | null } | undefined)?.logo_path ?? null; }
@@ -268,7 +265,7 @@ export function listUnfinishedSessions(userDataPath: string): UnfinishedSession[
 }
 
 export function loadSession(userDataPath: string, sessionId: unknown): SessionRecord {
-  if (typeof sessionId !== 'string' || !/^[0-9a-f-]{36}$/i.test(sessionId)) throw new Error('Invalid session id');
+  if (!isSessionId(sessionId)) throw new Error('Invalid session id');
   const database = openDatabase(userDataPath);
   try {
     const session = database.prepare(`SELECT s.id, s.event_id AS eventId, e.name AS eventName, s.status,
@@ -303,7 +300,7 @@ export async function saveOriginalPhoto(
   width: unknown,
   height: unknown,
 ): Promise<{ photoId: string; width: number; height: number }> {
-  if (typeof sessionId !== 'string' || !/^[0-9a-f-]{36}$/i.test(sessionId) || !Number.isInteger(slotNumber) ||
+  if (!isSessionId(sessionId) || !Number.isInteger(slotNumber) ||
       !Number.isInteger(width) || !Number.isInteger(height) || (width as number) < 1 || (height as number) < 1 ||
       (width as number) > 20000 || (height as number) > 20000) throw new Error('Invalid capture details');
   const bytes = toBuffer(data);
@@ -352,7 +349,7 @@ export async function saveRetakeOriginalPhoto(
   width: unknown,
   height: unknown,
 ): Promise<{ photoId: string; width: number; height: number }> {
-  if (typeof sessionId !== 'string' || !/^[0-9a-f-]{36}$/i.test(sessionId) || !Number.isInteger(slotNumber) ||
+  if (!isSessionId(sessionId) || !Number.isInteger(slotNumber) ||
       !Number.isInteger(width) || !Number.isInteger(height) || (width as number) < 1 || (height as number) < 1 ||
       (width as number) > 20000 || (height as number) > 20000) throw new Error('Invalid retake details');
   const bytes = toBuffer(data);
@@ -390,8 +387,7 @@ export async function saveRetakeOriginalPhoto(
 }
 
 export async function commitRetake(userDataPath: string, sessionId: unknown, slotNumber: unknown, newPhotoId: unknown): Promise<void> {
-  if (typeof sessionId !== 'string' || !/^[0-9a-f-]{36}$/i.test(sessionId) || !Number.isInteger(slotNumber) ||
-      typeof newPhotoId !== 'string' || !/^[0-9a-f-]{36}$/i.test(newPhotoId)) throw new Error('Invalid retake request');
+  if (!isSessionId(sessionId) || !Number.isInteger(slotNumber) || !isRecordId(newPhotoId)) throw new Error('Invalid retake request');
   const database = openDatabase(userDataPath);
   const paths = getPaths(userDataPath);
   let row: { slot_id: string; event_id: string; current_id: string; previous_id: string | null; retake_limit: number; used: number;
@@ -469,7 +465,7 @@ export async function commitRetake(userDataPath: string, sessionId: unknown, slo
 }
 
 export async function revertRetake(userDataPath: string, sessionId: unknown, slotNumber: unknown): Promise<void> {
-  if (typeof sessionId !== 'string' || !/^[0-9a-f-]{36}$/i.test(sessionId) || !Number.isInteger(slotNumber)) throw new Error('Invalid revert request');
+  if (!isSessionId(sessionId) || !Number.isInteger(slotNumber)) throw new Error('Invalid revert request');
   const database = openDatabase(userDataPath);
   let row: { slot_id: string; event_id: string; current_id: string; previous_id: string; current_original: string; current_download: string | null;
     previous_original: string; previous_download: string | null } | undefined;
@@ -499,8 +495,7 @@ export async function revertRetake(userDataPath: string, sessionId: unknown, slo
 }
 
 export async function saveSessionOutput(userDataPath: string, sessionIdValue: unknown, data: unknown, widthValue: unknown, heightValue: unknown): Promise<string> {
-  if (typeof sessionIdValue !== 'string' || !/^[0-9a-f-]{36}$/i.test(sessionIdValue) ||
-      !Number.isInteger(widthValue) || !Number.isInteger(heightValue)) throw new Error('Invalid finished image details');
+  if (!isSessionId(sessionIdValue) || !Number.isInteger(widthValue) || !Number.isInteger(heightValue)) throw new Error('Invalid finished image details');
   const bytes = toBuffer(data);
   const database = openDatabase(userDataPath);
   const paths = getPaths(userDataPath);
@@ -520,7 +515,7 @@ export async function saveSessionOutput(userDataPath: string, sessionIdValue: un
 }
 
 export function createSessionShareLink(userDataPath: string, sessionIdValue: unknown, baseUrlValue: unknown): { url: string; expiresAt: string } {
-  if (typeof sessionIdValue !== 'string' || !/^[0-9a-f-]{36}$/i.test(sessionIdValue) || typeof baseUrlValue !== 'string') throw new Error('Invalid share-link request');
+  if (!isSessionId(sessionIdValue) || typeof baseUrlValue !== 'string') throw new Error('Invalid share-link request');
   let baseUrl: URL;
   try { baseUrl = new URL(baseUrlValue); } catch { throw new Error('Configure a valid HTTPS download URL first'); }
   if (baseUrl.protocol !== 'https:' || baseUrl.username || baseUrl.password || baseUrl.search || baseUrl.hash || baseUrl.pathname !== '/') throw new Error('Download URL must be an HTTPS site origin');
@@ -537,7 +532,7 @@ export function createSessionShareLink(userDataPath: string, sessionIdValue: unk
 }
 
 export function getLatestSessionPrintInfo(userDataPath: string, sessionIdValue: unknown): { imagePath: string; width: number; height: number } {
-  if (typeof sessionIdValue !== 'string' || !/^[0-9a-f-]{36}$/i.test(sessionIdValue)) throw new Error('Invalid session id');
+  if (!isSessionId(sessionIdValue)) throw new Error('Invalid session id');
   const database = openDatabase(userDataPath);
   const paths = getPaths(userDataPath);
   try {
@@ -552,7 +547,7 @@ export function getLatestSessionPrintInfo(userDataPath: string, sessionIdValue: 
 }
 
 export async function saveDownloadCopy(userDataPath: string, photoId: unknown, data: unknown): Promise<void> {
-  if (typeof photoId !== 'string' || !/^[0-9a-f-]{36}$/i.test(photoId)) throw new Error('Invalid photo id');
+  if (!isRecordId(photoId)) throw new Error('Invalid photo id');
   const bytes = toBuffer(data);
   const database = openDatabase(userDataPath);
   let row: { original_path: string; session_id: string; photo_state: string } | undefined;
@@ -588,7 +583,7 @@ export async function saveDownloadCopy(userDataPath: string, photoId: unknown, d
 }
 
 export function readOriginalPhoto(userDataPath: string, photoId: unknown): Uint8Array {
-  if (typeof photoId !== 'string' || !/^[0-9a-f-]{36}$/i.test(photoId)) throw new Error('Invalid photo id');
+  if (!isRecordId(photoId)) throw new Error('Invalid photo id');
   const database = openDatabase(userDataPath);
   const paths = getPaths(userDataPath);
   try {
@@ -610,11 +605,8 @@ export async function exportEventFolder(userDataPath: string, eventIdValue: unkn
   finally { database.close(); }
   if (!event) throw new Error('Event not found');
   const destinationRoot = path.resolve(destinationRootValue);
-  const overlaps = (first: string, second: string): boolean => {
-    const a = path.resolve(first); const b = path.resolve(second);
-    return a === b || a.startsWith(`${b}${path.sep}`) || b.startsWith(`${a}${path.sep}`);
-  };
-  if (overlaps(destinationRoot, paths.photosDirectory) || overlaps(destinationRoot, paths.backupDirectory)) {
+  if (isOverlappingPath(destinationRoot, path.resolve(paths.photosDirectory), path.sep) ||
+      isOverlappingPath(destinationRoot, path.resolve(paths.backupDirectory), path.sep)) {
     throw new Error('Choose an export folder outside the booth photos and backup folders');
   }
   const photosSource = ensureInside(paths.photosDirectory, path.join(paths.photosDirectory, event.id));
@@ -663,11 +655,11 @@ async function copySessionOriginalsToBackup(userDataPath: string, sessionId: str
 }
 
 export async function abandonSession(userDataPath: string, sessionId: unknown): Promise<void> {
-  if (typeof sessionId !== 'string' || !/^[0-9a-f-]{36}$/i.test(sessionId)) throw new Error('Invalid session id');
+  if (!isSessionId(sessionId)) throw new Error('Invalid session id');
   await copySessionOriginalsToBackup(userDataPath, sessionId, 'abandoned');
 }
 
 export async function discardSession(userDataPath: string, sessionId: unknown): Promise<void> {
-  if (typeof sessionId !== 'string' || !/^[0-9a-f-]{36}$/i.test(sessionId)) throw new Error('Invalid session id');
+  if (!isSessionId(sessionId)) throw new Error('Invalid session id');
   await copySessionOriginalsToBackup(userDataPath, sessionId, 'discarded');
 }

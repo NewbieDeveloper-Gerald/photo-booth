@@ -3,6 +3,8 @@ import QRCode from 'qrcode';
 import { createRoot } from 'react-dom/client';
 import { canRetake, isValidRetakeLimit, retakesRemaining } from '../core/retakes';
 import { captureOriginalJpeg, createDownloadCopy } from '../core/photo-pipeline';
+import { toErrorMessage } from '../shared/errors';
+import { CAPTURE_REVIEW_PAUSE_MS, MAX_DISK_WARNING_GB, SESSION_IDLE_TIMEOUT_MS } from '../shared/constants/limits';
 import { coverCrop } from '../core/layout';
 import { decideAutoPrint } from '../core/printing';
 import { getLayoutPreset, layoutPresets } from '../core/layouts';
@@ -377,7 +379,7 @@ function App(): React.JSX.Element {
 
   useEffect(() => {
     if ((screen !== 'capturing' && screen !== 'review') || !sessionId || retakeBusySlot !== null) return undefined;
-    const remaining = Math.max(0, 90_000 - (Date.now() - lastActivity));
+    const remaining = Math.max(0, SESSION_IDLE_TIMEOUT_MS - (Date.now() - lastActivity));
     const timer = window.setTimeout(() => { void abandonForIdle(sessionId); }, remaining);
     return () => window.clearTimeout(timer);
   }, [abandonForIdle, lastActivity, retakeBusySlot, screen, sessionId]);
@@ -423,7 +425,7 @@ function App(): React.JSX.Element {
       try {
         await saveCapturedSlot(activeSessionId, slotNumber);
         setStatus(`Photo ${slotNumber} saved`);
-        await wait(1300);
+        await wait(CAPTURE_REVIEW_PAUSE_MS);
         if (sequenceCancelled.current) return;
         setPhotoPreviewUrl((current) => { if (current) URL.revokeObjectURL(current); return ''; });
       } catch (error) {
@@ -431,7 +433,7 @@ function App(): React.JSX.Element {
         setCountdown(null);
         setScreen('ready');
         setStatus('Session paused · saved photos are safe');
-        setErrorMessage(error instanceof Error ? error.message : 'Capture failed. Resume this session to continue.');
+        setErrorMessage(toErrorMessage(error, 'Capture failed. Resume this session to continue.'));
         setSessionId('');
         await refreshUnfinishedSessions();
         return;
@@ -472,7 +474,7 @@ function App(): React.JSX.Element {
       await captureSlots(created.sessionId, Array.from({ length: created.shots }, (_, index) => index + 1), created.shots);
     } catch (error) {
       setScreen('ready');
-      setErrorMessage(error instanceof Error ? error.message : 'Could not start the session.');
+      setErrorMessage(toErrorMessage(error, 'Could not start the session.'));
     } finally { setBusy(false); }
   };
 
@@ -485,7 +487,7 @@ function App(): React.JSX.Element {
   const handleSelectEvent = async (eventId: string): Promise<void> => {
     if (!window.photobooth || !eventId) return;
     try { await loadEventBrand(await window.photobooth.selectActiveEvent(eventId)); setEvents(await window.photobooth.listEvents()); setEventMessage('Active event changed.'); }
-    catch (error) { setEventMessage(error instanceof Error ? error.message : 'Could not select event.'); }
+    catch (error) { setEventMessage(toErrorMessage(error, 'Could not select event.')); }
   };
 
   const handleNewEvent = (): void => {
@@ -501,7 +503,7 @@ function App(): React.JSX.Element {
       await loadEventBrand(active);
       setEvents(await window.photobooth.listEvents());
       setEventMessage('Event saved and selected as active.');
-    } catch (error) { setEventMessage(error instanceof Error ? error.message : 'Could not save event.'); }
+    } catch (error) { setEventMessage(toErrorMessage(error, 'Could not save event.')); }
   };
 
   const handleDuplicateEvent = async (): Promise<void> => {
@@ -512,7 +514,7 @@ function App(): React.JSX.Element {
       await loadEventBrand(active);
       setEvents(await window.photobooth.listEvents());
       setEventMessage('Event duplicated and selected. Edit the copy, then save.');
-    } catch (error) { setEventMessage(error instanceof Error ? error.message : 'Could not duplicate event.'); }
+    } catch (error) { setEventMessage(toErrorMessage(error, 'Could not duplicate event.')); }
   };
 
   const handleChooseEventLogo = async (): Promise<void> => {
@@ -528,7 +530,7 @@ function App(): React.JSX.Element {
       }
       const logo = await window.photobooth.chooseEventLogo(eventId);
       if (logo) { const active = await window.photobooth.getActiveEvent(); await loadEventBrand(active); setEvents(await window.photobooth.listEvents()); setEventMessage('Logo copied into the booth event assets.'); }
-    } catch (error) { setEventMessage(error instanceof Error ? error.message : 'Could not add logo.'); }
+    } catch (error) { setEventMessage(toErrorMessage(error, 'Could not add logo.')); }
   };
 
   const savePin = async (): Promise<void> => {
@@ -540,7 +542,7 @@ function App(): React.JSX.Element {
       setAdminLocked(false);
       setPinError('Admin PIN saved. Lock the booth before guests use it.');
       setPinDraft(''); setPinConfirm(''); setCurrentPinDraft('');
-    } catch (error) { setPinError(error instanceof Error ? error.message : 'Could not save admin PIN.'); }
+    } catch (error) { setPinError(toErrorMessage(error, 'Could not save admin PIN.')); }
   };
 
   const unlockAdmin = async (): Promise<void> => {
@@ -603,7 +605,7 @@ function App(): React.JSX.Element {
       setRetakeBusySlot(null);
       setScreen('ready');
       setSessionId('');
-      setErrorMessage(error instanceof Error ? error.message : 'Could not resume the session. Saved originals are safe.');
+      setErrorMessage(toErrorMessage(error, 'Could not resume the session. Saved originals are safe.'));
       await refreshUnfinishedSessions();
     } finally { setBusy(false); }
   };
@@ -617,7 +619,7 @@ function App(): React.JSX.Element {
       setStatus('Session discarded; saved originals were backed up.');
       await refreshUnfinishedSessions();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Could not back up the session. It remains available.');
+      setErrorMessage(toErrorMessage(error, 'Could not back up the session. It remains available.'));
     } finally { setBusy(false); }
   };
 
@@ -632,7 +634,7 @@ function App(): React.JSX.Element {
         setLastActivity(Date.now());
         await loadReviewSession(sessionId);
         await refreshUnfinishedSessions();
-      } catch (error) { setErrorMessage(error instanceof Error ? error.message : 'Could not finish the saved retake.'); }
+      } catch (error) { setErrorMessage(toErrorMessage(error, 'Could not finish the saved retake.')); }
       finally { setRetakeBusySlot(null); setBusy(false); }
       return;
     }
@@ -658,7 +660,7 @@ function App(): React.JSX.Element {
       setPhotoPreviewUrl((current) => { if (current) URL.revokeObjectURL(current); return ''; });
       await refreshUnfinishedSessions();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Retake failed. Your saved photos are safe.');
+      setErrorMessage(toErrorMessage(error, 'Retake failed. Your saved photos are safe.'));
       if (sessionId) await loadReviewSession(sessionId).catch(() => undefined);
       await refreshUnfinishedSessions();
     } finally { setRetakeBusySlot(null); }
@@ -673,7 +675,7 @@ function App(): React.JSX.Element {
       await loadReviewSession(sessionId);
       setStatus(`Previous photo restored in slot ${slot.slotNumber}`);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Could not restore the previous photo.');
+      setErrorMessage(toErrorMessage(error, 'Could not restore the previous photo.'));
     } finally { setBusy(false); }
   };
 
@@ -689,7 +691,7 @@ function App(): React.JSX.Element {
     try {
       const result = await bridge.printSessionOutput(activeSessionId, selectedPrinterName);
       setPrintStatus(result.success ? `Done · ${selectedPrinterName}` : `Failed · ${result.error ?? 'printer error'}`);
-    } catch (error) { setPrintStatus(`Failed · ${error instanceof Error ? error.message : 'printer error'}`); }
+    } catch (error) { setPrintStatus(`Failed · ${toErrorMessage(error, 'printer error')}`); }
   };
 
   const handleReprint = async (): Promise<void> => {
@@ -714,7 +716,7 @@ function App(): React.JSX.Element {
           nextShareUrl = link.url;
           qrDataUrl = await QRCode.toDataURL(link.url, { width: 256, margin: 1, errorCorrectionLevel: 'Q' });
           setShareStatus(`Link expires ${new Date(link.expiresAt).toLocaleDateString()}`);
-        } catch (error) { setShareStatus(error instanceof Error ? error.message : 'QR downloads are not available.'); }
+        } catch (error) { setShareStatus(toErrorMessage(error, 'QR downloads are not available.')); }
       } else setShareStatus('Set the public HTTPS download URL on the start screen to enable QR downloads.');
       const blob = await renderFinishedLayout(reviewRecord, event.name, layout, qrDataUrl || undefined, { primaryColor: event.primaryColor, accentColor: event.accentColor, thankYouText: event.thankYouText, logoDataUrl: eventLogoDataUrl });
       const savedPath = await window.photobooth.saveSessionOutput(sessionId, await blobBytes(blob), layout.width, layout.height);
@@ -727,7 +729,7 @@ function App(): React.JSX.Element {
       const autoPrint = decideAutoPrint(event, selectedPrinterName);
       if (autoPrint.shouldPrint) await sendPrintJob(sessionId);
       else setPrintStatus(autoPrint.status);
-    } catch (error) { setErrorMessage(error instanceof Error ? error.message : 'Could not build the finished layout. Your photos are safe.'); }
+    } catch (error) { setErrorMessage(toErrorMessage(error, 'Could not build the finished layout. Your photos are safe.')); }
     finally { setBusy(false); }
   };
 
@@ -747,7 +749,7 @@ function App(): React.JSX.Element {
   const handleDiskWarningChange = (value: string): void => setDiskWarningGB(value);
   const saveDiskWarning = (): void => {
     const threshold = Number(diskWarningGB);
-    if (!Number.isFinite(threshold) || threshold < 0 || threshold > 1000) { setDiskWarningGB('2'); return; }
+    if (!Number.isFinite(threshold) || threshold < 0 || threshold > MAX_DISK_WARNING_GB) { setDiskWarningGB('2'); return; }
     setDiskWarningGB(String(threshold));
     void savePreference('lowDiskWarningGB', String(threshold)).catch(() => setErrorMessage('Could not save the disk warning threshold.'));
   };
@@ -758,7 +760,7 @@ function App(): React.JSX.Element {
     try {
       const exportedTo = await window.photobooth.exportEvent(event.id);
       if (exportedTo) setStatus(`Event exported to ${exportedTo}`);
-    } catch (error) { setErrorMessage(error instanceof Error ? error.message : 'Event export failed. Your photos remain safe.'); }
+    } catch (error) { setErrorMessage(toErrorMessage(error, 'Event export failed. Your photos remain safe.')); }
     finally { setBusy(false); }
   };
 
@@ -770,7 +772,7 @@ function App(): React.JSX.Element {
       const updatedEvent = await window.photobooth.setActiveEventRetakeLimit(limit);
       setEvent(updatedEvent);
       setRetakeLimitDraft(updatedEvent.retakeLimit === -1 ? '' : String(updatedEvent.retakeLimit));
-    } catch (error) { setErrorMessage(error instanceof Error ? error.message : 'Could not save the event retake limit.'); }
+    } catch (error) { setErrorMessage(toErrorMessage(error, 'Could not save the event retake limit.')); }
     finally { setBusy(false); }
   };
 
@@ -859,7 +861,7 @@ function App(): React.JSX.Element {
         {screen === 'ready' && <section className="admin-security-card" aria-label="Operator security">
           {!pinConfigured ? <><p className="eyebrow">FIRST-TIME SETUP</p><h2>Create admin PIN</h2><p>Set a PIN before starting guest sessions. Use 6 to 12 digits and keep it private.</p><label>New PIN<input aria-label="New admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinDraft} onChange={(e) => setPinDraft(e.target.value.replace(/\D/g, ''))} /></label><label>Confirm PIN<input aria-label="Confirm admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinConfirm} onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, ''))} /></label><button type="button" onClick={() => void savePin()}>Save admin PIN</button></>
             : adminLocked ? <><p className="eyebrow">GUEST MODE</p><h2>Booth locked</h2><p>Operator settings are hidden. Enter the admin PIN to unlock them.</p>{showUnlock ? <><label>Admin PIN<input aria-label="Admin PIN to unlock settings" type="password" inputMode="numeric" maxLength={12} autoComplete="current-password" value={currentPinDraft} onChange={(e) => setCurrentPinDraft(e.target.value.replace(/\D/g, ''))} onKeyDown={(e) => { if (e.key === 'Enter') void unlockAdmin(); }} /></label><button type="button" onClick={() => void unlockAdmin()}>Unlock settings</button><button type="button" className="secondary-button" onClick={() => { setShowUnlock(false); setCurrentPinDraft(''); setPinError(''); }}>Cancel</button></> : <button type="button" onClick={() => { setShowUnlock(true); setPinError(''); }}>Operator unlock</button>}</>
-              : <><p className="eyebrow">OPERATOR SETTINGS</p><h2>Admin access</h2><label>Current PIN<input aria-label="Current admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="current-password" value={currentPinDraft} onChange={(e) => setCurrentPinDraft(e.target.value.replace(/\D/g, ''))} /></label><label>New PIN<input aria-label="Replacement admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinDraft} onChange={(e) => setPinDraft(e.target.value.replace(/\D/g, ''))} /></label><label>Confirm new PIN<input aria-label="Confirm replacement PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinConfirm} onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, ''))} /></label><button type="button" onClick={() => void savePin()}>Change admin PIN</button><label>Consent notice shown before every session<textarea aria-label="Consent notice wording" maxLength={1200} value={consentText} onChange={(e) => setConsentText(e.target.value)} onBlur={() => void savePreference('consentText', consentText).catch((error: unknown) => setPinError(error instanceof Error ? error.message : 'Could not save consent text.'))} /></label><p className="consent-retention-note">Current default explains local retention and 30-day QR-link expiry; it does not claim automatic photo deletion.</p><button type="button" onClick={() => { setAdminLocked(true); setShowUnlock(false); setPinError(''); setPinDraft(''); setPinConfirm(''); setCurrentPinDraft(''); }}>Lock guest mode</button><button type="button" className="secondary-button" onClick={() => { setExitPrompt(true); setExitPin(''); setPinError(''); }}>Exit booth…</button></>}
+              : <><p className="eyebrow">OPERATOR SETTINGS</p><h2>Admin access</h2><label>Current PIN<input aria-label="Current admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="current-password" value={currentPinDraft} onChange={(e) => setCurrentPinDraft(e.target.value.replace(/\D/g, ''))} /></label><label>New PIN<input aria-label="Replacement admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinDraft} onChange={(e) => setPinDraft(e.target.value.replace(/\D/g, ''))} /></label><label>Confirm new PIN<input aria-label="Confirm replacement PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinConfirm} onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, ''))} /></label><button type="button" onClick={() => void savePin()}>Change admin PIN</button><label>Consent notice shown before every session<textarea aria-label="Consent notice wording" maxLength={1200} value={consentText} onChange={(e) => setConsentText(e.target.value)} onBlur={() => void savePreference('consentText', consentText).catch((error: unknown) => setPinError(toErrorMessage(error, 'Could not save consent text.')))} /></label><p className="consent-retention-note">Current default explains local retention and 30-day QR-link expiry; it does not claim automatic photo deletion.</p><button type="button" onClick={() => { setAdminLocked(true); setShowUnlock(false); setPinError(''); setPinDraft(''); setPinConfirm(''); setCurrentPinDraft(''); }}>Lock guest mode</button><button type="button" className="secondary-button" onClick={() => { setExitPrompt(true); setExitPin(''); setPinError(''); }}>Exit booth…</button></>}
           {pinError && <p className="pin-error" role="alert">{pinError}</p>}
         </section>}
         {consentOpen && <div className="modal-backdrop"><section className="consent-dialog" role="dialog" aria-modal="true" aria-labelledby="consent-heading"><p className="eyebrow">BEFORE WE TAKE A PHOTO</p><h2 id="consent-heading">Please read and agree</h2><p className="consent-copy">{consentText}</p><div className="dialog-actions"><button type="button" className="secondary-button" onClick={() => setConsentOpen(false)}>Not now</button><button type="button" className="start-button" onClick={() => void confirmConsentAndStart()}>Agree and continue</button></div></section></div>}

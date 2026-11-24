@@ -1,3 +1,5 @@
+import { MICRONS_PER_INCH, PRINT_DPI } from '../shared/constants/limits';
+
 export type PrinterInfo = { name: string; displayName: string; isDefault: boolean; status: number };
 export type PrintJobOptions = { printerName: string; widthMicrons: number; heightMicrons: number };
 export type PrintResult = { success: boolean; error?: string };
@@ -15,7 +17,7 @@ export class MockPrinter implements PrinterDevice {
   }
 }
 
-export function pageSizeMicrons(widthPixels: number, heightPixels: number, dpi = 300): { widthMicrons: number; heightMicrons: number } {
+export function pageSizeMicrons(widthPixels: number, heightPixels: number, dpi = PRINT_DPI): { widthMicrons: number; heightMicrons: number } {
   if (![widthPixels, heightPixels, dpi].every((value) => Number.isInteger(value) && value > 0)) throw new RangeError('Print dimensions and DPI must be positive integers');
-  return { widthMicrons: Math.round(widthPixels / dpi * 25_400), heightMicrons: Math.round(heightPixels / dpi * 25_400) };
+  return { widthMicrons: Math.round(widthPixels / dpi * MICRONS_PER_INCH), heightMicrons: Math.round(heightPixels / dpi * MICRONS_PER_INCH) };
 }
