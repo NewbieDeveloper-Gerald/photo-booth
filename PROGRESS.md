@@ -1,6 +1,6 @@
 # Progress
 
-Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`.
+Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`; F20 implemented on `arena/1010967b-photo-booth`.
 
 ## Current status
 
@@ -25,9 +25,10 @@ Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `4215
 - **F18 (print queue, counts and limits): merged** (`6a0abb9`), awaiting the manual
   pause/resume print test below.
 - **F19 (attract screen): merged** (`3425d9d`), awaiting the two-minute idle check below.
-- **F20–F29: not started.**
+- **F20 (photo filters): implemented**, awaiting the per-look print check below.
+- **F21–F29: not started.**
 - Automated verification today: `npm run typecheck`, `npm run lint`, `npm test`
-  (**344 tests in 60 files**), `npm run build` (Vite production build) all pass.
+  (**365 tests in 64 files**), `npm run build` (Vite production build) all pass.
   `npm run test:e2e` exists but cannot run in this environment (no browser runtime).
 
 ## Verification gaps (unrecorded or impossible here)
@@ -381,6 +382,41 @@ Per-slide timing, sound, a video background behind the live camera preview, and 
 previous guests' photos as the loop are not implemented; the loop uses the operator's files
 (or this event's layouts) only.
 
+## F20. Photo filters (implemented)
+
+- **Three looks plus the original** (`features/capture/domain/photo-filters.ts`, pure): black &
+  white (`grayscale(1) contrast(1.06)`), warm (`sepia(0.32) saturate(1.22) brightness(1.04)`)
+  and beauty — the photo drawn sharp, then a blurred copy over it at 35 % alpha, which is the
+  cheapest honest smoothing a 2D canvas can do. A look is a list of draw passes, so the caller
+  never special-cases "no filter".
+- **Where it is baked in**: the 2048 px/q80 guest copy (drawn through the look *before* the
+  F17 watermark), and the finished layout, so the print and the strip's 4 × 6 cut sheet carry
+  it too. The full-resolution original never passes through the painter — `/originals` stay
+  unfiltered, which is what the share page's ZIP and the event export contain.
+- **Per-event setting** (migration `016_photo_filters`): `filter_id` (default `none`) and
+  `filter_choice_enabled` (default off). Locked = a look with the choice off; guests choose =
+  the look is the preselected default on the picker.
+- **Per-session record**: `sessions.filter_id` is stored when the session is created, so a
+  reprint, a late render or a resumed session keeps the look the guest saw. The data layer
+  enforces the rule — a locked event ignores whatever filter the renderer asks for.
+- **UI**: a look picker on the start screen (only when the event lets guests choose) with a
+  filtered swatch per look; event setup gained a *Photo look* block; review thumbnails are
+  shown with the look's CSS filter so the guest sees what the print will be.
+- The live camera preview is deliberately left unfiltered: a 4K stream should not pay for a
+  blur every frame, and the captured original must stay clean anyway.
+
+### F20 manual check
+
+Take one session with each look on a locked event and one with the picker, then inspect
+`photos/<event>/<session>/` : the originals are untouched, the `-guest` copies and the finished
+`finished-*.jpg` (and its print) carry the look. Print the black & white and the beauty looks on
+the real printer and check the skin tones and that no halo bleeds outside the photo frames.
+
+### F20 out of scope (later features)
+
+A per-photo look, a live filtered preview of the camera, LUT files, filter strength sliders and
+applying a look to the event logo or the brand bands are not implemented.
+
 ## Feature log
 
 ### F0. Project setup
@@ -453,6 +489,8 @@ previous guests' photos as the loop are not implemented; the loop uses the opera
 - Attract media is stored as files under the event's asset folder rather than as rows or data
   URLs: the loop streams blob URLs once per event, and deleting an event already removes that
   folder.
+- A photo look is a list of canvas draw passes, applied where pixels are produced (guest copy,
+  finished layout) and never to the stored original, so a look can never cost a photo.
 - The print queue lives in SQLite, not in memory, and a job is claimed (`queued` → `printing`,
   `attempts + 1`) before the printer is called, so a restart or a second tick cannot print a
   sheet twice. The per-session limit counts queued/printing/done/failed, never cancelled.
@@ -468,7 +506,9 @@ previous guests' photos as the loop are not implemented; the loop uses the opera
   job is retried only by an explicit reprint (a loose cable should not burn paper).
 - The attract loop keeps the camera stream alive behind it, so the first photo after a touch
   does not wait for a camera restart; the stream is hidden, never sent anywhere.
-- `src/ui/main.tsx` still holds the session flow and the event/PIN forms (~1200 lines).
+- `src/ui/main.tsx` still holds the session flow and the event/PIN forms (~1300 lines).
+- `ctx.filter` needs a canvas2D implementation that supports filters (Chromium does); anywhere
+  it silently ignores the string, a look simply draws the photo unfiltered rather than failing.
 - The canvas painter itself is untested (jsdom has no canvas); its geometry is pinned by
   `template-paint-plan.test.ts` and by the manual print checklist.
 - The layout editor has no zoom, multi-select or copy/paste, and text is edited in the

@@ -1,6 +1,7 @@
 import { bytesToJpegBlob } from '../../../shared/dom/blob';
 import type { SessionRecord } from '../../../shared/types/session';
 import { coverCrop } from './cover-crop';
+import { drawFiltered, type PhotoFilterId } from '../../capture/domain/photo-filters';
 import type { QrElement, TemplateDocument } from './template-document';
 import { computeTextPlacement, paintOrder, type PaintContext } from './template-paint-plan';
 
@@ -29,7 +30,7 @@ export async function renderTemplateLayout(
   bridge: TemplateBridge,
   record: SessionRecord,
   template: TemplateDocument,
-  options: { eventName: string; qrDataUrl?: string; branding?: TemplateBranding } = { eventName: '' },
+  options: { eventName: string; qrDataUrl?: string; branding?: TemplateBranding; photoFilter?: PhotoFilterId } = { eventName: '' },
 ): Promise<Blob> {
   const canvas = document.createElement('canvas');
   canvas.width = template.page.widthPx;
@@ -57,7 +58,11 @@ export async function renderTemplateLayout(
         const crop = coverCrop(bitmap.width, bitmap.height, element.width, element.height);
         context.fillStyle = '#ffffff';
         context.fillRect(element.x - element.frameGutter / 2, element.y - element.frameGutter / 2, element.width + element.frameGutter, element.height + element.frameGutter);
-        context.drawImage(bitmap, crop.sx, crop.sy, crop.sw, crop.sh, element.x, element.y, element.width, element.height);
+        // The session's look is baked into the finished image (and so into the print); the
+        // original stays clean (F20). The clip keeps a blurred pass inside the photo box.
+        drawFiltered(context, options.photoFilter ?? 'none',
+          (drawing) => drawing.drawImage(bitmap, crop.sx, crop.sy, crop.sw, crop.sh, element.x, element.y, element.width, element.height),
+          { x: element.x, y: element.y, width: element.width, height: element.height });
       } else if (element.kind === 'text') {
         const placement = computeTextPlacement(element, paint);
         if (!placement.text) continue;

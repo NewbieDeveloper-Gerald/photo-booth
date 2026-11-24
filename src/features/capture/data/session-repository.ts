@@ -8,27 +8,45 @@ import { ensureInside } from '../../../shared/fs/safe-paths';
 import { isSessionId } from '../../../shared/validation/identifiers';
 import { loadTemplate } from '../../layouts/data/template-repository';
 import { getActiveEvent } from '../../events/data/event-repository';
+import { isPhotoFilterId } from '../domain/photo-filters';
+import type { PhotoFilterId } from '../../../shared/types/photo-filter';
 import type { ActiveEvent } from '../../../shared/types/event';
 import type { SessionRecord, UnfinishedSession } from '../../../shared/types/session';
 
 /**
- * The template decides how many photos a session takes (F11): 1–6 slots, not the
- * event's advisory shot count. The chosen template id is stored on the session.
+ * The session's look (F20). A locked event wins over anything the renderer asks for, so a
+ * guest cannot dodge the look the operator chose; otherwise the requested one must be real.
  */
-export function createSession(userDataPath: string, layoutIdValue: unknown = 'double-strip-3'): { sessionId: string; event: ActiveEvent; shots: number; layoutId: string } {
+function resolveSessionFilter(event: ActiveEvent, requested: unknown): PhotoFilterId {
+  if (requested === undefined || requested === null) return event.filterId;
+  if (!isPhotoFilterId(requested)) throw new Error('Choose one of the available photo filters');
+  return event.filterChoiceEnabled ? requested : event.filterId;
+}
+
+/**
+ * The template decides how many photos a session takes (F11): 1–6 slots, not the
+ * event's advisory shot count. The chosen template id is stored on the session, and so is
+ * the look (F20), so a reprint or a late render keeps the look the guest was shown.
+ */
+export function createSession(
+  userDataPath: string,
+  layoutIdValue: unknown = 'double-strip-3',
+  filterIdValue?: unknown,
+): { sessionId: string; event: ActiveEvent; shots: number; layoutId: string; filterId: PhotoFilterId } {
   if (typeof layoutIdValue !== 'string' || !layoutIdValue) throw new Error('Choose a layout before starting a session');
   const event = getActiveEvent(userDataPath);
   const template = loadTemplate(userDataPath, layoutIdValue);
+  const filterId = resolveSessionFilter(event, filterIdValue);
   const sessionId = randomUUID();
   const database = openDatabase(userDataPath);
   try {
     database.transaction(() => {
-      database.prepare('INSERT INTO sessions (id, event_id, status, retake_limit, layout_id) VALUES (?, ?, ?, ?, ?)')
-        .run(sessionId, event.id, 'in_progress', event.retakeLimit, template.id);
+      database.prepare('INSERT INTO sessions (id, event_id, status, retake_limit, layout_id, filter_id) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(sessionId, event.id, 'in_progress', event.retakeLimit, template.id, filterId);
       const insertSlot = database.prepare('INSERT INTO slots (id, session_id, slot_number, status) VALUES (?, ?, ?, ?)');
       for (let slot = 1; slot <= template.shots; slot += 1) insertSlot.run(randomUUID(), sessionId, slot, 'empty');
     })();
-    return { sessionId, event, shots: template.shots, layoutId: template.id };
+    return { sessionId, event, shots: template.shots, layoutId: template.id, filterId };
   } finally {
     database.close();
   }
@@ -57,7 +75,7 @@ export function loadSession(userDataPath: string, sessionId: unknown): SessionRe
   const database = openDatabase(userDataPath);
   try {
     const session = database.prepare(`SELECT s.id, s.event_id AS eventId, e.name AS eventName, s.status,
-      s.retakes_used AS retakesUsed, s.retake_limit AS retakeLimit, s.layout_id AS layoutId
+      s.retakes_used AS retakesUsed, s.retake_limit AS retakeLimit, s.layout_id AS layoutId, s.filter_id AS filterId
       FROM sessions s JOIN events e ON e.id = s.event_id WHERE s.id = ?`).get(sessionId) as Omit<SessionRecord, 'slots'> | undefined;
     if (!session) throw new Error('Session not found');
     const slots = database.prepare(`SELECT sl.slot_number AS slotNumber, sl.status,

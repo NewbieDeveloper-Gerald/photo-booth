@@ -7,6 +7,7 @@ import type { DeletionResult, RetentionStatus } from '../features/retention';
 import type { PagePresetId, TemplateDocument, TemplateSummary } from '../features/layouts/domain/template-document';
 import type { PrintJob, PrintQueueSummary } from '../features/printing/domain/print-queue-types';
 import type { AttractMedia } from '../shared/types/attract';
+import type { PhotoFilterId } from '../shared/types/photo-filter';
 
 import type { BoothSettingKey } from '../shared/constants/settings-keys';
 
@@ -51,7 +52,7 @@ declare global {
       exportEvent(eventId: string): Promise<string | null>;
       checkDiskSpace(thresholdGB: number): Promise<boolean>;
       setActiveEventRetakeLimit(limit: number): Promise<ActiveEvent>;
-      createSession(layoutId: string): Promise<{ sessionId: string; event: ActiveEvent; shots: number; layoutId: string }>;
+      createSession(layoutId: string, filterId?: PhotoFilterId): Promise<{ sessionId: string; event: ActiveEvent; shots: number; layoutId: string; filterId: PhotoFilterId }>;
       listTemplates(): Promise<TemplateSummary[]>;
       getTemplate(templateId: string): Promise<TemplateDocument>;
       saveTemplate(document: TemplateDocument): Promise<TemplateSummary[]>;

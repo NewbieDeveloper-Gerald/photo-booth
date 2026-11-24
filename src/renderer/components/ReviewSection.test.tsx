@@ -27,6 +27,7 @@ function session(overrides: Partial<SessionRecord> = {}): SessionRecord {
     eventName: 'Wedding',
     layoutId: 'double-strip-3',
     status: 'review',
+    filterId: 'none',
     retakesUsed: 0,
     retakeLimit: 2,
     slots: [slot(1), slot(2), slot(3)],

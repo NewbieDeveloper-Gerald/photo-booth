@@ -1,3 +1,4 @@
+import type { PhotoFilterId } from './photo-filter';
 import type { WatermarkPosition } from './watermark';
 
 export type ActiveEvent = {
@@ -27,5 +28,8 @@ export type ActiveEvent = {
   /** F19: the idle loop that invites guests in, and how long the booth waits to show it. */
   attractEnabled: boolean;
   attractIdleSeconds: number;
+  /** F20: the look every session uses, and whether guests may pick another one. */
+  filterId: PhotoFilterId;
+  filterChoiceEnabled: boolean;
 };
 export type EventSettings = Omit<ActiveEvent, 'retakeLimit' | 'printEnabled'>;

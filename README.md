@@ -44,6 +44,10 @@ Event setup holds **Prints per session** (1 to 20, default 2, reprints included)
 
 Manual check for each page size: set the event to that template, run one session, **Continue**, and confirm the print fills the sheet with no clipped photos, text or QR, that the 2 × 6 strip really is half the width, and that all four edges are borderless.
 
+## Photo filters (F20)
+
+Guests can be given a look. The event picks one of **Original**, **Black & white**, **Warm** or **Beauty** and either locks it for every session or lets the guest choose on the start screen (the event's look is preselected). A look is applied when pixels are produced: the 2048 px guest download copy (before the watermark) and the finished layout — so the print and the 2 × 6 strip's cut sheet carry the look as well. The full-resolution originals never pass through the painter and stay unfiltered, which is what the event export and the backup versions contain. Review thumbnails are shown with the look's CSS filter so the guest sees what will print; the live camera preview is left unfiltered to keep a 4K stream cheap. The chosen look is stored on the session, so a reprint or a resumed session keeps it — and a locked event overrides any look the guest screen might ask for.
+
 ## Attract screen (F19)
 
 When the booth is idle it invites guests in: after an event-set wait (default 60 seconds, 5 to 600) the operator screen is covered by a full-bleed loop of the event's photos or clips, with the event logo, name, welcome text and a pulsing **Touch to start**. Tapping anywhere returns to the booth screen, where the guest picks a layout (when the event offers more than one) and presses Start. The loop also comes back straight after a session ends. It stays out of the way while a session is unfinished, while the operator has unlocked settings, and while a dialog is open.
