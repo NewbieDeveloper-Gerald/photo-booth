@@ -9,8 +9,8 @@ const summary = (overrides: Partial<PrintQueueSummary> = {}): PrintQueueSummary 
 });
 
 const job = (overrides: Partial<PrintJob> = {}): PrintJob => ({
-  id: 'job-1', sessionId: 'session-1', eventId: 'event-1', printerName: 'DNP QW410', status: 'queued',
-  attempts: 0, error: null, createdAt: '2026-11-24 10:00:00', ...overrides,
+  id: 'job-1', sessionId: 'session-1', eventId: 'event-1', printerName: 'DNP QW410', profileId: null, profileLabel: null,
+  status: 'queued', attempts: 0, error: null, createdAt: '2026-11-24 10:00:00', ...overrides,
 });
 
 describe('PrintQueueCard (F18)', () => {

@@ -6,6 +6,7 @@ import type { UploadQueueSummary } from '../features/sharing/upload-queue/types'
 import type { DeletionResult, RetentionStatus } from '../features/retention';
 import type { PagePresetId, TemplateDocument, TemplateSummary } from '../features/layouts/domain/template-document';
 import type { PrintJob, PrintQueueSummary } from '../features/printing/domain/print-queue-types';
+import type { PrinterProfile, PrinterProfileDraft } from '../features/printing/domain/printer-profile';
 import type { AttractMedia } from '../shared/types/attract';
 import type { PhotoFilterId } from '../shared/types/photo-filter';
 import type { AdminPinAttempt, AdminPinLockout } from '../shared/types/admin-pin';
@@ -60,6 +61,11 @@ declare global {
       getPrintQueueSummary(eventId?: string): Promise<PrintQueueSummary>;
       setPrintQueuePaused(paused: boolean): Promise<boolean>;
       cancelPrintJob(jobId: string): Promise<PrintJob>;
+      listPrinterProfiles(): Promise<PrinterProfile[]>;
+      savePrinterProfile(draft: PrinterProfileDraft): Promise<PrinterProfile>;
+      deletePrinterProfile(profileId: string): Promise<boolean>;
+      markPrinterProfileChecked(profileId: string, checked: boolean): Promise<PrinterProfile>;
+      printProfileTestSheet(profileId: string, printerName?: string): Promise<{ printed: boolean; description: string }>;
       exportEvent(eventId: string): Promise<string | null>;
       checkDiskSpace(thresholdGB: number): Promise<boolean>;
       setActiveEventRetakeLimit(limit: number): Promise<ActiveEvent>;

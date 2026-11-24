@@ -1,7 +1,14 @@
 import { MICRONS_PER_INCH, PRINT_DPI } from '../../../shared/constants/limits';
 
 export type PrinterInfo = { name: string; displayName: string; isDefault: boolean; status: number };
-export type PrintJobOptions = { printerName: string; widthMicrons: number; heightMicrons: number };
+export type PrintJobOptions = {
+  printerName: string;
+  widthMicrons: number;
+  heightMicrons: number;
+  /** Colour settings and cut mode from the saved profile (F25). */
+  filter?: string;
+  cutMode?: 'per-print' | 'per-job' | 'none';
+};
 export type PrintResult = { success: boolean; error?: string };
 
 export interface PrinterDevice {

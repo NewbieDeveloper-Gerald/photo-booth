@@ -5,7 +5,10 @@ import type { PrintJob, PrintQueuePrinter } from './domain/print-queue-types';
 const printer: PrintQueuePrinter = { printImage: async () => ({ success: true }) };
 
 function job(id: string): PrintJob {
-  return { id, sessionId: 'session-1', eventId: 'event-1', printerName: 'DNP QW410', status: 'done', attempts: 1, error: null, createdAt: '2026-11-24 10:00:00' };
+  return {
+    id, sessionId: 'session-1', eventId: 'event-1', printerName: 'DNP QW410', profileId: null, profileLabel: null,
+    status: 'done', attempts: 1, error: null, createdAt: '2026-11-24 10:00:00',
+  };
 }
 
 afterEach(() => { vi.useRealTimers(); });

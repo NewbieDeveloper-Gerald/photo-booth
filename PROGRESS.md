@@ -1,6 +1,6 @@
 # Progress
 
-Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`, F20 as `de322a2`, F21 as `e9564c1`, F22 as `1b3d92c`, F23 as `48fab71`, F24 as `22bff4d`.
+Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`, F20 as `de322a2`, F21 as `e9564c1`, F22 as `1b3d92c`, F23 as `48fab71`, F24 as `22bff4d`, F25 as `PENDING-F25`.
 
 ## Current status
 
@@ -32,9 +32,10 @@ Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `4215
   tablet below.
 - **F23 (GIF and boomerang): merged** (`48fab71`), awaiting the two-phone check below.
 - **F24 (admin dashboard): merged** (`22bff4d`), awaiting the hand-count check below.
-- **F25–F29: not started.**
+- **F25 (printer profiles): merged** (`PENDING-F25`), awaiting the real-printer check below.
+- **F26–F29: not started.**
 - Automated verification today: `npm run typecheck`, `npm run lint`, `npm test`
-  (**466 tests in 83 files**), `npm run build` (Vite production build) all pass.
+  (**495 tests in 87 files**), `npm run build` (Vite production build) all pass.
   `npm run test:e2e` exists but cannot run in this environment (no browser runtime).
 
 ## Verification gaps (unrecorded or impossible here)
@@ -553,6 +554,42 @@ produces an animation from the photos.
 Video (MP4/WebM) output, audio, a per-photo dithering/quantiser beyond 3-3-2, choosing the
 animated extra per session by the guest, and editing the loop (frame order, speed) from the UI.
 
+## F25. Printer profiles (merged)
+
+- **Saved profiles per printer**: model, paper size (real millimetres), cut mode and colour
+  settings, validated against the model's own capabilities — a Selphy cannot be set to cut after
+  every print, and a QW410 cannot be given 6 × 8 paper. One profile per Windows queue, one booth
+  default.
+- **The settings change the printed sheet, not just a label**: the profile's paper sets the page box
+  and the size the driver is asked for, its colour settings become a filter on the image (so mono and
+  ±20 % brightness/contrast/saturation work on any driver), and a 4 × 6 layout is contained in a
+  6 × 8 sheet instead of being stretched. Each queued job records the profile it used, so history
+  still reads after an edit and a waiting sheet keeps its settings.
+- **Test sheet with a tick**: the card prints a test sheet per profile (settings, colour patches,
+  11-step grey ramp, 2 mm frame, hairline pairs) straight to the printer, past the queue so it never
+  spends a guest's print allowance. Ticking "It printed correctly" records the date; changing paper,
+  cut, model or colour clears the tick, because the check no longer describes the settings.
+- **Nothing is claimed as hardware-tested that was not**: the README carries a model table whose
+  "tested on hardware" column says *not yet* for every row, with the steps to fill it in. No printer
+  was attached here.
+- **Test fixtures drove two fixes**: a profile-bound job is printed at the profile's sheet size
+  (152 × 203 mm for 6 × 8), and with no profile at all the queue still falls back to the layout's own
+  1200 × 1800 px sheet, exactly as before F25.
+
+### F25 manual check
+
+For each printer you own: create its profile, load the paper it names, print the test sheet, and
+check the frame (no missing sides = no hidden margin), the hairline pairs (separate = no scaling), the
+grey ramp and patches (no banding or colour cast), then tick it in the app and record the date in the
+README table. Print every template size the booth offers on that printer once — a 4 × 6 strip, a
+6 × 8 poster and a 2 × 6 strip — and confirm the strip is not stretched.
+
+### F25 out of scope (later features)
+
+Per-driver settings the booth cannot see (ink density, overcoat, driver-side colour profiles),
+multiple sheets per job, printer ink/paper level reporting, and automatic model detection from the
+Windows queue name.
+
 ## F24. Admin dashboard (merged)
 
 - **A login-protected dashboard on the booth's own web server**: `/admin` on the share port, so
@@ -682,6 +719,12 @@ charts, and long-term analytics storage — the dashboard reports the booth's re
   including the tablet view mapping and frame sender.
 - The dashboard is reachable from a phone only over the configured tunnel, because the share
   server listens on 127.0.0.1; locally it is the booth computer's browser.
+- Printer profiles are unverified on hardware: no printer was attached while they were built. The
+  README table says *not yet* for every model, and only a test sheet on the real printer can change
+  that. The physical cut is the driver's setting; the profile records the mode but cannot force it.
+- Colour settings are a filter on the printed image (mono, ±20 % brightness/contrast/saturation),
+  not ICC colour management: they fix an obvious cast or brightness problem, they do not calibrate a
+  printer.
 - Dashboard numbers are this booth's records: a guest who downloads a file twice is counted
   twice, and a copy saved elsewhere afterwards cannot be counted at all.
 - The tablet screen is plain HTTP on the LAN: the token keeps strangers out, but anyone who

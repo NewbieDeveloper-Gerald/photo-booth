@@ -208,4 +208,18 @@
 
 /* F24 · the dashboard card: an address, a link and nothing else to think about. */
 .analytics-card { align-items: start; }
+
+/* F25: saved printer profiles */
+.profile-card { display: block; }
+.profile-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.profile-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 10px; }
+.profile-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 10px; }
+.profile-row > div:first-child { display: grid; gap: 2px; }
+.profile-row span { font-size: 0.85em; opacity: 0.8; }
+.profile-checked { color: #7bd88f; }
+.profile-unchecked { color: #f0c674; }
+.profile-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.profile-form { display: grid; gap: 10px; margin-top: 14px; max-width: 520px; }
+.profile-form select, .profile-form input[type='number'], .profile-form input[type='text'] { width: 100%; }
+.profile-note { margin-top: 10px; font-size: 0.9em; }
 .analytics-card .secondary-button { text-decoration: none; }

@@ -1,20 +1,15 @@
 import { BrowserWindow } from 'electron';
 import fs from 'node:fs/promises';
-import { MICRONS_PER_INCH } from '../../src/shared/constants/limits.js';
+import { buildImagePrintDocument, buildTestPrintDocument, type PrintDocumentOptions } from '../../src/features/printing/domain/print-document.js';
+import { printSheet, resolveProfileDetails, type PrinterProfile } from '../../src/features/printing/domain/printer-profile.js';
+import { paperSizeMicrons } from '../../src/features/printing/domain/printer-models.js';
 
-export type PrintDocumentOptions = { widthMicrons: number; heightMicrons: number };
+export type { PrintDocumentOptions };
 
 /** Builds the silent-print document: one image, exact page size, no margins, no scaling. */
 export async function buildPrintDocument(imagePath: string, options: PrintDocumentOptions): Promise<string> {
   const bytes = await fs.readFile(imagePath);
-  const dataUrl = `data:image/jpeg;base64,${bytes.toString('base64')}`;
-  const widthInches = options.widthMicrons / MICRONS_PER_INCH;
-  const heightInches = options.heightMicrons / MICRONS_PER_INCH;
-  return `<!doctype html><html><head><meta charset="utf-8"><style>
-      @page{size:${widthInches}in ${heightInches}in;margin:0}
-      *{box-sizing:border-box}html,body{width:${widthInches}in;height:${heightInches}in;margin:0;padding:0;overflow:hidden}
-      img{display:block;width:100%;height:100%;object-fit:fill}
-      </style></head><body><img src="${dataUrl}" alt="Photobooth print"></body></html>`;
+  return buildImagePrintDocument(`data:image/jpeg;base64,${bytes.toString('base64')}`, options);
 }
 
 /** Sends an HTML document to a named Windows printer through a hidden window. */
@@ -28,7 +23,7 @@ export function printHtml(html: string, printerName: string, options: PrintDocum
   return (async () => {
     try {
       await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
-      await printWindow.webContents.executeJavaScript('document.querySelector("img").decode()');
+      await printWindow.webContents.executeJavaScript('document.querySelector("img")?.decode?.() ?? Promise.resolve()');
       return await new Promise<{ success: boolean; error?: string }>((resolve) => {
         printWindow.webContents.print({
           silent: true,
@@ -46,4 +41,14 @@ export function printHtml(html: string, printerName: string, options: PrintDocum
       if (!printWindow.isDestroyed()) printWindow.close();
     }
   })();
+}
+
+/**
+ * Prints the profile's test sheet (F25): the sheet carries the settings being tested, so the
+ * operator can check margins, grey ramp, colour patches and hairlines on the real printer.
+ */
+export async function printTestSheet(profile: PrinterProfile, printerName: string): Promise<{ success: boolean; error?: string }> {
+  const resolved = resolveProfileDetails(profile);
+  const size = resolved ? printSheet(resolved) : paperSizeMicrons({ id: 'fallback', label: '4 × 6 in', widthMm: 101.6, heightMm: 152.4 });
+  return printHtml(buildTestPrintDocument(profile), printerName, size);
 }

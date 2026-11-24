@@ -12,7 +12,13 @@ type PrintQueueCardProps = {
 /** Only the newest few jobs fit on the operator panel; the rest stay in the database. */
 const VISIBLE_JOBS = 5;
 
+/** The profile is part of the job, so the operator can see which sheet settings went to paper. */
 function describeJob(job: PrintJob): string {
+  const settings = job.profileLabel ? ` · ${job.profileLabel}` : '';
+  return `${step(job)}${settings}`;
+}
+
+function step(job: PrintJob): string {
   switch (job.status) {
     case 'queued': return 'waiting';
     case 'printing': return 'printing now';
