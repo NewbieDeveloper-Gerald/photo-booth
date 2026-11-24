@@ -5,7 +5,8 @@ import type { Server } from 'node:http';
 import { afterEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { initializeStorage } from '../storage/database/initialize';
-import { createSession, saveDownloadCopy, saveOriginalPhoto, saveSessionOutput } from '../capture/node';
+import { createSession, saveDownloadCopy, saveOriginalPhoto, saveSessionAnimation, saveSessionOutput } from '../capture/node';
+import { encodeGif } from '../animation/domain/gif-encoder';
 import { setEventLogo } from '../events/node';
 import { createSessionShareLink } from './node';
 import { createDownloadServer } from './download-server';
@@ -37,6 +38,33 @@ async function fixture(rateLimit?: { windowMs: number; maxRequests: number }): P
 }
 
 describe('private QR download server', () => {
+  it('lists the animated extras next to the photos and serves them as GIFs (F23)', async () => {
+    const { directory, sessionId, token, origin } = await fixture();
+    const gif = new Uint8Array(encodeGif([{ rgba: new Uint8Array(2 * 2 * 4).fill(180) }], { width: 2, height: 2, delayCs: 40 }));
+    await saveSessionAnimation(directory, sessionId, gif, 'gif');
+    await saveSessionAnimation(directory, sessionId, gif, 'boomerang');
+
+    const listing = await fetch(`${origin}/api/v1/session/${token}`);
+    const data = await listing.json() as { files: Array<{ id: string; name: string }> };
+    expect(data.files.map((file) => file.name)).toEqual([
+      'Photo 01.jpg', 'Photo 02.jpg', 'Photo 03.jpg', 'Finished layout.jpg', 'Animated loop.gif', 'Boomerang.gif',
+    ]);
+    const loop = data.files.find((file) => file.name === 'Animated loop.gif')!;
+    const response = await fetch(`${origin}/api/v1/file/${token}/${loop.id}`);
+    expect(response.headers.get('content-type')).toBe('image/gif');
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(gif);
+    // The page shows the loop inline, so it asks for an inline copy of the same bytes.
+    const inline = await fetch(`${origin}/api/v1/file/${token}/${loop.id}?inline=1`);
+    expect(inline.headers.get('content-disposition')).toBe('inline');
+    expect(response.headers.get('content-disposition')).toContain('attachment');
+    const page = await fetch(`${origin}/d/${token}`);
+    expect(await page.text()).toContain('?inline=1');
+    // The ZIP "Download all" carries them too.
+    const zip = await fetch(`${origin}/api/v1/all/${token}`);
+    expect(zip.status).toBe(200);
+    expect((await zip.arrayBuffer()).byteLength).toBeGreaterThan(gif.length * 2);
+  });
+
   it('serves a no-index mobile page and only the token-authorized session files', async () => {
     const { token, origin } = await fixture();
     const page = await fetch(`${origin}/d/${token}`);

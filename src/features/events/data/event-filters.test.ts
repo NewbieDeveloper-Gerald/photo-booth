@@ -23,7 +23,7 @@ const input = (overrides: Record<string, unknown> = {}) => ({
 describe('per-event photo look (F20)', () => {
   it('starts unfiltered with the guest choice off', () => {
     expect(listEvents(directory).find((event) => event.id === 'default-event')).toMatchObject({
-      filterId: 'none', filterChoiceEnabled: false,
+      filterId: 'none', filterChoiceEnabled: false, animatedOutput: 'gif' as const,
     });
   });
 

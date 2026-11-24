@@ -82,6 +82,7 @@ declare global {
       revertRetake(sessionId: string, slotNumber: number): Promise<void>;
       readOriginalPhoto(photoId: string): Promise<Uint8Array>;
       savePrintSheet(sessionId: string, bytes: Uint8Array, width: number, height: number): Promise<string>;
+      saveSessionAnimation(sessionId: string, bytes: Uint8Array, kind: 'gif' | 'boomerang'): Promise<string>;
       saveSessionOutput(sessionId: string, bytes: Uint8Array, width: number, height: number): Promise<string>;
       abandonSession(sessionId: string): Promise<void>;
       discardSession(sessionId: string): Promise<void>;

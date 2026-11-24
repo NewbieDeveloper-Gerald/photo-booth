@@ -201,3 +201,7 @@
 .remote-link { width: 100%; margin-top: 8px; padding: 9px 11px; border: 1px solid #ffffff26; border-radius: 8px; background: #111725; color: #dbeafe; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
 .remote-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; align-items: center; }
 @media (max-width: 720px) { .remote-actions { justify-content: stretch; } .remote-actions button { flex: 1 1 auto; min-height: 48px; } }
+
+/* F23 · the animated extra on the finished screen: small, next to the layout it came from. */
+.animation-extra { display: grid; gap: 8px; justify-items: center; margin-top: 10px; }
+.animation-extra img { width: min(240px, 60vw); border-radius: 10px; border: 1px solid #ffffff1f; image-rendering: auto; }

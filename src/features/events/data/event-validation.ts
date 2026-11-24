@@ -8,6 +8,7 @@ import type { WatermarkPosition } from '../../../shared/types/watermark';
 import { isWatermarkPosition } from '../../capture/domain/watermark';
 import { isPhotoFilterId } from '../../capture/domain/photo-filters';
 import type { PhotoFilterId } from '../../../shared/types/photo-filter';
+import { isAnimatedOutput, type AnimatedOutput } from '../../animation/domain/animation-plan';
 import type { EventSettings } from '../../../shared/types/event';
 import { MAX_GALLERY_PASSWORD_LENGTH, MIN_GALLERY_PASSWORD_LENGTH } from '../../../shared/constants/limits';
 import { defaultLayoutIdForShots, isSupportedShotCount } from '../domain/default-layouts';
@@ -111,6 +112,16 @@ function validatePhotoFilter(item: Record<string, unknown>): { filterId: PhotoFi
   return { filterId, filterChoiceEnabled: choice };
 }
 
+/**
+ * The animated extra (F23) is a per-event promise about what lands on the guest page, so an
+ * unknown value is refused rather than quietly replaced.
+ */
+function validateAnimatedOutput(item: Record<string, unknown>): { animatedOutput: AnimatedOutput } {
+  const animatedOutput = item.animatedOutput ?? 'gif';
+  if (!isAnimatedOutput(animatedOutput)) throw new Error('Choose none, a GIF loop, a boomerang or both');
+  return { animatedOutput };
+}
+
 export function validateEventSettings(value: unknown): ValidatedEventFields {
   if (!value || typeof value !== 'object') throw new Error('Invalid event details');
   const item = value as Record<string, unknown>;
@@ -126,7 +137,7 @@ export function validateEventSettings(value: unknown): ValidatedEventFields {
   const offered = validateOfferedLayoutIds(item.offeredLayoutIds);
   const consentText = optionalText(item.consentText, MAX_CONSENT_LENGTH, `Consent notice must be ${MAX_CONSENT_LENGTH} characters or fewer`);
   const contactText = optionalText(item.contactText, MAX_EVENT_CONTACT_LENGTH, `Contact details must be ${MAX_EVENT_CONTACT_LENGTH} characters or fewer`);
-  return { name: item.name.trim(), shots, expiryDays, eventDate: eventDate as string | null, primaryColor: item.primaryColor as string, accentColor: item.accentColor as string,
+  return { ...validateAnimatedOutput(item), name: item.name.trim(), shots, expiryDays, eventDate: eventDate as string | null, primaryColor: item.primaryColor as string, accentColor: item.accentColor as string,
     welcomeText: (item.welcomeText as string).trim(), thankYouText: (item.thankYouText as string).trim(),
     defaultLayoutId: defaultLayoutIdForShots(shots), offeredLayoutIds: offered, consentText, contactText, ...validateWatermark(item), ...validatePrintRules(item), ...validateAttract(item), ...validatePhotoFilter(item) };
 }

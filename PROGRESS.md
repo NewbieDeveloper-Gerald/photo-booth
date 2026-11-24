@@ -1,6 +1,6 @@
 # Progress
 
-Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`, F20 as `de322a2`, F21 as `e9564c1`, F22 as `1b3d92c`.
+Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`, F20 as `de322a2`, F21 as `e9564c1`, F22 as `1b3d92c`, F23 as `PENDING-F23`.
 
 ## Current status
 
@@ -30,9 +30,10 @@ Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `4215
   guest/keyboard and wrong-PIN checks below.
 - **F22 (tablet guest screen): merged** (`1b3d92c`), awaiting the full session from a
   tablet below.
-- **F23–F29: not started.**
+- **F23 (GIF and boomerang): merged** (`PENDING-F23`), awaiting the two-phone check below.
+- **F24–F29: not started.**
 - Automated verification today: `npm run typecheck`, `npm run lint`, `npm test`
-  (**428 tests in 76 files**), `npm run build` (Vite production build) all pass.
+  (**448 tests in 80 files**), `npm run build` (Vite production build) all pass.
   `npm run test:e2e` exists but cannot run in this environment (no browser runtime).
 
 ## Verification gaps (unrecorded or impossible here)
@@ -513,6 +514,44 @@ WebRTC (MJPEG was chosen for size and simplicity), tablet-side thumbnails of the
 tablet camera capture, several tablets driving different events, and any cross-internet
 exposure — the tablet screen is LAN-only by design.
 
+## F23. GIF and boomerang (merged)
+
+- **A GIF encoder with no dependency** (`features/animation/domain/gif-encoder.ts`): GIF89a,
+  one 256-colour 3-3-2 global palette (index 0 transparent), NETSCAPE2.0 loop-forever block, a
+  delay per frame, and standard LZW with the code-width growth decoders expect. It is tested by
+  decoding its own output back to pixels (a strict LZW decoder written in the test), including
+  the 4096-code table reset and a size ceiling — and that decoder was first checked against a
+  GIF written by a real encoder, which it decoded exactly.
+- **The plan** (`domain/animation-plan.ts`, pure): an event's `animatedOutput` is
+  `none | gif | boomerang | both` (migration `017_animated_outputs`, default `gif`), the
+  boomerang order is forward-then-back without repeating the ends, a burst is spread over six
+  frames, frames are fitted to 320 px, and a loop over 400 KB is rebuilt with fewer frames.
+- **Built after the print, never before it**: `handleContinue` saves the layout and queues the
+  print, then `saveAnimationFor` builds the loop (photos) and/or the boomerang (a burst of up to
+  eight frames captured right after the last photo). A failure only changes a note; the photos
+  and the print are untouched.
+- **Stored like any other output**: `capture/data/output-repository.ts` gained
+  `saveSessionAnimation`, which validates the GIF signature and records `outputs.kind`
+  (`gif` / `boomerang`), so the download server lists both next to the photos.
+- **On the guest page** they are the fifth and sixth entries, and each is shown inline (the
+  file route answers `?inline=1` with `Content-Disposition: inline`) as well as downloadable,
+  and both are in the **Download all** ZIP.
+- **The finished screen** previews the loop with its frame count and size, so the operator sees
+  what the guest gets.
+
+### F23 manual check
+
+Set an event to **Both**, run a session, then open the share link on two phones (one Android,
+one iPhone) on mobile data: both the loop and the boomerang must play inline and download, the
+file sizes must be in the low hundreds of kilobytes, and the photos and layout must be unchanged.
+Check the boomerang reads as motion (not a slideshow) and that a resumed session (no burst) still
+produces an animation from the photos.
+
+### F23 out of scope (later features)
+
+Video (MP4/WebM) output, audio, a per-photo dithering/quantiser beyond 3-3-2, choosing the
+animated extra per session by the guest, and editing the loop (frame order, speed) from the UI.
+
 ## Feature log
 
 ### F0. Project setup
@@ -610,6 +649,10 @@ exposure — the tablet screen is LAN-only by design.
   have.
 - The tablet sees a streamed preview, not its own copies of the photos: thumbnails and the
   finished layout stay on the booth screen and the download link.
+- The GIF palette is 3-3-2, so a loop shows mild banding in smooth gradients (skin, sky) that
+  the 4 × 6 print does not; the photos themselves are unaffected.
+- A boomerang needs the burst: a resumed session or a camera that drops mid-burst falls back to
+  the session photos, which reads as a short slideshow rather than motion.
 - MJPEG costs roughly 200–350 KB/s per connected tablet; frames simply skip while a tablet is
   slower than the stream.
 - `ctx.filter` needs a canvas2D implementation that supports filters (Chromium does); anywhere

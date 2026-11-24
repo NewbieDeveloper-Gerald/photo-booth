@@ -54,6 +54,16 @@ When the booth is idle it invites guests in: after an event-set wait (default 60
 
 Event setup has an **Attract screen** block: the toggle, the wait, and **Add photos or video** (PNG/JPEG/WebP, MP4/M4V/WebM, up to eight files of 25 MB each). The files are copied into the event's own folder under the booth's data directory, so the memory card can go home with the operator; **Remove** deletes that copy. With no media, the loop cycles the layouts the event offers, so a brand-new event still has an invite screen. **Preview attract screen** shows the loop immediately instead of waiting.
 
+## Animated extras: GIF and boomerang (F23)
+
+Each event chooses an **Animated extra**: none, a **GIF loop** of the session's photos, a **boomerang** made from a short burst of frames, or both. Both are built on the booth right after the finished layout is saved, so a slow loop never delays the print, and both are listed — and shown inline — on the guest download page next to the photos, inside **Download all** as well.
+
+- **The GIF loop** plays the session's photos in order, about 0.6 s each, looping forever.
+- **The boomerang** is a burst of up to eight frames captured straight after the last photo (about 90 ms apart), spread over six frames and played forward and straight back at 10 fps. When the burst is too short (a resumed session, or the camera stopping mid-burst) it falls back to the photos, so the guest still gets an animation.
+- **Small on purpose:** frames are scaled to 320 px on the long edge and share one 256-colour palette (3-3-2), which keeps a loop in the low hundreds of kilobytes — openable on a phone over mobile data. A loop that still comes out over 400 KB is rebuilt with fewer frames instead of being saved heavy.
+- The GIF is written by the booth's own encoder (no dependency): GIF89a, one global palette, a NETSCAPE2.0 loop block, and standard LZW. It is checked in tests by decoding it back and comparing every pixel, and the decoder used there was first verified against a GIF written by a real encoder.
+- On the finished screen the loop is previewed next to the layout with its frame count and size, so the operator can see what the guest will get.
+
 ## Tablet guest screen (F22)
 
 The guest screen can run on a tablet while the booth computer keeps the camera, the files and the printer. In the operator panel, **Tablet guest screen** has one switch, one link and a count of connected tablets. Switch it on, open the link on a tablet on the same Wi-Fi, and the tablet shows the welcome text, a live preview streamed from the booth, and — as the session runs — the countdown, the review slots with **Retake**, **Use these photos**, **Print another** and **New session**.

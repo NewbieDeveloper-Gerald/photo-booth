@@ -26,6 +26,8 @@ import { HotkeyHelp } from '../renderer/components/HotkeyHelp';
 import { RemoteGuestCard } from '../renderer/components/RemoteGuestCard';
 import { isTypingTarget, matchHotkey } from '../renderer/lib/hotkeys';
 import { buildRemoteView, isRemoteCommandAllowed, remoteViewSignature } from '../features/remote-guest';
+import { wantsBoomerang, wantsSlideshow, type AnimatedOutput } from '../features/animation';
+import { buildBoomerangGif, buildSlideshowGif } from '../renderer/lib/animation-builder';
 import { loadAttractSlides, type AttractSlide } from '../renderer/lib/attract-slides';
 import { composeStripCutSheet } from '../renderer/lib/print-sheet';
 import { LayoutPicker } from '../renderer/components/LayoutPicker';
@@ -114,6 +116,10 @@ function App(): React.JSX.Element {
   const [reviewRecord, setReviewRecord] = useState<SessionRecord | null>(null);
   const [reviewImages, setReviewImages] = useState<ReviewImage[]>([]);
   const [finalOutputUrl, setFinalOutputUrl] = useState('');
+  /** F23: the loop or boomerang built for this session, and the burst its frames came from. */
+  const [animationUrl, setAnimationUrl] = useState('');
+  const [animationNote, setAnimationNote] = useState('');
+  const burstFrames = useRef<string[]>([]);
   const [unfinishedSessions, setUnfinishedSessions] = useState<UnfinishedSession[]>([]);
   const [uploadQueue, setUploadQueue] = useState<UploadQueueSummary | null>(null);
   const [queueWarning, setQueueWarning] = useState('');
@@ -413,7 +419,7 @@ function App(): React.JSX.Element {
         setTemplates(layoutPresets.map((preset) => ({ id: preset.id, name: preset.name, shots: preset.shots, copies: preset.copies, pagePreset: '4x6' as const, pageLabel: '4 × 6 in', builtIn: true })));
         // The browser preview has no event storage, so it offers three catalog layouts and
         // makes the guest picker visible while developing the UI.
-        setEvent({ id: 'preview-event', name: 'Default Event', shots: 3, retakeLimit: 3, printEnabled: true, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: 'double-strip-3', offeredLayoutIds: ['double-strip-3', 'double-strip-4', 'grid-4-portrait'], consentText: '', contactText: '', galleryToken: null, galleryPasswordSet: false, watermarkEnabled: false, watermarkPosition: 'bottom-right', watermarkScalePercent: 18, watermarkOpacity: 0.6, printLimitPerSession: 2, paperCount: 0, attractEnabled: true, attractIdleSeconds: 60, filterId: 'none', filterChoiceEnabled: false });
+        setEvent({ id: 'preview-event', name: 'Default Event', shots: 3, retakeLimit: 3, printEnabled: true, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: 'double-strip-3', offeredLayoutIds: ['double-strip-3', 'double-strip-4', 'grid-4-portrait'], consentText: '', contactText: '', galleryToken: null, galleryPasswordSet: false, watermarkEnabled: false, watermarkPosition: 'bottom-right', watermarkScalePercent: 18, watermarkOpacity: 0.6, printLimitPerSession: 2, paperCount: 0, attractEnabled: true, attractIdleSeconds: 60, filterId: 'none', filterChoiceEnabled: false, animatedOutput: 'gif' });
         setRetakeLimitDraft('3');
       }
       if (!camera) { setStatus('Camera access is not available.'); return; }
@@ -511,6 +517,74 @@ function App(): React.JSX.Element {
     return { logo, logoWidth: logo.naturalWidth, logoHeight: logo.naturalHeight, settings: { position: event.watermarkPosition, scalePercent: event.watermarkScalePercent, opacity: event.watermarkOpacity } };
   };
 
+  const releaseBurst = (): void => {
+    for (const url of burstFrames.current) URL.revokeObjectURL(url);
+    burstFrames.current = [];
+  };
+
+  /**
+   * A short burst of frames right after the last photo (F23). It is the raw material for a
+   * boomerang; when the event does not ask for one nothing is captured, and a camera that
+   * stops mid-burst simply leaves a shorter (or empty) burst behind.
+   */
+  const captureBurst = async (): Promise<void> => {
+    releaseBurst();
+    if (!wantsBoomerang(event?.animatedOutput ?? 'none')) return;
+    const video = videoRef.current;
+    if (!video || !video.videoWidth) return;
+    const size = { width: 320, height: Math.max(1, Math.round((video.videoHeight / video.videoWidth) * 320)) };
+    const canvas = document.createElement('canvas');
+    canvas.width = size.width;
+    canvas.height = size.height;
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    for (let index = 0; index < 8; index += 1) {
+      try {
+        context.drawImage(video, 0, 0, size.width, size.height);
+        const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.8));
+        if (blob) burstFrames.current.push(URL.createObjectURL(blob));
+      } catch { break; }
+      await wait(90);
+    }
+  };
+
+  /**
+   * Builds and saves the animated extras the event asks for (F23). It runs after the layout is
+   * saved and never holds the guest up: a loop that cannot be built only changes a note on the
+   * screen, and a boomerang falls back to the session's photos when the burst is too short.
+   */
+  const saveAnimationFor = async (activeSessionId: string, kind: AnimatedOutput): Promise<void> => {
+    const bridge = window.photobooth;
+    if (!bridge || kind === 'none') return;
+    setAnimationNote('Building the animated extra…');
+    const photos = reviewImages.map((image) => image.url);
+    const frames = burstFrames.current.length >= 2 ? [...burstFrames.current] : photos;
+    const jobs: Array<{ kind: 'gif' | 'boomerang'; label: string; build: () => ReturnType<typeof buildSlideshowGif> }> = [];
+    if (wantsSlideshow(kind)) jobs.push({ kind: 'gif', label: 'Animated loop', build: () => buildSlideshowGif(photos) });
+    if (wantsBoomerang(kind)) jobs.push({ kind: 'boomerang', label: 'Boomerang', build: () => buildBoomerangGif(frames) });
+
+    const notes: string[] = [];
+    let previewed = false;
+    for (const job of jobs) {
+      try {
+        const built = await job.build();
+        if (!built) { notes.push(`${job.label} could not be built`); continue; }
+        await bridge.saveSessionAnimation(activeSessionId, built.bytes, job.kind);
+        notes.push(`${job.label} ready · ${built.frameCount} frames · ${Math.round(built.bytes.length / 1024)} KB`);
+        if (!previewed) {
+          previewed = true;
+          setAnimationUrl((current) => {
+            if (current) URL.revokeObjectURL(current);
+            return URL.createObjectURL(new Blob([built.bytes as BlobPart], { type: 'image/gif' }));
+          });
+        }
+      } catch (error) {
+        notes.push(`${job.label}: ${toErrorMessage(error, 'could not be saved')}`);
+      }
+    }
+    setAnimationNote(notes.length ? notes.join(' · ') : 'No animated extra was requested for this event.');
+  };
+
   const saveCapturedSlot = async (activeSessionId: string, slotNumber: number): Promise<void> => {
     const bridge = window.photobooth;
     const video = videoRef.current;
@@ -548,6 +622,7 @@ function App(): React.JSX.Element {
         return;
       }
     }
+    await captureBurst();
     setCurrentSlot(0);
     setStatus('Review your photos');
     setScreen('review');
@@ -602,7 +677,7 @@ function App(): React.JSX.Element {
   };
 
   const handleNewEvent = (): void => {
-    setEventDraft({ id: '', name: '', shots: 3, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: defaultLayoutIdForShots(3), offeredLayoutIds: [defaultLayoutIdForShots(3)], consentText: '', contactText: '', galleryToken: null, galleryPasswordSet: false, watermarkEnabled: false, watermarkPosition: 'bottom-right', watermarkScalePercent: 18, watermarkOpacity: 0.6, printLimitPerSession: 2, paperCount: 0, attractEnabled: true, attractIdleSeconds: 60, filterId: 'none', filterChoiceEnabled: false });
+    setEventDraft({ id: '', name: '', shots: 3, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: defaultLayoutIdForShots(3), offeredLayoutIds: [defaultLayoutIdForShots(3)], consentText: '', contactText: '', galleryToken: null, galleryPasswordSet: false, watermarkEnabled: false, watermarkPosition: 'bottom-right', watermarkScalePercent: 18, watermarkOpacity: 0.6, printLimitPerSession: 2, paperCount: 0, attractEnabled: true, attractIdleSeconds: 60, filterId: 'none', filterChoiceEnabled: false, animatedOutput: 'gif' });
     setEventLogoDataUrl(null); setEventMessage('New event details are not saved yet.');
   };
 
@@ -891,6 +966,8 @@ function App(): React.JSX.Element {
       const autoPrint = decideAutoPrint(event, selectedPrinterName);
       if (autoPrint.shouldPrint) await sendPrintJob(sessionId);
       else setPrintStatus(autoPrint.status);
+      // F23: the animated extra is the last thing built, so it can never delay the print.
+      await saveAnimationFor(sessionId, event.animatedOutput);
     } catch (error) { setErrorMessage(toErrorMessage(error, 'Could not build the finished layout. Your photos are safe.')); }
     finally { setBusy(false); }
   };
@@ -898,6 +975,9 @@ function App(): React.JSX.Element {
   const returnToReady = (): void => {
     setScreen('ready');
     setSessionId('');
+    setAnimationUrl((current) => { if (current) URL.revokeObjectURL(current); return ''; });
+    setAnimationNote('');
+    releaseBurst();
     setReviewRecord(null);
     if (pinConfigured) { setAdminLocked(true); setShowUnlock(false); }
     clearReviewUrls();
@@ -1199,6 +1279,11 @@ function App(): React.JSX.Element {
           <video ref={videoRef} className="camera-video" autoPlay playsInline muted aria-label="Mirrored live camera preview" />
           {!cameraReady && <div className="preview-empty"><div className="camera-glyph">◉</div><strong>{cameras.length ? 'Connecting to your camera…' : 'No camera preview yet'}</strong><span>Connect a webcam or select a camera below.</span></div>}
           {screen === 'finished' && finalOutputUrl && <div className="final-output"><img src={finalOutputUrl} alt="Finished 4 by 6 photo layout" /></div>}
+          {screen === 'finished' && (animationUrl || animationNote) && <div className="animation-extra" aria-label="Animated extra">
+            {animationUrl && <img src={animationUrl} alt="Animated loop of this session" />}
+            {animationNote && <p className="gallery-hint">{animationNote}</p>}
+            <p className="gallery-hint">The loop and the boomerang are listed with the photos on the download page. They stay small on purpose so a phone can open them on mobile data.</p>
+          </div>}
           {photoPreviewUrl && <div className="captured-photo"><img src={photoPreviewUrl} alt={`Saved photo ${currentSlot}`} /><span>PHOTO {currentSlot} SAVED</span></div>}
           {countdown !== null && <div className="countdown-overlay" aria-live="assertive"><span>{countdown}</span></div>}
           <div className="preview-meta"><span>{actualResolution || (cameraReady ? 'Camera ready' : 'Waiting for camera')}</span><span className="mirror-label">MIRRORED</span></div>
@@ -1256,6 +1341,12 @@ function App(): React.JSX.Element {
               <label>Look for this event<select aria-label="Event photo filter" value={eventDraft.filterId} onChange={(e) => setEventDraft({ ...eventDraft, filterId: e.target.value as PhotoFilterId })}>{PHOTO_FILTERS.map((filter) => <option key={filter.id} value={filter.id}>{filter.label}</option>)}</select></label>
               <label className="attract-toggle"><input type="checkbox" aria-label="Let guests choose a look" checked={eventDraft.filterChoiceEnabled} onChange={(e) => setEventDraft({ ...eventDraft, filterChoiceEnabled: e.target.checked })} /> <span>Let guests choose a look</span></label>
               <p className="gallery-hint">{eventDraft.filterChoiceEnabled ? 'Guests pick from the looks on the start screen; this one is preselected.' : 'Every session uses this look. Originals are always saved unfiltered; copies and prints get the look.'}</p>
+              <label>Animated extra<select aria-label="Animated extra" value={eventDraft.animatedOutput} onChange={(e) => setEventDraft({ ...eventDraft, animatedOutput: e.target.value as AnimatedOutput })}>
+                <option value="none">None</option>
+                <option value="gif">GIF loop of the photos</option>
+                <option value="boomerang">Boomerang of the burst</option>
+                <option value="both">Both</option>
+              </select></label>
             </div>
             <div className="attract-field">
               <div className="attract-field-heading">

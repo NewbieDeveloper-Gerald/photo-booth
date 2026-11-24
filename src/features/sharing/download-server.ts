@@ -63,6 +63,9 @@ function findSession(databasePath: string, photosRoot: string, token: string): S
       WHERE s.id = ? ORDER BY sl.slot_number`).all(session.id) as Array<{ id: string; originalPath: string; downloadPath: string | null; slotNumber: number }>;
     const output = database.prepare(`SELECT id, output_path AS filePath FROM outputs WHERE session_id = ? AND kind LIKE 'finished-%'
       ORDER BY created_at DESC, rowid DESC LIMIT 1`).get(session.id) as { id: string; filePath: string } | undefined;
+    // The animated extras (F23) sit next to the photos and the layout in the same list.
+    const animations = database.prepare(`SELECT id, output_path AS filePath, kind FROM outputs WHERE session_id = ? AND kind IN ('gif', 'boomerang')
+      ORDER BY CASE kind WHEN 'gif' THEN 0 ELSE 1 END, created_at DESC, rowid DESC`).all(session.id) as Array<{ id: string; filePath: string; kind: 'gif' | 'boomerang' }>;
     const files: DownloadFile[] = [];
     for (const photo of photos) {
       // Guests get the 2048px/q80 copy; sessions captured before download copies existed fall back to the original.
@@ -74,6 +77,11 @@ function findSession(databasePath: string, photosRoot: string, token: string): S
     if (output) {
       const filePath = resolveInside(photosRoot, output.filePath);
       if (filePath && fs.existsSync(filePath)) files.push({ id: output.id, name: 'Finished layout.jpg', filePath, kind: 'layout' });
+    }
+    for (const animation of animations) {
+      const filePath = resolveInside(photosRoot, animation.filePath);
+      if (!filePath || !fs.existsSync(filePath)) continue;
+      files.push({ id: animation.id, name: animation.kind === 'gif' ? 'Animated loop.gif' : 'Boomerang.gif', filePath, kind: animation.kind });
     }
     return { eventName: session.eventName, logoPath: session.logoPath, primaryColor: session.primaryColor, accentColor: session.accentColor, welcomeText: session.welcomeText, thankYouText: session.thankYouText, files };
   } finally { database.close(); }
@@ -141,7 +149,7 @@ export function createDownloadServer(userDataPath: string, photosRoot: string, o
         return;
       }
       response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-      response.end(request.method === 'HEAD' ? undefined : JSON.stringify({ eventName: session.eventName, files: session.files.map(({ id, name }) => ({ id, name })) }));
+      response.end(request.method === 'HEAD' ? undefined : JSON.stringify({ eventName: session.eventName, files: session.files.map(({ id, name, kind }) => ({ id, name, kind })) }));
       return;
     }
     const all = /^\/api\/v1\/all\/([A-Za-z0-9_-]{22})$/.exec(url.pathname);
@@ -161,7 +169,11 @@ export function createDownloadServer(userDataPath: string, photosRoot: string, o
       const session = findSession(databasePath, photosRoot, fileRoute[1]!);
       const file = session?.files.find((candidate) => candidate.id === fileRoute[2]);
       if (!file) { response.writeHead(404).end(); return; }
-      response.writeHead(200, { 'Content-Type': 'image/jpeg', 'Content-Disposition': `attachment; filename="${file.name}"`, 'Content-Length': fs.statSync(file.filePath).size });
+      const isGif = file.filePath.toLowerCase().endsWith('.gif');
+      // The guest page shows a loop inline, so it asks for an inline copy; a download link
+      // (the same route without the flag) keeps the attachment header.
+      const disposition = url.searchParams.get('inline') === '1' ? 'inline' : `attachment; filename="${file.name}"`;
+      response.writeHead(200, { 'Content-Type': isGif ? 'image/gif' : 'image/jpeg', 'Content-Disposition': disposition, 'Content-Length': fs.statSync(file.filePath).size });
       if (request.method === 'HEAD') { response.end(); return; }
       const stream = fs.createReadStream(file.filePath);
       stream.on('error', () => response.destroy());
