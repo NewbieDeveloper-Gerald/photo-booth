@@ -23,7 +23,33 @@ export async function saveSessionOutput(userDataPath: string, sessionIdValue: un
   const outputPath = ensureInside(folder, path.join(folder, `finished-${session.layout_id}-${randomUUID()}.jpg`));
   await writeAtomically(outputPath, bytes);
   const outputDatabase = openDatabase(userDataPath);
-  try { outputDatabase.prepare('INSERT INTO outputs (id, session_id, output_path, kind) VALUES (?, ?, ?, ?)').run(randomUUID(), sessionIdValue, outputPath, `finished-${session.layout_id}`); }
+  try { outputDatabase.prepare('INSERT INTO outputs (id, session_id, output_path, kind, width, height) VALUES (?, ?, ?, ?, ?, ?)').run(randomUUID(), sessionIdValue, outputPath, `finished-${session.layout_id}`, widthValue, heightValue); }
+  finally { outputDatabase.close(); }
+  return outputPath;
+}
+
+/**
+ * A cut sheet is what actually goes through the printer for a 2 × 6 strip: the strip drawn
+ * twice side by side on one 4 × 6 sheet, so two guests' copies come out of one piece of paper
+ * (F18). It is stored next to the finished layout and printed in preference to it.
+ */
+export async function savePrintSheet(userDataPath: string, sessionIdValue: unknown, data: unknown, widthValue: unknown, heightValue: unknown): Promise<string> {
+  if (!isSessionId(sessionIdValue) || typeof widthValue !== 'number' || typeof heightValue !== 'number'
+    || !Number.isInteger(widthValue) || !Number.isInteger(heightValue) || widthValue < 1 || heightValue < 1) throw new Error('Invalid print sheet details');
+  const bytes = toPhotoBuffer(data);
+  const database = openDatabase(userDataPath);
+  const paths = getConfiguredStoragePaths(userDataPath);
+  let session: { event_id: string; layout_id: string } | undefined;
+  try { session = database.prepare("SELECT event_id, layout_id FROM sessions WHERE id = ? AND status = 'completed'").get(sessionIdValue) as typeof session; }
+  finally { database.close(); }
+  if (!session) throw new Error('Only completed sessions can save a print sheet');
+  const template = loadTemplate(userDataPath, session.layout_id);
+  if (template.page.id !== '2x6-strip') throw new Error('Only a 20 × 60 mm strip needs a cut sheet');
+  const folder = ensureInside(paths.photosDirectory, path.join(paths.photosDirectory, session.event_id, sessionIdValue));
+  const outputPath = ensureInside(folder, path.join(folder, `print-sheet-${session.layout_id}-${randomUUID()}.jpg`));
+  await writeAtomically(outputPath, bytes);
+  const outputDatabase = openDatabase(userDataPath);
+  try { outputDatabase.prepare('INSERT INTO outputs (id, session_id, output_path, kind, width, height) VALUES (?, ?, ?, ?, ?, ?)').run(randomUUID(), sessionIdValue, outputPath, `print-sheet-${session.layout_id}`, widthValue, heightValue); }
   finally { outputDatabase.close(); }
   return outputPath;
 }

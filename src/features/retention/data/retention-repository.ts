@@ -52,6 +52,9 @@ export function deleteSessionPermanently(userDataPath: string, sessionIdValue: u
     const deletedFiles = removeFolder(sessionFolder(paths.photosDirectory, session.eventId, session.id))
       + removeFolder(sessionFolder(paths.backupDirectory, session.eventId, session.id));
     database.transaction(() => {
+      // Print jobs go first: the queue points at the session, and a half-printed sheet is
+      // useless once the session and its finished layout are gone (F18).
+      database.prepare('DELETE FROM print_jobs WHERE session_id = ?').run(session.id);
       database.prepare('DELETE FROM upload_queue WHERE session_id = ?').run(session.id);
       database.prepare('DELETE FROM outputs WHERE session_id = ?').run(session.id);
       database.prepare('DELETE FROM photos WHERE slot_id IN (SELECT id FROM slots WHERE session_id = ?)').run(session.id);
@@ -97,6 +100,7 @@ export function deleteEventPermanently(userDataPath: string, eventIdValue: unkno
   const database = openDatabase(userDataPath);
   try {
     database.transaction(() => {
+      database.prepare('DELETE FROM print_jobs WHERE event_id = ?').run(plan.id);
       database.prepare('DELETE FROM events WHERE id = ?').run(plan.id);
       const active = database.prepare("SELECT value FROM settings WHERE key = 'activeEventId'").get() as { value: string } | undefined;
       if (active?.value !== plan.id) return;

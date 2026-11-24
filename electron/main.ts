@@ -4,8 +4,10 @@ import { initializeStorage } from '../src/features/storage/node.js';
 import { ensureBuiltinTemplates } from '../src/features/layouts/node.js';
 import { mockUploadAdapter, recoverInterruptedUploads, startUploadScheduler } from '../src/features/sharing/node.js';
 import { startRetentionScheduler } from '../src/features/retention/node.js';
+import { startPrintQueueScheduler } from '../src/features/printing/node.js';
 import { registerIpcHandlers } from './ipc/registry.js';
 import { startDownloadServer } from './download-service.js';
+import { ElectronSystemPrinter } from './devices/system-printer.js';
 import { createBoothWindowController } from './windows/booth-window.js';
 
 const boothWindow = createBoothWindowController();
@@ -25,8 +27,15 @@ app.whenReady().then(async () => {
   app.on('will-quit', stopRetentionScheduler);
   downloadServer = await startDownloadServer(userDataPath);
 
+  // The print worker (F18): queued sheets print in order, retried after a pause or a restart.
+  const printQueue = startPrintQueueScheduler({
+    userDataPath, printer: new ElectronSystemPrinter(), onError: (message) => console.warn(message),
+  });
+  app.on('will-quit', printQueue.stop);
+
   registerIpcHandlers({
     userDataPath,
+    wakePrintQueue: printQueue.wake,
     getMainWindow: () => mainWindow,
     getDownloadServer: () => downloadServer,
     requestAppQuit: () => {

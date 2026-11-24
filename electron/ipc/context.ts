@@ -7,4 +7,6 @@ export type IpcContext = {
   getMainWindow: () => BrowserWindow | null;
   getDownloadServer: () => Server | null;
   requestAppQuit: () => void;
+  /** Kicks the print worker right after a job is queued (F18). */
+  wakePrintQueue: () => void;
 };
