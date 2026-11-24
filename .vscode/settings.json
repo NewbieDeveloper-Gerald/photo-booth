@@ -1,0 +1,19 @@
+{
+  // Use the TypeScript that is installed in the project, not the one bundled with VS Code.
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+  // Tests are Vitest, not Jest — this stops the editor from offering the wrong runner.
+  "vitest.enable": true,
+  "eslint.useFlatConfig": true,
+  // Generated output and the packaged app: hide them from search, keep them in the explorer.
+  "search.exclude": {
+    "**/dist": true,
+    "**/dist-electron": true,
+    "**/coverage": true,
+    "**/playwright-report": true,
+    "**/test-results": true
+  },
+  "files.associations": {
+    "*.kts": "kotlin"
+  }
+}

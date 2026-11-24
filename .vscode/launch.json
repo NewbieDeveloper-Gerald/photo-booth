@@ -1,0 +1,40 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Booth: Electron main + renderer",
+      "type": "node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "program": "${workspaceFolder}/node_modules/electron/cli.js",
+      "args": ["--inspect=9229", "."],
+      "env": { "VITE_DEV_SERVER_URL": "http://localhost:5173" },
+      "preLaunchTask": "vite",
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"],
+      "presentation": { "group": "booth", "order": 1 }
+    },
+    {
+      "name": "Booth: attach to Electron main",
+      "type": "node",
+      "request": "attach",
+      "port": 9229,
+      "restart": true,
+      "skipFiles": ["<node_internals>/**"],
+      "presentation": { "group": "booth", "order": 2 },
+      "detail": "For a booth started with `npm run dev:debug`."
+    },
+    {
+      "name": "Booth: Vitest (current file)",
+      "type": "node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vitest", "run", "${relativeFile}"],
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "skipFiles": ["<node_internals>/**"],
+      "presentation": { "group": "booth", "order": 3 }
+    }
+  ]
+}
