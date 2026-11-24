@@ -54,6 +54,22 @@ When the booth is idle it invites guests in: after an event-set wait (default 60
 
 Event setup has an **Attract screen** block: the toggle, the wait, and **Add photos or video** (PNG/JPEG/WebP, MP4/M4V/WebM, up to eight files of 25 MB each). The files are copied into the event's own folder under the booth's data directory, so the memory card can go home with the operator; **Remove** deletes that copy. With no media, the loop cycles the layouts the event offers, so a brand-new event still has an invite screen. **Preview attract screen** shows the loop immediately instead of waiting.
 
+## Send the link by email or SMS (F28)
+
+The QR code is the main way a guest gets their photos; this is the fallback for someone whose phone camera is playing up or who would rather have the link waiting for them:
+
+- On the **finished screen** the QR code stays visible next to a small form. The guest picks **Email** or **SMS**, types an address or number, and presses **Send link**.
+- The booth confirms with a **masked** target (`m••••••••@example.com`, `+63 •••••• 4567`) — never the whole thing, because the next guest is standing right there.
+- **Nothing is kept.** The address lives in memory for the one send, then it is dropped: no database row, no log line, no setting, nothing on the screen. A test asserts this by reading the raw database file after two sends and finding no trace of either target.
+- **Per event switch:** *Let guests receive the link by email or SMS* in event setup. Turned off, the form is disabled and the note says so; the QR code is still shown.
+- **Rate limit:** three sends per session per ten minutes, so one guest cannot turn an unattended booth into an SMS machine.
+- **The link itself** is the same one the QR code carries, with the event's expiry. An SMS is kept to one part; email carries the event name, the link, the expiry date and the event's contact text.
+
+**Actually delivering the message** needs a gateway, because the booth has no mail server of its own:
+
+- Without configuration the booth uses a **demo sender**: it accepts the send, says so plainly ("connect an email/SMS gateway to really deliver it") and keeps only a count.
+- Point `PHOTOBOOTH_LINK_WEBHOOK` at your own small HTTP service and the booth will `POST` `{ "channel", "to", "message", "link", "eventName" }` as JSON to it for every send; a non-2xx answer or an unreachable host is reported to the guest in plain words. Your service then talks to your email or SMS provider — that is where the delivery receipts live, not in the booth.
+
 ## DSLR and mirrorless camera (F26)
 
 The booth can shoot through **one tethered camera model: the Canon EOS 250D (Rebel SL3)**, using the open-source [`gphoto2`](http://gphoto.org) helper. Other PTP cameras may well work through the same helper, but nothing else is promised, and nothing else has been tested here.

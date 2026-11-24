@@ -34,5 +34,7 @@ export type ActiveEvent = {
   filterChoiceEnabled: boolean;
   /** F23: the animated extra saved next to the photos for the guest's download page. */
   animatedOutput: AnimatedOutput;
+  /** F28: whether a guest may ask for the download link by email or SMS. */
+  sendLinkEnabled: boolean;
 };
 export type EventSettings = Omit<ActiveEvent, 'retakeLimit' | 'printEnabled'>;

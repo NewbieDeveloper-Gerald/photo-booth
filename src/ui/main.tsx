@@ -27,7 +27,9 @@ import { AttractMediaField } from '../renderer/components/AttractMediaField';
 import { FilterPicker } from '../renderer/components/FilterPicker';
 import { HotkeyHelp } from '../renderer/components/HotkeyHelp';
 import { RemoteGuestCard } from '../renderer/components/RemoteGuestCard';
+import type { LinkChannel, SendLinkOutcome } from '../features/sharing';
 import { CameraSourceCard } from '../renderer/components/CameraSourceCard';
+import { SendLinkCard } from '../renderer/components/SendLinkCard';
 import { createTetherBridge } from '../renderer/lib/tether-bridge';
 import { AnalyticsCard } from '../renderer/components/AnalyticsCard';
 import { PrinterProfileCard } from '../renderer/components/PrinterProfileCard';
@@ -124,6 +126,8 @@ function App(): React.JSX.Element {
   const [downloadBaseUrl, setDownloadBaseUrl] = useState('');
   const [shareUrl, setShareUrl] = useState('');
   const [shareStatus, setShareStatus] = useState('');
+  /** F28: the QR picture stays on screen while a guest types an address. */
+  const [shareQrDataUrl, setShareQrDataUrl] = useState('');
   const [screen, setScreen] = useState<Screen>('ready');
   const [sessionId, setSessionId] = useState('');
   const [selectedLayoutId, setSelectedLayoutId] = useState('double-strip-3');
@@ -479,7 +483,7 @@ function App(): React.JSX.Element {
         setTemplates(layoutPresets.map((preset) => ({ id: preset.id, name: preset.name, shots: preset.shots, copies: preset.copies, pagePreset: '4x6' as const, pageLabel: '4 × 6 in', builtIn: true })));
         // The browser preview has no event storage, so it offers three catalog layouts and
         // makes the guest picker visible while developing the UI.
-        setEvent({ id: 'preview-event', name: 'Default Event', shots: 3, retakeLimit: 3, printEnabled: true, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: 'double-strip-3', offeredLayoutIds: ['double-strip-3', 'double-strip-4', 'grid-4-portrait'], consentText: '', contactText: '', galleryToken: null, galleryPasswordSet: false, watermarkEnabled: false, watermarkPosition: 'bottom-right', watermarkScalePercent: 18, watermarkOpacity: 0.6, printLimitPerSession: 2, paperCount: 0, attractEnabled: true, attractIdleSeconds: 60, filterId: 'none', filterChoiceEnabled: false, animatedOutput: 'gif' });
+        setEvent({ id: 'preview-event', name: 'Default Event', shots: 3, retakeLimit: 3, printEnabled: true, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: 'double-strip-3', offeredLayoutIds: ['double-strip-3', 'double-strip-4', 'grid-4-portrait'], consentText: '', contactText: '', galleryToken: null, galleryPasswordSet: false, watermarkEnabled: false, watermarkPosition: 'bottom-right', watermarkScalePercent: 18, watermarkOpacity: 0.6, printLimitPerSession: 2, paperCount: 0, attractEnabled: true, attractIdleSeconds: 60, filterId: 'none', filterChoiceEnabled: false, animatedOutput: 'gif', sendLinkEnabled: true });
         setRetakeLimitDraft('3');
       }
       if (!camera) { setStatus('Camera access is not available.'); return; }
@@ -737,7 +741,7 @@ function App(): React.JSX.Element {
   };
 
   const handleNewEvent = (): void => {
-    setEventDraft({ id: '', name: '', shots: 3, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: defaultLayoutIdForShots(3), offeredLayoutIds: [defaultLayoutIdForShots(3)], consentText: '', contactText: '', galleryToken: null, galleryPasswordSet: false, watermarkEnabled: false, watermarkPosition: 'bottom-right', watermarkScalePercent: 18, watermarkOpacity: 0.6, printLimitPerSession: 2, paperCount: 0, attractEnabled: true, attractIdleSeconds: 60, filterId: 'none', filterChoiceEnabled: false, animatedOutput: 'gif' });
+    setEventDraft({ id: '', name: '', shots: 3, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: defaultLayoutIdForShots(3), offeredLayoutIds: [defaultLayoutIdForShots(3)], consentText: '', contactText: '', galleryToken: null, galleryPasswordSet: false, watermarkEnabled: false, watermarkPosition: 'bottom-right', watermarkScalePercent: 18, watermarkOpacity: 0.6, printLimitPerSession: 2, paperCount: 0, attractEnabled: true, attractIdleSeconds: 60, filterId: 'none', filterChoiceEnabled: false, animatedOutput: 'gif', sendLinkEnabled: true });
     setEventLogoDataUrl(null); setEventMessage('New event details are not saved yet.');
   };
 
@@ -1015,6 +1019,13 @@ function App(): React.JSX.Element {
     } catch (error) { setErrorMessage(toErrorMessage(error, 'Could not cancel that print.')); }
   };
 
+  /** F28: the guest asked for the link by email or SMS; the booth sends and forgets the address. */
+  const handleSendLink = async (channel: LinkChannel, target: string): Promise<SendLinkOutcome> => {
+    if (!window.photobooth) throw new Error('Sending the link needs the desktop app.');
+    if (!sessionId) throw new Error('The link can be sent once a session is finished.');
+    return window.photobooth.sendSessionLink(sessionId, channel, target);
+  };
+
   const handleContinue = async (): Promise<void> => {
     if (!reviewRecord || !sessionId || !window.photobooth || !event) return;
     setBusy(true);
@@ -1029,6 +1040,7 @@ function App(): React.JSX.Element {
           const link = await window.photobooth.createShareLink(sessionId);
           nextShareUrl = link.url;
           qrDataUrl = await QRCode.toDataURL(link.url, { width: 256, margin: 1, errorCorrectionLevel: 'Q' });
+          setShareQrDataUrl(qrDataUrl);
           setShareStatus(`Link expires ${new Date(link.expiresAt).toLocaleDateString()}`);
         } catch (error) { setShareStatus(toErrorMessage(error, 'QR downloads are not available.')); }
       } else setShareStatus('Set the public HTTPS download URL on the start screen to enable QR downloads.');
@@ -1399,6 +1411,8 @@ function App(): React.JSX.Element {
             <label>Event date<input aria-label="Event date" type="date" value={eventDraft.eventDate ?? ''} onChange={(e) => setEventDraft({ ...eventDraft, eventDate: e.target.value || null })} /></label>
             <label>Photo count<select aria-label="Event photo count" value={eventDraft.shots} onChange={(e) => setEventDraft({ ...eventDraft, shots: Number(e.target.value), defaultLayoutId: defaultLayoutIdForShots(Number(e.target.value)) })}>{[1, 2, 3, 4, 5, 6].map((shots) => <option key={shots} value={shots}>{shots} {shots === 1 ? 'photo' : 'photos'}</option>)}</select></label>
             <label>QR link expires after (days)<input aria-label="QR link expiry days" type="number" min={1} max={365} value={eventDraft.expiryDays} onChange={(e) => setEventDraft({ ...eventDraft, expiryDays: Number(e.target.value) })} /></label>
+            <label className="attract-toggle"><input aria-label="Let guests receive the link by email or SMS" type="checkbox" checked={eventDraft.sendLinkEnabled} onChange={(e) => setEventDraft({ ...eventDraft, sendLinkEnabled: e.target.checked })} /> <span>Let guests receive the link by email or SMS</span></label>
+            <p className="gallery-hint">{eventDraft.sendLinkEnabled ? 'The finished screen offers email and SMS next to the QR code. Addresses are never stored.' : 'Guests can only scan the QR code; nothing is sent.'}</p>
             <label>Prints per session<input aria-label="Prints per session" type="number" min={MIN_PRINT_LIMIT_PER_SESSION} max={MAX_PRINT_LIMIT_PER_SESSION} value={eventDraft.printLimitPerSession} onChange={(e) => setEventDraft({ ...eventDraft, printLimitPerSession: Number(e.target.value) })} /></label>
             <label>Paper sheets loaded (0 = not counted)<input aria-label="Paper count" type="number" min={0} max={MAX_EVENT_PAPER_COUNT} value={eventDraft.paperCount} onChange={(e) => setEventDraft({ ...eventDraft, paperCount: Number(e.target.value) })} /></label>
             <label>Primary color (hex)<input aria-label="Primary color hex" value={eventDraft.primaryColor} maxLength={7} onChange={(e) => setEventDraft({ ...eventDraft, primaryColor: e.target.value })} /></label>
@@ -1463,6 +1477,12 @@ function App(): React.JSX.Element {
         {helpOpen && <HotkeyHelp onClose={() => setHelpOpen(false)} />}
         {exitPrompt && <ExitDialog pin={exitPin} error={pinError} onPinChange={setExitPin} onCancel={() => { setExitPrompt(false); setExitPin(''); setPinError(''); }} onSubmit={() => void submitExit()} />}
         {screen === 'finished' && <p className="share-status" role="status">{shareUrl ? <>Scan to download: <a href={shareUrl} target="_blank" rel="noreferrer">{shareUrl}</a> · {shareStatus}</> : shareStatus}</p>}
+        {screen === 'finished' && shareUrl && <SendLinkCard
+          qrDataUrl={shareQrDataUrl}
+          link={shareUrl}
+          enabled={event?.sendLinkEnabled ?? true}
+          busy={busy}
+          onSend={handleSendLink} />}
         {screen === 'finished' && <p className={`print-status ${printStatus.startsWith('Failed') ? 'failed' : printStatus.startsWith('Done') ? 'done' : ''}`} role="status">{printStatus}</p>}
         {screen === 'finished' && event && <p className="print-limit-note">Prints this session: {printJobs.filter((job) => job.sessionId === sessionId && job.status !== 'cancelled').length} of {event.printLimitPerSession}{printSummary?.paperWarning ? ` · ${printSummary.paperWarning}` : ''}</p>}
         {screen === 'capturing' && <SlotProgress slotCount={slotCount} currentSlot={currentSlot} capturedSlots={capturedSlots} />}

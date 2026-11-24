@@ -12,7 +12,7 @@ const event: ActiveEvent = {
   thankYouText: 'Thanks', defaultLayoutId: 'double-strip-3', offeredLayoutIds: ['double-strip-3'], consentText: '',
   contactText: '', galleryToken: null, galleryPasswordSet: false, watermarkEnabled: false, watermarkPosition: 'bottom-right',
   watermarkScalePercent: 18, watermarkOpacity: 0.6, printLimitPerSession: 2, paperCount: 0,
-  attractEnabled: true, attractIdleSeconds: 60, filterId: 'none', filterChoiceEnabled: false, animatedOutput: 'gif',
+  attractEnabled: true, attractIdleSeconds: 60, filterId: 'none', filterChoiceEnabled: false, animatedOutput: 'gif', sendLinkEnabled: true,
 };
 
 const slide = (overrides: Partial<AttractSlide> = {}): AttractSlide =>

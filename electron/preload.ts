@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { AdminPinAttempt, AdminPinLockout } from '../src/shared/types/admin-pin';
 import type { RemoteCommand, RemoteServerInfo, RemoteView } from '../src/shared/types/remote-guest';
 import type { TetherStatus } from '../src/features/capture/dslr/dslr-types';
+import type { LinkChannel, SendLinkOutcome } from '../src/features/sharing/link-delivery/types';
 
 import type { BoothSettingKey } from '../src/shared/constants/settings-keys.js';
 
@@ -67,6 +68,9 @@ contextBridge.exposeInMainWorld('photobooth', {
   createGalleryLink: (eventId: string): Promise<{ url: string; token: string; passwordProtected: boolean }> => ipcRenderer.invoke('gallery:createLink', eventId),
   setGalleryPassword: (eventId: string, password: string | null): Promise<boolean> => ipcRenderer.invoke('gallery:setPassword', eventId, password),
   createShareLink: (sessionId: string): Promise<{ url: string; expiresAt: string }> => ipcRenderer.invoke('download:createShareLink', sessionId),
+  // Link delivery (F28): the address is passed through and never kept by the booth.
+  sendSessionLink: (sessionId: string, channel: LinkChannel, target: string): Promise<SendLinkOutcome> =>
+    ipcRenderer.invoke('share:sendLink', sessionId, channel, target),
   getUploadQueue: () => ipcRenderer.invoke('uploadQueue:list'),
   getRetentionStatus: () => ipcRenderer.invoke('retention:status'),
   deleteSession: (sessionId: string) => ipcRenderer.invoke('retention:deleteSession', sessionId),

@@ -288,6 +288,14 @@ const migrations: Array<{ name: string; sql: string }> = [
       ALTER TABLE print_jobs ADD COLUMN profile_label TEXT;
     `,
   },
+  {
+    // F28: the guest may ask for the link by email or SMS. Only the switch is stored — never an
+    // address or a number, because the booth does not keep them after sending.
+    name: '020_link_delivery',
+    sql: `
+      ALTER TABLE events ADD COLUMN send_link_enabled INTEGER NOT NULL DEFAULT 1;
+    `,
+  },
 ];
 
 export function initializeStorage(userDataPath: string): void {
