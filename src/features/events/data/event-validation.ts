@@ -122,6 +122,13 @@ function validateAnimatedOutput(item: Record<string, unknown>): { animatedOutput
   return { animatedOutput };
 }
 
+/** F28: sending the link is a per-event promise, so the switch must be a real boolean. */
+function validateLinkDelivery(item: Record<string, unknown>): { sendLinkEnabled: boolean } {
+  const enabled = item.sendLinkEnabled ?? true;
+  if (typeof enabled !== 'boolean') throw new Error('Invalid link-sending setting');
+  return { sendLinkEnabled: enabled };
+}
+
 export function validateEventSettings(value: unknown): ValidatedEventFields {
   if (!value || typeof value !== 'object') throw new Error('Invalid event details');
   const item = value as Record<string, unknown>;
@@ -137,7 +144,7 @@ export function validateEventSettings(value: unknown): ValidatedEventFields {
   const offered = validateOfferedLayoutIds(item.offeredLayoutIds);
   const consentText = optionalText(item.consentText, MAX_CONSENT_LENGTH, `Consent notice must be ${MAX_CONSENT_LENGTH} characters or fewer`);
   const contactText = optionalText(item.contactText, MAX_EVENT_CONTACT_LENGTH, `Contact details must be ${MAX_EVENT_CONTACT_LENGTH} characters or fewer`);
-  return { ...validateAnimatedOutput(item), name: item.name.trim(), shots, expiryDays, eventDate: eventDate as string | null, primaryColor: item.primaryColor as string, accentColor: item.accentColor as string,
+  return { ...validateAnimatedOutput(item), ...validateLinkDelivery(item), name: item.name.trim(), shots, expiryDays, eventDate: eventDate as string | null, primaryColor: item.primaryColor as string, accentColor: item.accentColor as string,
     welcomeText: (item.welcomeText as string).trim(), thankYouText: (item.thankYouText as string).trim(),
     defaultLayoutId: defaultLayoutIdForShots(shots), offeredLayoutIds: offered, consentText, contactText, ...validateWatermark(item), ...validatePrintRules(item), ...validateAttract(item), ...validatePhotoFilter(item) };
 }

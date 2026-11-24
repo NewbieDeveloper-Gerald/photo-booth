@@ -17,11 +17,12 @@ const EVENT_COLUMNS = `id, name, shots, expiry_days AS expiryDays, event_date AS
   watermark_scale_percent AS watermarkScalePercent, watermark_opacity AS watermarkOpacity,
   print_limit_per_session AS printLimitPerSession, paper_count AS paperCount,
   attract_enabled AS attractEnabled, attract_idle_seconds AS attractIdleSeconds,
-  filter_id AS filterId, filter_choice_enabled AS filterChoiceEnabled, animated_output AS animatedOutput`;
+  filter_id AS filterId, filter_choice_enabled AS filterChoiceEnabled, animated_output AS animatedOutput,
+  send_link_enabled AS sendLinkEnabled`;
 
-type EventListRow = Omit<EventSettings, 'galleryToken' | 'galleryPasswordSet' | 'watermarkEnabled' | 'attractEnabled' | 'filterChoiceEnabled'> & {
+type EventListRow = Omit<EventSettings, 'galleryToken' | 'galleryPasswordSet' | 'watermarkEnabled' | 'attractEnabled' | 'filterChoiceEnabled' | 'sendLinkEnabled'> & {
   offeredLayoutIds: string; galleryToken: string | null; galleryPasswordHash: string | null; watermarkEnabled: number;
-  attractEnabled: number; filterChoiceEnabled: number;
+  attractEnabled: number; filterChoiceEnabled: number; sendLinkEnabled: number;
 };
 
 /** The column is JSON; a corrupt value must not break the booth screen, so fall back to the default layout. */
@@ -50,6 +51,7 @@ function toEventSettings(row: EventListRow): EventSettings {
     printLimitPerSession: row.printLimitPerSession, paperCount: row.paperCount,
     attractEnabled: Boolean(row.attractEnabled), attractIdleSeconds: row.attractIdleSeconds,
     filterId: row.filterId, filterChoiceEnabled: Boolean(row.filterChoiceEnabled), animatedOutput: row.animatedOutput,
+    sendLinkEnabled: Boolean(row.sendLinkEnabled),
   };
 }
 
@@ -86,20 +88,20 @@ export function saveEventSettings(userDataPath: string, input: unknown): EventSe
       welcome_text = ?, thank_you_text = ?, default_layout_id = ?, offered_layout_ids = ?, consent_text = ?, contact_text = ?,
       watermark_enabled = ?, watermark_position = ?, watermark_scale_percent = ?, watermark_opacity = ?,
       print_limit_per_session = ?, paper_count = ?, attract_enabled = ?, attract_idle_seconds = ?,
-      filter_id = ?, filter_choice_enabled = ?, animated_output = ? WHERE id = ?`).run(fields.name, fields.shots,
+      filter_id = ?, filter_choice_enabled = ?, animated_output = ?, send_link_enabled = ? WHERE id = ?`).run(fields.name, fields.shots,
       fields.expiryDays, fields.eventDate, fields.primaryColor, fields.accentColor, fields.welcomeText, fields.thankYouText, fields.defaultLayoutId, offeredJson,
       fields.consentText, fields.contactText, Number(fields.watermarkEnabled), fields.watermarkPosition, fields.watermarkScalePercent, fields.watermarkOpacity,
       fields.printLimitPerSession, fields.paperCount, Number(fields.attractEnabled), fields.attractIdleSeconds,
-      fields.filterId, Number(fields.filterChoiceEnabled), fields.animatedOutput, id);
+      fields.filterId, Number(fields.filterChoiceEnabled), fields.animatedOutput, Number(fields.sendLinkEnabled), id);
     else database.prepare(`INSERT INTO events (id, name, shots, retake_limit, print_enabled, expiry_days, event_date, primary_color, accent_color,
       welcome_text, thank_you_text, default_layout_id, offered_layout_ids, consent_text, contact_text,
       watermark_enabled, watermark_position, watermark_scale_percent, watermark_opacity,
       print_limit_per_session, paper_count, attract_enabled, attract_idle_seconds,
-      filter_id, filter_choice_enabled, animated_output) VALUES (?, ?, ?, 3, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, fields.name,
+      filter_id, filter_choice_enabled, animated_output, send_link_enabled) VALUES (?, ?, ?, 3, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, fields.name,
       fields.shots, fields.expiryDays, fields.eventDate, fields.primaryColor, fields.accentColor, fields.welcomeText, fields.thankYouText, fields.defaultLayoutId,
       offeredJson, fields.consentText, fields.contactText, Number(fields.watermarkEnabled), fields.watermarkPosition, fields.watermarkScalePercent, fields.watermarkOpacity,
       fields.printLimitPerSession, fields.paperCount, Number(fields.attractEnabled), fields.attractIdleSeconds,
-      fields.filterId, Number(fields.filterChoiceEnabled), fields.animatedOutput);
+      fields.filterId, Number(fields.filterChoiceEnabled), fields.animatedOutput, Number(fields.sendLinkEnabled));
     const galleryPassword = validateGalleryPassword(item.galleryPassword);
     if (galleryPassword !== undefined) {
       database.prepare('UPDATE events SET gallery_password_hash = ? WHERE id = ?').run(galleryPassword === null ? null : hashSecret(galleryPassword), id);

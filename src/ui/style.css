@@ -210,6 +210,16 @@
 .analytics-card { align-items: start; }
 .camera-source-card { align-items: start; }
 
+/* F28: send the link while the QR code stays on screen */
+.send-link-card { align-items: start; gap: 20px; }
+.send-link-qr { display: grid; justify-items: center; gap: 8px; }
+.send-link-qr img { width: 160px; height: 160px; border-radius: 8px; background: #fff; padding: 6px; }
+.send-link-form { display: grid; gap: 10px; min-width: 260px; flex: 1; }
+.send-link-channels { display: flex; gap: 8px; }
+.send-link-channels .secondary-button.selected { border-color: currentColor; font-weight: 600; }
+.send-link-status { font-size: 0.9em; }
+.send-link-form .remote-link { width: 100%; }
+
 /* F25: saved printer profiles */
 .profile-card { display: block; }
 .profile-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }

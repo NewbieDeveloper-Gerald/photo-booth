@@ -8,6 +8,7 @@ import type { PagePresetId, TemplateDocument, TemplateSummary } from '../feature
 import type { PrintJob, PrintQueueSummary } from '../features/printing/domain/print-queue-types';
 import type { PrinterProfile, PrinterProfileDraft } from '../features/printing/domain/printer-profile';
 import type { TetherStatus } from '../features/capture/dslr/dslr-types';
+import type { LinkChannel, SendLinkOutcome } from '../features/sharing/link-delivery/types';
 import type { AttractMedia } from '../shared/types/attract';
 import type { PhotoFilterId } from '../shared/types/photo-filter';
 import type { AdminPinAttempt, AdminPinLockout } from '../shared/types/admin-pin';
@@ -49,6 +50,7 @@ declare global {
       chooseEventLogo(eventId: string): Promise<string | null>;
       getEventLogoDataUrl(eventId: string): Promise<string | null>;
       createShareLink(sessionId: string): Promise<{ url: string; expiresAt: string }>;
+      sendSessionLink(sessionId: string, channel: LinkChannel, target: string): Promise<SendLinkOutcome>;
       listAttractMedia(eventId: string): Promise<AttractMedia[]>;
       addAttractMedia(eventId: string): Promise<AttractMedia[]>;
       removeAttractMedia(eventId: string, mediaId: string): Promise<AttractMedia[]>;

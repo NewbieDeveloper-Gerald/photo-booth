@@ -90,6 +90,26 @@ and keeps blob URLs for the lifetime of that event, so a 25 MB clip is not re-re
 | A new hardware device | `src/features/<feature>/devices/` behind an interface, with a mock |
 | A rule that must hold for every caller (lockouts, limits) | `src/features/<feature>/domain/`, called from the node-layer data module so no IPC handler can bypass it |
 
+## Link delivery (F28)
+
+- `sharing/link-delivery/` is split the same way as the rest: `addresses.ts` (validation and
+  masking), `message.ts` (the words the guest reads, trimmed so an SMS stays one part),
+  `senders.ts` (the `LinkSender` seam: a demo sender that keeps nothing, and a webhook sender that
+  posts to an operator's gateway) and `delivery-service.ts` (the orchestrator).
+- **Privacy is a shape, not a promise:** the service validates, builds the message, hands the
+  request to the sender and returns a masked confirmation. The target is never written to the
+  database, a setting, a log or a component state; the only thing kept is an in-memory count per
+  session, which is what the rate limit uses. A test reads the raw SQLite file and every table's
+  JSON after two sends to prove it.
+- **The link is shared with the QR code:** the service reuses the session's unexpired token, and
+  mints one through the F13 share-link repository only when there is none — so the emailed link and
+  the QR picture always point at the same page.
+- **One seam, two kinds of provider:** a real email/SMS account or a coin acceptor would be another
+  `LinkSender` implementation; nothing above the seam changes, and the booth still keeps no guest
+  contact details.
+- The per-event switch is a column (`events.send_link_enabled`), so turning sending off is part of
+  the event rather than a booth-wide secret.
+
 ## Tether camera (F26)
 
 - The camera sits behind the same `CameraDevice` interface as a webcam. `capture/dslr/` holds the

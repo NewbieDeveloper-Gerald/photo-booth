@@ -1,6 +1,6 @@
 # Progress
 
-Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`, F20 as `de322a2`, F21 as `e9564c1`, F22 as `1b3d92c`, F23 as `48fab71`, F24 as `22bff4d`, F25 as `9cb5f59`, F26 as `665971d`.
+Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`, F20 as `de322a2`, F21 as `e9564c1`, F22 as `1b3d92c`, F23 as `48fab71`, F24 as `22bff4d`, F25 as `9cb5f59`, F26 as `665971d`, **F27 skipped by request**, F28 as `PENDING-F28`.
 
 ## Current status
 
@@ -34,9 +34,12 @@ Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `4215
 - **F24 (admin dashboard): merged** (`22bff4d`), awaiting the hand-count check below.
 - **F25 (printer profiles): merged** (`9cb5f59`), awaiting the real-printer check below.
 - **F26 (DSLR camera): merged** (`665971d`), awaiting the 50-session check below.
-- **F27–F29: not started.**
+- **F27 (payment / coin mode): skipped on request** — not built. The backlog still has it; walk-up
+  booths are not supported yet, and nothing in the app pretends they are.
+- **F28 (email and SMS link): merged** (`PENDING-F28`), awaiting the real send below.
+- **F29: not started.**
 - Automated verification today: `npm run typecheck`, `npm run lint`, `npm test`
-  (**524 tests in 91 files**), `npm run build` (Vite production build) all pass.
+  (**549 tests in 97 files**), `npm run build` (Vite production build) all pass.
   `npm run test:e2e` exists but cannot run in this environment (no browser runtime).
 
 ## Verification gaps (unrecorded or impossible here)
@@ -555,6 +558,36 @@ produces an animation from the photos.
 Video (MP4/WebM) output, audio, a per-photo dithering/quantiser beyond 3-3-2, choosing the
 animated extra per session by the guest, and editing the loop (frame order, speed) from the UI.
 
+## F28. Email and SMS link (merged)
+
+- **The guest can have the link sent** from the finished screen, with the QR code still on screen
+  beside it: pick email or SMS, type the address or number, press send.
+- **Nothing about the target is kept.** It is validated, used for the one send and dropped; the
+  confirmation is masked (`m••••@example.com`, `+63 •••••• 4567`) and the input is cleared. A test
+  reads the raw database file and every table after two sends and finds no trace of either target.
+- **Per-event switch** (`events.send_link_enabled`): turned off, the form is disabled and the QR
+  code still works.
+- **The sent link is the QR link**: the session's unexpired token is reused, or minted through the
+  F13 repository when there is none.
+- **`LinkSender` seam** with two implementations: a demo sender that only counts sends and says so,
+  and a webhook sender for an operator's own gateway (`PHOTOBOOTH_LINK_WEBHOOK`), which is the
+  honest path to real email/SMS until a provider account is added as its own feature.
+- **One guest cannot spam the booth**: three sends per session per ten minutes, enforced in memory.
+
+### F28 manual check
+
+Set `PHOTOBOOTH_LINK_WEBHOOK` to a small local service (or your real gateway) that logs what it
+receives, then send the link to your own email and phone from a test session. Check the message
+arrives, the link opens the guest page, the confirmation shows a masked target, and the service's
+own log — not the booth — is the only place the address appears. Then turn sending off for the event
+and confirm the form refuses and the QR code still works.
+
+### F28 out of scope (later features)
+
+Email/SMS provider accounts and delivery receipts, retries or a queue for failed sends (a failure is
+reported to the guest instead), sending from the guest's own phone, WhatsApp/Viber, and any storage of
+guest contact details — which stays deliberately impossible.
+
 ## F26. DSLR and mirrorless camera (merged as `665971d`)
 
 - **One promised model: the Canon EOS 250D**, through the `gphoto2` helper. The booth builds the
@@ -751,6 +784,9 @@ charts, and long-term analytics storage — the dashboard reports the booth's re
   including the tablet view mapping and frame sender.
 - The dashboard is reachable from a phone only over the configured tunnel, because the share
   server listens on 127.0.0.1; locally it is the booth computer's browser.
+- Email/SMS delivery is unverified against a real provider: the demo sender keeps nothing, and the
+  webhook path needs an operator's gateway. The manual check above is the only proof it leaves the
+  booth.
 - The tether camera is unverified on hardware: no DSLR was attached while F26 was built, so the
   250D path is proven only by tests that fake the helper. Install gphoto2 and run the 50-session
   check before trusting it at an event.
