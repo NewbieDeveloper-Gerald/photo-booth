@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { createRoot } from 'react-dom/client';
-import { BrowserCameraDevice, canRetake, captureOriginalJpeg, isValidRetakeLimit, type CameraInfo, type CameraResolution } from '../features/capture';
+import { BrowserCameraDevice, canRetake, captureOriginalJpeg, isValidRetakeLimit, type CameraInfo, type CameraResolution, type WatermarkPosition } from '../features/capture';
 import { cameraErrorMessage } from '../features/capture/domain/camera-messages';
 import { blobToBytes, bytesToJpegBlob } from '../shared/dom/blob';
-import { saveGuestDownloadCopy } from '../renderer/lib/guest-download-copy';
+import { saveGuestDownloadCopy, type GuestCopyWatermark } from '../renderer/lib/guest-download-copy';
+import { loadImageElement } from '../renderer/lib/load-image';
 import { useIdleTimeout } from '../renderer/hooks/useIdleTimeout';
 import { readPreference, savePreference } from '../renderer/lib/preferences';
 import { ConsentDialog } from '../renderer/components/ConsentDialog';
@@ -23,7 +24,7 @@ import { defaultLayoutIdForShots } from '../features/events';
 import { wait } from '../renderer/lib/timing';
 import { DEFAULT_ACCENT_COLOR, DEFAULT_CONSENT_TEXT, DEFAULT_PRIMARY_COLOR, DEFAULT_THANK_YOU_TEXT, DEFAULT_WELCOME_TEXT } from '../shared/constants/branding-defaults';
 import { toErrorMessage } from '../shared/errors';
-import { CAPTURE_REVIEW_PAUSE_MS, MAX_DISK_WARNING_GB, SESSION_IDLE_TIMEOUT_MS, UPLOAD_STATUS_POLL_MS } from '../shared/constants/limits';
+import { CAPTURE_REVIEW_PAUSE_MS, MAX_DISK_WARNING_GB, MAX_WATERMARK_OPACITY, MAX_WATERMARK_SCALE_PERCENT, MIN_WATERMARK_OPACITY, MIN_WATERMARK_SCALE_PERCENT, SESSION_IDLE_TIMEOUT_MS, UPLOAD_STATUS_POLL_MS } from '../shared/constants/limits';
 import { renderTemplateLayout, templateFromCatalogPreset, getLayoutPreset, layoutPresets, type TemplateDocument, type TemplateSummary } from '../features/layouts';
 import { decideAutoPrint } from '../features/printing';
 import type { ActiveEvent, EventSettings } from '../shared/types/event';
@@ -133,6 +134,18 @@ function App(): React.JSX.Element {
     if (!first || layoutChoices.some((choice) => choice.id === selectedLayoutId)) return;
     setSelectedLayoutId(first.id);
   }, [layoutChoices, selectedLayoutId]);
+
+  /** The event logo decoded once, so watermarking a sequence does not re-decode it per shot. */
+  const watermarkLogo = useRef<HTMLImageElement | null>(null);
+  useEffect(() => {
+    watermarkLogo.current = null;
+    if (!eventLogoDataUrl) return;
+    let cancelled = false;
+    void loadImageElement(eventLogoDataUrl)
+      .then((image) => { if (!cancelled) watermarkLogo.current = image; })
+      .catch(() => { watermarkLogo.current = null; });
+    return () => { cancelled = true; };
+  }, [eventLogoDataUrl]);
 
   const clearReviewUrls = useCallback(() => {
     for (const url of reviewUrls.current) URL.revokeObjectURL(url);
@@ -297,7 +310,7 @@ function App(): React.JSX.Element {
         setTemplates(layoutPresets.map((preset) => ({ id: preset.id, name: preset.name, shots: preset.shots, copies: preset.copies, pagePreset: '4x6' as const, pageLabel: '4 × 6 in', builtIn: true })));
         // The browser preview has no event storage, so it offers three catalog layouts and
         // makes the guest picker visible while developing the UI.
-        setEvent({ id: 'preview-event', name: 'Default Event', shots: 3, retakeLimit: 3, printEnabled: true, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: 'double-strip-3', offeredLayoutIds: ['double-strip-3', 'double-strip-4', 'grid-4-portrait'], consentText: '', contactText: '', galleryToken: null, galleryPasswordSet: false });
+        setEvent({ id: 'preview-event', name: 'Default Event', shots: 3, retakeLimit: 3, printEnabled: true, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: 'double-strip-3', offeredLayoutIds: ['double-strip-3', 'double-strip-4', 'grid-4-portrait'], consentText: '', contactText: '', galleryToken: null, galleryPasswordSet: false, watermarkEnabled: false, watermarkPosition: 'bottom-right', watermarkScalePercent: 18, watermarkOpacity: 0.6 });
         setRetakeLimitDraft('3');
       }
       if (!camera) { setStatus('Camera access is not available.'); return; }
@@ -375,6 +388,13 @@ function App(): React.JSX.Element {
     return !sequenceCancelled.current;
   };
 
+  /** Watermarks guest copies only; the original written just before this stays untouched (F17). */
+  const guestCopyWatermark = (): GuestCopyWatermark | undefined => {
+    const logo = watermarkLogo.current;
+    if (!logo || !event?.watermarkEnabled) return undefined;
+    return { logo, logoWidth: logo.naturalWidth, logoHeight: logo.naturalHeight, settings: { position: event.watermarkPosition, scalePercent: event.watermarkScalePercent, opacity: event.watermarkOpacity } };
+  };
+
   const saveCapturedSlot = async (activeSessionId: string, slotNumber: number): Promise<void> => {
     const bridge = window.photobooth;
     const video = videoRef.current;
@@ -384,7 +404,7 @@ function App(): React.JSX.Element {
     setCapturedSlots((current) => new Set(current).add(slotNumber));
     setPreviewImage(original.blob);
     setStatus(`Photo ${slotNumber} saved.`);
-    await saveGuestDownloadCopy(bridge, saved.photoId, original.blob);
+    await saveGuestDownloadCopy(bridge, saved.photoId, original.blob, guestCopyWatermark());
   };
 
   const captureSlots = async (activeSessionId: string, slots: number[], totalSlots: number): Promise<void> => {
@@ -465,7 +485,7 @@ function App(): React.JSX.Element {
   };
 
   const handleNewEvent = (): void => {
-    setEventDraft({ id: '', name: '', shots: 3, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: defaultLayoutIdForShots(3), offeredLayoutIds: [defaultLayoutIdForShots(3)], consentText: '', contactText: '', galleryToken: null, galleryPasswordSet: false });
+    setEventDraft({ id: '', name: '', shots: 3, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: defaultLayoutIdForShots(3), offeredLayoutIds: [defaultLayoutIdForShots(3)], consentText: '', contactText: '', galleryToken: null, galleryPasswordSet: false, watermarkEnabled: false, watermarkPosition: 'bottom-right', watermarkScalePercent: 18, watermarkOpacity: 0.6 });
     setEventLogoDataUrl(null); setEventMessage('New event details are not saved yet.');
   };
 
@@ -874,6 +894,13 @@ function App(): React.JSX.Element {
             <label>Welcome text<input aria-label="Event welcome text" maxLength={160} value={eventDraft.welcomeText} onChange={(e) => setEventDraft({ ...eventDraft, welcomeText: e.target.value })} /></label>
             <label>Thank-you text<input aria-label="Event thank-you text" maxLength={160} value={eventDraft.thankYouText} onChange={(e) => setEventDraft({ ...eventDraft, thankYouText: e.target.value })} /></label>
             <label>Contact details on expired links<input aria-label="Event contact details" maxLength={200} placeholder="e.g. Message @partybooth or hello@example.com" value={eventDraft.contactText} onChange={(e) => setEventDraft({ ...eventDraft, contactText: e.target.value })} /></label>
+            <div className="watermark-field">
+              <label className="watermark-toggle"><input type="checkbox" aria-label="Watermark guest downloads" checked={eventDraft.watermarkEnabled} disabled={!eventLogoDataUrl} onChange={(e) => setEventDraft({ ...eventDraft, watermarkEnabled: e.target.checked })} /> <span>Watermark guest downloads</span></label>
+              <p className="gallery-hint">{eventLogoDataUrl ? 'Applied to the downloadable copies and gallery thumbnails only — originals and prints stay clean.' : 'Add an event logo first; the watermark uses that logo.'}</p>
+              <label>Watermark corner<select aria-label="Watermark corner" value={eventDraft.watermarkPosition} disabled={!eventDraft.watermarkEnabled} onChange={(e) => setEventDraft({ ...eventDraft, watermarkPosition: e.target.value as WatermarkPosition })}>{['top-left', 'top-right', 'bottom-left', 'bottom-right', 'center'].map((position) => <option key={position} value={position}>{position.replace('-', ' ')}</option>)}</select></label>
+              <label>Watermark size <output>{eventDraft.watermarkScalePercent}% of the photo width</output><input aria-label="Watermark size percent" type="range" min={MIN_WATERMARK_SCALE_PERCENT} max={MAX_WATERMARK_SCALE_PERCENT} step={1} value={eventDraft.watermarkScalePercent} disabled={!eventDraft.watermarkEnabled} onChange={(e) => setEventDraft({ ...eventDraft, watermarkScalePercent: Number(e.target.value) })} /></label>
+              <label>Watermark opacity <output>{Math.round(eventDraft.watermarkOpacity * 100)}%</output><input aria-label="Watermark opacity" type="range" min={MIN_WATERMARK_OPACITY} max={MAX_WATERMARK_OPACITY} step={0.05} value={eventDraft.watermarkOpacity} disabled={!eventDraft.watermarkEnabled} onChange={(e) => setEventDraft({ ...eventDraft, watermarkOpacity: Number(e.target.value) })} /></label>
+            </div>
             <label>Consent notice for this event<textarea aria-label="Event consent notice" maxLength={1200} rows={3} placeholder="Leave blank to use the booth-wide notice" value={eventDraft.consentText} onChange={(e) => setEventDraft({ ...eventDraft, consentText: e.target.value })} /></label>
             <div className="gallery-field">
               <div>

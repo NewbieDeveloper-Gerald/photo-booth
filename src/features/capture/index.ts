@@ -7,4 +7,6 @@ export { cameraErrorMessage } from './domain/camera-messages';
 export { createCountdownTicks, isValidCountdown } from './domain/countdown';
 export { canRetake, isValidRetakeLimit, retakesRemaining } from './domain/retake-rules';
 export { captureOriginalJpeg, createDownloadCopy, fitDimensions } from './domain/photo-pipeline';
+export { drawWatermark, isWatermarkPosition, watermarkPlacement } from './domain/watermark';
+export type { WatermarkPosition, WatermarkSettings } from '../../shared/types/watermark';
 export type { SessionRecord, SessionSlot, UnfinishedSession } from '../../shared/types/session';

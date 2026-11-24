@@ -192,6 +192,15 @@ const migrations: Array<{ name: string; sql: string }> = [
       CREATE UNIQUE INDEX IF NOT EXISTS idx_events_gallery_token ON events(gallery_token) WHERE gallery_token IS NOT NULL;
     `,
   },
+  {
+    name: '013_event_watermark',
+    sql: `
+      ALTER TABLE events ADD COLUMN watermark_enabled INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE events ADD COLUMN watermark_position TEXT NOT NULL DEFAULT 'bottom-right';
+      ALTER TABLE events ADD COLUMN watermark_scale_percent INTEGER NOT NULL DEFAULT 18;
+      ALTER TABLE events ADD COLUMN watermark_opacity REAL NOT NULL DEFAULT 0.6;
+    `,
+  },
 ];
 
 export function initializeStorage(userDataPath: string): void {

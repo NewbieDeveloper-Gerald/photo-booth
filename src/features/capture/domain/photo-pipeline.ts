@@ -1,4 +1,5 @@
 import { GUEST_COPY_JPEG_QUALITY, GUEST_COPY_MAX_EDGE_PX, ORIGINAL_JPEG_QUALITY } from '../../../shared/constants/limits';
+import { drawWatermark, watermarkPlacement, type WatermarkSettings } from './watermark';
 
 export type ImageDimensions = { width: number; height: number };
 
@@ -23,7 +24,14 @@ export async function captureOriginalJpeg(video: HTMLVideoElement): Promise<{ bl
   return { blob: await toJpeg(canvas, ORIGINAL_JPEG_QUALITY), width, height };
 }
 
-export async function createDownloadCopy(original: Blob): Promise<{ blob: Blob; width: number; height: number }> {
+/**
+ * The guest copy. An optional watermark is drawn *after* the photo is scaled, so the mark is
+ * baked into the downloadable JPEG while the original on disk stays untouched (F17).
+ */
+export async function createDownloadCopy(
+  original: Blob,
+  watermark?: { logo: CanvasImageSource; logoWidth: number; logoHeight: number; settings: WatermarkSettings },
+): Promise<{ blob: Blob; width: number; height: number }> {
   const bitmap = await createImageBitmap(original);
   try {
     const dimensions = fitDimensions(bitmap.width, bitmap.height);
@@ -33,6 +41,10 @@ export async function createDownloadCopy(original: Blob): Promise<{ blob: Blob; 
     const context = canvas.getContext('2d');
     if (!context) throw new Error('Could not prepare the download copy');
     context.drawImage(bitmap, 0, 0, dimensions.width, dimensions.height);
+    if (watermark) {
+      const placement = watermarkPlacement({ photoWidth: dimensions.width, photoHeight: dimensions.height, logoWidth: watermark.logoWidth, logoHeight: watermark.logoHeight, settings: watermark.settings });
+      drawWatermark(context, watermark.logo, placement, watermark.settings.opacity);
+    }
     // Canvas re-encoding produces a fresh JPEG without copying source metadata.
     return { blob: await toJpeg(canvas, GUEST_COPY_JPEG_QUALITY), ...dimensions };
   } finally {

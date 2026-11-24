@@ -34,6 +34,12 @@ export const MIN_GALLERY_PASSWORD_LENGTH = 4;
 export const MAX_GALLERY_PASSWORD_LENGTH = 64;
 export const GALLERY_GRANT_TTL_MS = 30 * 60 * 1000;
 
+// Guest-copy watermark (F17)
+export const MIN_WATERMARK_SCALE_PERCENT = 5;
+export const MAX_WATERMARK_SCALE_PERCENT = 50;
+export const MIN_WATERMARK_OPACITY = 0.1;
+export const MAX_WATERMARK_OPACITY = 1;
+
 // Upload queue retry policy
 export const UPLOAD_INITIAL_RETRY_MS = 30_000;
 export const UPLOAD_MAX_RETRY_MS = 6 * 60 * 60 * 1000;
