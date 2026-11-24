@@ -1,6 +1,6 @@
 # Progress
 
-Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`; F19 implemented on `arena/7de5fca9-photo-booth`.
+Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`.
 
 ## Current status
 
@@ -24,7 +24,7 @@ Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `4215
 - **F17 (watermark on downloads): merged** (`484354e`), awaiting the manual compare test below.
 - **F18 (print queue, counts and limits): merged** (`6a0abb9`), awaiting the manual
   pause/resume print test below.
-- **F19 (attract screen): implemented**, awaiting the two-minute idle check below.
+- **F19 (attract screen): merged** (`3425d9d`), awaiting the two-minute idle check below.
 - **F20–F29: not started.**
 - Automated verification today: `npm run typecheck`, `npm run lint`, `npm test`
   (**344 tests in 60 files**), `npm run build` (Vite production build) all pass.
@@ -342,7 +342,7 @@ its error so it can be reprinted after the limit is raised.
 Two printers at once (jobs keep a printer name but there is one worker), per-job priority,
 automatic paper reload detection and cut lines drawn on the sheet are not implemented.
 
-## F19. Attract screen (implemented)
+## F19. Attract screen (merged)
 
 - **The idle loop replaces the operator screen, not the session flow**: when the booth sits
   unused, a full-bleed overlay shows the event's photos or clips, its logo, name and welcome
