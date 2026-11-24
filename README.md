@@ -54,6 +54,26 @@ When the booth is idle it invites guests in: after an event-set wait (default 60
 
 Event setup has an **Attract screen** block: the toggle, the wait, and **Add photos or video** (PNG/JPEG/WebP, MP4/M4V/WebM, up to eight files of 25 MB each). The files are copied into the event's own folder under the booth's data directory, so the memory card can go home with the operator; **Remove** deletes that copy. With no media, the loop cycles the layouts the event offers, so a brand-new event still has an invite screen. **Preview attract screen** shows the loop immediately instead of waiting.
 
+## DSLR and mirrorless camera (F26)
+
+The booth can shoot through **one tethered camera model: the Canon EOS 250D (Rebel SL3)**, using the open-source [`gphoto2`](http://gphoto.org) helper. Other PTP cameras may well work through the same helper, but nothing else is promised, and nothing else has been tested here.
+
+**Install the helper:** `gphoto2` must be on the booth PC's `PATH` (on Windows the usual route is the MSYS2 or WSL build, or the prebuilt binaries; check with `gphoto2 --auto-detect`). Set `PHOTOBOOTH_GPHOTO` to a full path if it lives elsewhere.
+
+**Use it:** connect the camera by USB, set it to its PC/PTP mode, open the operator panel and press **Check camera** in *Camera source*. When the model appears, pick “Canon EOS 250D (tethered)” in the camera list.
+
+- **Live view is a preview, not the photo.** Each frame is one `gphoto2 --capture-preview` run, so expect roughly **2–5 frames per second** — enough to frame and count down, not enough for smooth video. The tablet guest screen shows the same frames.
+- **The photo is a real still.** Capture asks the camera for a full-resolution JPEG (`--capture-image-and-download`) and then puts it through the booth's own encoder, so originals, guest copies, filters, watermarks and the layout all behave exactly as with a webcam. Expect **2–4 seconds per shot** on a 250D, plus the countdown; the shutter and mirror make an audible click, which guests usually enjoy.
+- **Fallback to a webcam is automatic.** If the helper is missing, the camera is unplugged, or live view dies mid-event (flat battery, another app grabbing the camera), the booth says so in the operator panel and switches to the first webcam by itself. You can also press **Use webcam instead** at any time.
+- **What the booth does not control:** exposure, focus mode, white balance, ISO, flash, drive mode and the camera's own colour settings stay on the camera body — set them there while framing. There is no burst or mirror-lockup control, no video capture, no RAW, and the camera must be in PTP mode (some models need “PC remote” enabled). A camera that only offers mass-storage mode cannot be used.
+
+### Camera models
+
+| Model | Status |
+| --- | --- |
+| Canon EOS 250D | supported and promised — **not yet tested on hardware here**; verify with the 50-session check in `PROGRESS.md` |
+| any other PTP camera | untested and unsupported; it may work through the same helper, or may not |
+
 ## Printer profiles (F25)
 
 A **printer profile** is one saved set of print settings, bound to a printer model and (optionally) to one Windows print queue:
