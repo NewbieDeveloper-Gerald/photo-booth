@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { AdminPinAttempt, AdminPinLockout } from '../src/shared/types/admin-pin';
 import type { RemoteCommand, RemoteServerInfo, RemoteView } from '../src/shared/types/remote-guest';
+import type { TetherStatus } from '../src/features/capture/dslr/dslr-types';
 
 import type { BoothSettingKey } from '../src/shared/constants/settings-keys.js';
 
@@ -31,6 +32,21 @@ contextBridge.exposeInMainWorld('photobooth', {
     const handler = (_event: unknown, info: RemoteServerInfo): void => listener(info);
     ipcRenderer.on('remote:status', handler);
     return () => { ipcRenderer.removeListener('remote:status', handler); };
+  },
+  // Tether camera (F26): the helper runs in the main process; frames arrive as events.
+  dslrStatus: (): Promise<TetherStatus> => ipcRenderer.invoke('dslr:status'),
+  startDslrLiveView: (): Promise<TetherStatus> => ipcRenderer.invoke('dslr:start'),
+  stopDslrLiveView: (): Promise<void> => ipcRenderer.invoke('dslr:stop'),
+  captureDslrPhoto: (): Promise<Uint8Array> => ipcRenderer.invoke('dslr:capture'),
+  onDslrFrame: (listener: (jpeg: Uint8Array) => void): (() => void) => {
+    const handler = (_event: unknown, jpeg: Uint8Array): void => listener(jpeg);
+    ipcRenderer.on('dslr:frame', handler);
+    return () => { ipcRenderer.removeListener('dslr:frame', handler); };
+  },
+  onDslrError: (listener: (message: string) => void): (() => void) => {
+    const handler = (_event: unknown, message: string): void => listener(message);
+    ipcRenderer.on('dslr:error', handler);
+    return () => { ipcRenderer.removeListener('dslr:error', handler); };
   },
   onExitRequested: (callback: () => void): (() => void) => {
     const listener = (): void => callback();

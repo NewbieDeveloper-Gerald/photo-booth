@@ -1,7 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { createRoot } from 'react-dom/client';
-import { BrowserCameraDevice, canRetake, captureOriginalJpeg, isValidRetakeLimit, PHOTO_FILTERS, type CameraInfo, type CameraResolution, type PhotoFilterId, type WatermarkPosition } from '../features/capture';
+import {
+  BrowserCameraDevice, TetherCameraDevice, canRetake, capturePhotoFrom, createCameraSources, isValidRetakeLimit, isTetherDeviceId,
+  PHOTO_FILTERS, webcamFallback, type CameraInfo, type CameraResolution, type PhotoFilterId, type TetherStatus, type WatermarkPosition,
+} from '../features/capture';
 import { cameraErrorMessage } from '../features/capture/domain/camera-messages';
 import { blobToBytes, bytesToJpegBlob } from '../shared/dom/blob';
 import { saveGuestDownloadCopy, type GuestCopyWatermark } from '../renderer/lib/guest-download-copy';
@@ -24,6 +27,8 @@ import { AttractMediaField } from '../renderer/components/AttractMediaField';
 import { FilterPicker } from '../renderer/components/FilterPicker';
 import { HotkeyHelp } from '../renderer/components/HotkeyHelp';
 import { RemoteGuestCard } from '../renderer/components/RemoteGuestCard';
+import { CameraSourceCard } from '../renderer/components/CameraSourceCard';
+import { createTetherBridge } from '../renderer/lib/tether-bridge';
 import { AnalyticsCard } from '../renderer/components/AnalyticsCard';
 import { PrinterProfileCard } from '../renderer/components/PrinterProfileCard';
 import { isTypingTarget, matchHotkey } from '../renderer/lib/hotkeys';
@@ -64,7 +69,17 @@ type Screen = 'ready' | 'capturing' | 'review' | 'finished';
 type ReviewImage = { slotNumber: number; photoId: string; url: string };
 
 function App(): React.JSX.Element {
-  const camera = useMemo(() => typeof navigator !== 'undefined' && navigator.mediaDevices ? new BrowserCameraDevice() : null, []);
+  /** F26: the tether camera reports a dead live view here, and the booth falls back to a webcam. */
+  const [tetherError, setTetherError] = useState('');
+  const [tetherStatus, setTetherStatus] = useState<TetherStatus | null>(null);
+  const tetherCamera = useMemo(() => {
+    if (!window.photobooth) return null;
+    return new TetherCameraDevice(createTetherBridge(), undefined, (message) => setTetherError(message));
+  }, []);
+  const camera = useMemo(() => {
+    const webcam = typeof navigator !== 'undefined' && navigator.mediaDevices ? new BrowserCameraDevice() : null;
+    return createCameraSources({ webcam, tether: tetherCamera });
+  }, [tetherCamera]);
   const videoRef = useRef<HTMLVideoElement>(null);
   const currentStream = useRef<MediaStream | null>(null);
   const startSequence = useRef(0);
@@ -321,6 +336,9 @@ function App(): React.JSX.Element {
     if (videoRef.current) videoRef.current.srcObject = null;
   }, [camera]);
 
+  /** Lets the fallback restart the camera without a self-referencing useCallback. */
+  const startCameraRef = useRef<(deviceId: string, quality: CameraResolution) => Promise<void>>(async () => undefined);
+
   const startCamera = useCallback(async (deviceId: string, quality: CameraResolution): Promise<void> => {
     if (!camera) { setStatus('Camera access is not available in this environment.'); return; }
     const sequence = ++startSequence.current;
@@ -346,10 +364,46 @@ function App(): React.JSX.Element {
       setCameraReady(false);
       setCountdown(null);
       setStatus('Camera unavailable');
+      const devices = await camera.listCameras().catch(() => []);
+      setCameras(devices);
+      // F26: a tether camera that will not start must not stop the event — use a webcam instead.
+      const fallback = isTetherDeviceId(deviceId) ? webcamFallback(devices) : '';
+      if (fallback) {
+        setErrorMessage(`${cameraErrorMessage(error)} The booth is using the webcam instead.`);
+        await startCameraRef.current(fallback, quality);
+        return;
+      }
       setErrorMessage(cameraErrorMessage(error));
-      setCameras(await camera.listCameras().catch(() => []));
     }
   }, [camera]);
+  useEffect(() => { startCameraRef.current = startCamera; }, [startCamera]);
+
+  const refreshTetherStatus = useCallback(async (): Promise<void> => {
+    if (!window.photobooth) return;
+    setTetherStatus(await window.photobooth.dslrStatus().catch(() => null));
+  }, []);
+
+  useEffect(() => { void refreshTetherStatus(); }, [refreshTetherStatus]);
+
+  /**
+   * F26: live view can die mid-event (cable, battery, another app grabbing the camera). The booth
+   * says so and switches to a webcam by itself, so the queue of guests keeps moving.
+   */
+  useEffect(() => {
+    if (!tetherError) return;
+    void (async () => {
+      const devices = await camera?.listCameras().catch(() => []) ?? [];
+      setCameras(devices);
+      const fallback = webcamFallback(devices);
+      setErrorMessage(fallback ? `${tetherError} The booth is using the webcam instead.` : tetherError);
+      setTetherError('');
+      await refreshTetherStatus();
+      if (fallback && isTetherDeviceId(selectedCameraId)) {
+        setSelectedCameraId(fallback);
+        await startCameraRef.current(fallback, resolution);
+      }
+    })();
+  }, [tetherError, camera, refreshTetherStatus, resolution, selectedCameraId]);
 
   const refreshCameras = useCallback(async () => {
     if (!camera) return;
@@ -595,7 +649,7 @@ function App(): React.JSX.Element {
     const bridge = window.photobooth;
     const video = videoRef.current;
     if (!bridge || !video || !currentStream.current) throw new Error('The camera is not ready for capture.');
-    const original = await captureOriginalJpeg(video);
+    const original = await capturePhotoFrom({ device: camera, deviceId: selectedCameraId, video });
     const saved = await bridge.saveOriginalPhoto(activeSessionId, slotNumber, await blobToBytes(original.blob), original.width, original.height);
     setCapturedSlots((current) => new Set(current).add(slotNumber));
     setPreviewImage(original.blob);
@@ -848,7 +902,7 @@ function App(): React.JSX.Element {
       if (!await runCountdown()) return;
       const video = videoRef.current;
       if (!video || !currentStream.current) throw new Error('The camera is not ready for capture.');
-      const original = await captureOriginalJpeg(video);
+      const original = await capturePhotoFrom({ device: camera, deviceId: selectedCameraId, video });
       const pending = await bridge.saveRetakeOriginalPhoto(sessionId, slot.slotNumber, await blobToBytes(original.blob), original.width, original.height);
       await saveGuestDownloadCopy(bridge, pending.photoId, original.blob, { filter: sessionFilterId, watermark: guestCopyWatermark() });
       setPreviewImage(original.blob);
@@ -1419,6 +1473,12 @@ function App(): React.JSX.Element {
         {screen === 'ready' && !adminLocked && <RemoteGuestCard info={remoteInfo} busy={busy} error={remoteError}
           onToggle={(enabled) => void handleRemoteToggle(enabled)} onRotate={() => void handleRemoteRotateLink()} />}
         {screen === 'ready' && !adminLocked && printSummary && <PrintQueueCard summary={printSummary} jobs={printJobs} busy={busy} onSetPaused={(paused) => void handleSetPrintPaused(paused)} onCancel={(jobId) => void handleCancelPrintJob(jobId)} />}
+        {screen === 'ready' && !adminLocked && <CameraSourceCard
+          status={tetherStatus}
+          selectedCameraId={selectedCameraId}
+          busy={busy}
+          onRefresh={() => { void refreshTetherStatus(); void refreshCameras(); }}
+          onUseWebcam={() => { const fallback = webcamFallback(cameras); if (fallback) { setSelectedCameraId(fallback); void startCamera(fallback, resolution); } }} />}
         {screen === 'ready' && !adminLocked && <PrinterProfileCard
           profiles={printerProfiles}
           printers={printers.map((printer) => ({ name: printer.name, displayName: printer.displayName }))}

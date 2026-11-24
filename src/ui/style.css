@@ -208,6 +208,7 @@
 
 /* F24 · the dashboard card: an address, a link and nothing else to think about. */
 .analytics-card { align-items: start; }
+.camera-source-card { align-items: start; }
 
 /* F25: saved printer profiles */
 .profile-card { display: block; }

@@ -10,12 +10,15 @@ import { startDownloadServer } from './download-service.js';
 import { startRemoteGuestService } from './remote-service.js';
 import type { RemoteGuestService } from './remote-service.js';
 import { ElectronSystemPrinter } from './devices/system-printer.js';
+import { startDslrService } from './dslr-service.js';
+import type { DslrService } from './dslr-service.js';
 import { createBoothWindowController } from './windows/booth-window.js';
 
 const boothWindow = createBoothWindowController();
 let mainWindow: BrowserWindow | null = null;
 let downloadServer: Server | null = null;
 let remoteGuest: RemoteGuestService | null = null;
+let dslr: DslrService | null = null;
 
 app.whenReady().then(async () => {
   const userDataPath = app.getPath('userData');
@@ -44,6 +47,10 @@ app.whenReady().then(async () => {
   });
   app.on('will-quit', printQueue.stop);
 
+  // The tether camera (F26): the helper only runs while live view or a capture asks for it.
+  dslr = startDslrService(() => mainWindow);
+  app.on('will-quit', () => dslr?.dispose());
+
   registerIpcHandlers({
     userDataPath,
     wakePrintQueue: printQueue.wake,
@@ -54,7 +61,7 @@ app.whenReady().then(async () => {
       boothWindow.permitClose();
       app.quit();
     },
-  }, remoteGuest);
+  }, remoteGuest, dslr);
 
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
     callback(permission === 'media');

@@ -90,6 +90,23 @@ and keeps blob URLs for the lifetime of that event, so a 25 MB clip is not re-re
 | A new hardware device | `src/features/<feature>/devices/` behind an interface, with a mock |
 | A rule that must hold for every caller (lockouts, limits) | `src/features/<feature>/domain/`, called from the node-layer data module so no IPC handler can bypass it |
 
+## Tether camera (F26)
+
+- The camera sits behind the same `CameraDevice` interface as a webcam. `capture/dslr/` holds the
+  helper's command lines and output parsing (`gphoto.ts`), the frame loop (`tether-service.ts`,
+  run in the main process, driven by an injected `run` so it is testable without a camera), the
+  renderer device (`tether-camera.ts`) and the one-device composite the booth screen talks to
+  (`camera-sources.ts`).
+- **Live view without a video device:** each preview JPEG is drawn into a canvas and the canvas is
+  exposed as a `MediaStream` (`canvas.captureStream`), so the preview element, the review screen and
+  the tablet frame sender keep working unchanged. Only the still comes from the camera itself.
+- **Process boundaries:** the helper runs in the main process; frames arrive as `dslr:frame` events
+  and errors as `dslr:error`. The renderer never spawns anything, and stops live view when the
+  preview stops.
+- **Failure is a normal state:** a missing helper, a camera that is not on the bus, three failed
+  frames in a row, or a camera that will not give a still all become one operator sentence, and the
+  booth screen falls back to a webcam (automatically, plus a manual button) instead of freezing.
+
 ## Printer profiles (F25)
 
 - `features/printing/domain/` holds the print model: `printer-models.ts` (the catalogue of models,

@@ -1,6 +1,6 @@
 # Progress
 
-Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`, F20 as `de322a2`, F21 as `e9564c1`, F22 as `1b3d92c`, F23 as `48fab71`, F24 as `22bff4d`, F25 as `9cb5f59`.
+Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`, F20 as `de322a2`, F21 as `e9564c1`, F22 as `1b3d92c`, F23 as `48fab71`, F24 as `22bff4d`, F25 as `9cb5f59`, F26 as `PENDING-F26`.
 
 ## Current status
 
@@ -33,9 +33,10 @@ Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `4215
 - **F23 (GIF and boomerang): merged** (`48fab71`), awaiting the two-phone check below.
 - **F24 (admin dashboard): merged** (`22bff4d`), awaiting the hand-count check below.
 - **F25 (printer profiles): merged** (`9cb5f59`), awaiting the real-printer check below.
-- **F26–F29: not started.**
+- **F26 (DSLR camera): merged** (`PENDING-F26`), awaiting the 50-session check below.
+- **F27–F29: not started.**
 - Automated verification today: `npm run typecheck`, `npm run lint`, `npm test`
-  (**495 tests in 87 files**), `npm run build` (Vite production build) all pass.
+  (**524 tests in 91 files**), `npm run build` (Vite production build) all pass.
   `npm run test:e2e` exists but cannot run in this environment (no browser runtime).
 
 ## Verification gaps (unrecorded or impossible here)
@@ -554,6 +555,37 @@ produces an animation from the photos.
 Video (MP4/WebM) output, audio, a per-photo dithering/quantiser beyond 3-3-2, choosing the
 animated extra per session by the guest, and editing the loop (frame order, speed) from the UI.
 
+## F26. DSLR and mirrorless camera (merged)
+
+- **One promised model: the Canon EOS 250D**, through the `gphoto2` helper. The booth builds the
+  helper's command lines, reads the camera list, cuts the JPEG out of stdout and turns gphoto2's
+  stderr into one operator sentence. Every failure mode has its own wording: helper not installed,
+  no camera on the bus, camera busy, access denied, low power.
+- **Live view is a canvas stream**, not a video device: each preview frame (one helper run, roughly
+  2–5 fps) is drawn into a canvas exposed as a `MediaStream`, so the preview element, the review
+  screen and the tablet frame sender work unchanged.
+- **The photo is a real still**: `--capture-image-and-download` at full resolution, then the booth's
+  own encoder, so originals, guest copies, filters, watermarks, GIFs and layouts behave exactly as
+  with a webcam. `capturePhotoFrom` is the one place that decides still-versus-frame.
+- **Automatic webcam fallback**: a tether camera that will not start, disappears mid-event or stops
+  sending frames (three failures in a row) is reported in the operator panel, and the booth switches
+  to the first webcam by itself — plus a manual "Use webcam instead" button. The event keeps running.
+- **Honest limits**, in the README: no exposure/focus/white-balance control from the booth, no burst,
+  no RAW, PTP mode required, and nothing beyond the 250D is promised. No camera was attached while
+  this was built, so the 50-session check below is still owed.
+
+### F26 manual check
+
+With the 250D on USB: run a real event of 50 sessions and record the time from the countdown ending
+to the photo being saved (target: 2–4 s per shot), the live-view smoothness (should be usable at
+2–5 fps), and any session where the camera dropped out. Then unplug the camera mid-session: the booth
+must say so and keep working on the webcam.
+
+### F26 out of scope (later features)
+
+Camera settings from the booth (exposure, focus, white balance), burst and mirror-lockup control,
+RAW processing, more than one tether camera at a time, and any model other than the 250D.
+
 ## F25. Printer profiles (merged as `9cb5f59`)
 
 - **Saved profiles per printer**: model, paper size (real millimetres), cut mode and colour
@@ -719,6 +751,9 @@ charts, and long-term analytics storage — the dashboard reports the booth's re
   including the tablet view mapping and frame sender.
 - The dashboard is reachable from a phone only over the configured tunnel, because the share
   server listens on 127.0.0.1; locally it is the booth computer's browser.
+- The tether camera is unverified on hardware: no DSLR was attached while F26 was built, so the
+  250D path is proven only by tests that fake the helper. Install gphoto2 and run the 50-session
+  check before trusting it at an event.
 - Printer profiles are unverified on hardware: no printer was attached while they were built. The
   README table says *not yet* for every model, and only a test sheet on the real printer can change
   that. The physical cut is the driver's setting; the profile records the mode but cannot force it.

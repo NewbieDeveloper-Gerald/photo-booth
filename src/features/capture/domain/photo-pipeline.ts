@@ -25,6 +25,24 @@ export async function captureOriginalJpeg(video: HTMLVideoElement): Promise<{ bl
   return { blob: await toJpeg(canvas, ORIGINAL_JPEG_QUALITY), width, height };
 }
 
+/**
+ * A still handed over as JPEG bytes — the tether camera (F26) — goes through the same encode as a
+ * webcam frame, so the original on disk has one encoder, one quality and no copied metadata.
+ */
+export async function originalFromJpegBytes(bytes: Uint8Array): Promise<{ blob: Blob; width: number; height: number }> {
+  const bitmap = await createImageBitmap(new Blob([new Uint8Array(bytes)], { type: 'image/jpeg' }));
+  try {
+    if (!bitmap.width || !bitmap.height) throw new Error('The camera returned an empty photo');
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Could not prepare the photo frame');
+    context.drawImage(bitmap, 0, 0);
+    return { blob: await toJpeg(canvas, ORIGINAL_JPEG_QUALITY), width: bitmap.width, height: bitmap.height };
+  } finally { bitmap.close(); }
+}
+
 export type DownloadCopyOptions = {
   /** The session's look (F20). The original on disk is never filtered. */
   filter?: PhotoFilterId;
