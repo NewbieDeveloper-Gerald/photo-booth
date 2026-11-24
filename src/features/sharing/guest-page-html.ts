@@ -26,3 +26,38 @@ export function renderGuestPage(token: string, session: SessionDownload): string
   }).catch(e=>{root.textContent='';const msg=document.createElement('p');msg.className='error';msg.textContent=e.message;root.append(msg)});
   </script></body></html>`;
 }
+
+export type UnavailablePage = {
+  reason: 'expired' | 'invalid';
+  eventName?: string;
+  /** Operator-provided contact details; shown so a guest knows who to ask for copies. */
+  contactText?: string;
+  primaryColor?: string;
+  accentColor?: string;
+};
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character] ?? character));
+}
+
+/**
+ * Shown instead of the gallery when a link has expired (410) or never existed (404). It is
+ * deliberately a real page rather than a bare status line: a guest who scanned a QR weeks
+ * later needs to know the photos were removed on purpose and who to contact.
+ */
+export function renderUnavailablePage(page: UnavailablePage): string {
+  const primary = hexColorOrDefault(page.primaryColor, '#c90000');
+  const accent = hexColorOrDefault(page.accentColor, '#f4f0ec');
+  const isExpired = page.reason === 'expired';
+  const title = isExpired ? 'This link has expired' : 'This link is not valid';
+  const eventName = page.eventName?.trim() ? escapeHtml(page.eventName.trim()) : 'this event';
+  const message = isExpired
+    ? `The photos from ${eventName} were available for the event's sharing period and have now been deleted from the booth.`
+    : 'Check that you scanned the whole QR code, or ask the organiser for a fresh link.';
+  const contact = page.contactText?.trim()
+    ? `<p class="contact">Questions? ${escapeHtml(page.contactText.trim())}</p>`
+    : '<p class="contact">Ask the organiser who gave you this link.</p>';
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow,noarchive"><title>${escapeHtml(title)}</title><style>
+  *{box-sizing:border-box}body{margin:0;background:#11131c;color:#f5f2fa;font:16px system-ui,-apple-system,"Segoe UI",sans-serif}.wrap{max-width:560px;margin:auto;padding:32px 18px 48px}.card{border:1px solid #ffffff20;border-radius:16px;background:#1a1e2a;padding:22px;margin-top:26px}.eyebrow{color:${primary};font-size:11px;letter-spacing:.16em;font-weight:700}.head{padding-bottom:14px;border-bottom:3px solid ${accent}}h1{font-size:26px;margin:10px 0 6px}.note{color:#aeb4c4;font-size:14px;line-height:1.5}.contact{margin:18px 0 0;padding-top:14px;border-top:1px solid #ffffff1c;color:#e7e3f2;font-size:14px}.foot{color:#838a9d;font-size:12px;text-align:center;margin-top:26px}
+  </style></head><body><main class="wrap"><div class="head"><div class="eyebrow">PHOTOBOOTH STUDIO</div><h1>${escapeHtml(title)}</h1></div><section class="card"><p class="note">${escapeHtml(message)}</p>${contact}</section><p class="foot">Private link · not indexed · no photos are kept after the sharing period.</p></main></body></html>`;
+}

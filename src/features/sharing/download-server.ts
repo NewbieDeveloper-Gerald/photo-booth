@@ -7,7 +7,7 @@ import path from 'node:path';
 import { resolveInside } from '../../shared/fs/safe-paths';
 import { isShareToken } from '../../shared/validation/identifiers';
 import { DOWNLOAD_MAX_REQUESTS_PER_WINDOW, DOWNLOAD_RATE_WINDOW_MS, DOWNLOAD_SERVER_HOST, DOWNLOAD_SERVER_PORT } from '../../shared/constants/limits';
-import { renderGuestPage } from './guest-page-html';
+import { renderGuestPage, renderUnavailablePage } from './guest-page-html';
 import type { DownloadFile, SessionDownload } from './guest-page-html';
 
 /** Matches every route that carries a share token, so limits can be applied per guest link. */
@@ -78,6 +78,19 @@ function findSession(databasePath: string, photosRoot: string, token: string): S
   } finally { database.close(); }
 }
 
+/** A real link whose sharing period has ended: enough branding to explain what happened. */
+function findExpiredSession(databasePath: string, token: string): { eventName: string; contactText: string; primaryColor: string; accentColor: string } | null {
+  if (!isShareToken(token)) return null;
+  const database = openReadOnlyDatabase(databasePath);
+  try {
+    const session = database.prepare(`SELECT e.name AS eventName, e.contact_text AS contactText, e.primary_color AS primaryColor, e.accent_color AS accentColor
+      FROM sessions s JOIN events e ON e.id = s.event_id
+      WHERE s.public_token = ? AND s.token_expires_at IS NOT NULL AND julianday(s.token_expires_at) <= julianday('now')
+      LIMIT 1`).get(token) as { eventName: string; contactText: string; primaryColor: string; accentColor: string } | undefined;
+    return session ?? null;
+  } finally { database.close(); }
+}
+
 export function createDownloadServer(userDataPath: string, photosRoot: string, options: DownloadServerOptions = {}): Promise<http.Server> {
   const { port = DOWNLOAD_SERVER_PORT, host = DOWNLOAD_SERVER_HOST,
     rateLimit = { windowMs: DOWNLOAD_RATE_WINDOW_MS, maxRequests: DOWNLOAD_MAX_REQUESTS_PER_WINDOW } } = options;
@@ -89,7 +102,15 @@ export function createDownloadServer(userDataPath: string, photosRoot: string, o
     const url = new URL(request.url ?? '/', 'http://localhost');
     if (isLimited(request, url.pathname, buckets, rateLimit.windowMs, rateLimit.maxRequests)) { response.writeHead(429, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Please wait before trying again.'); return; }
     const page = /^\/d\/([A-Za-z0-9_-]{22})$/.exec(url.pathname);
-    if (page) { const session = findSession(databasePath, photosRoot, page[1]!); if (!session) { response.writeHead(404).end('This link is invalid or has expired.'); return; } response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'" }); response.end(request.method === 'HEAD' ? undefined : renderGuestPage(page[1]!, session)); return; }
+    if (page) {
+      const session = findSession(databasePath, photosRoot, page[1]!);
+      const htmlHeaders = { 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'" };
+      if (session) { response.writeHead(200, htmlHeaders); response.end(request.method === 'HEAD' ? undefined : renderGuestPage(page[1]!, session)); return; }
+      const expired = findExpiredSession(databasePath, page[1]!);
+      response.writeHead(expired ? 410 : 404, htmlHeaders);
+      response.end(request.method === 'HEAD' ? undefined : renderUnavailablePage(expired ? { reason: 'expired', ...expired } : { reason: 'invalid' }));
+      return;
+    }
     const logoRoute = /^\/api\/v1\/logo\/([A-Za-z0-9_-]{22})$/.exec(url.pathname);
     if (logoRoute) {
       const session = findSession(databasePath, photosRoot, logoRoute[1]!);
@@ -105,7 +126,11 @@ export function createDownloadServer(userDataPath: string, photosRoot: string, o
     const listing = /^\/api\/v1\/session\/([A-Za-z0-9_-]{22})$/.exec(url.pathname);
     if (listing) {
       const session = findSession(databasePath, photosRoot, listing[1]!);
-      if (!session) { response.writeHead(404, { 'Content-Type': 'application/json' }).end('{"error":"not_found"}'); return; }
+      if (!session) {
+        const isExpired = findExpiredSession(databasePath, listing[1]!) !== null;
+        response.writeHead(isExpired ? 410 : 404, { 'Content-Type': 'application/json' }).end(isExpired ? '{"error":"expired"}' : '{"error":"not_found"}');
+        return;
+      }
       response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       response.end(request.method === 'HEAD' ? undefined : JSON.stringify({ eventName: session.eventName, files: session.files.map(({ id, name }) => ({ id, name })) }));
       return;

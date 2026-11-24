@@ -3,6 +3,7 @@ import type { Server } from 'node:http';
 import { initializeStorage } from '../src/features/storage/node.js';
 import { ensureBuiltinTemplates } from '../src/features/layouts/node.js';
 import { mockUploadAdapter, recoverInterruptedUploads, startUploadScheduler } from '../src/features/sharing/node.js';
+import { startRetentionScheduler } from '../src/features/retention/node.js';
 import { registerIpcHandlers } from './ipc/registry.js';
 import { startDownloadServer } from './download-service.js';
 import { createBoothWindowController } from './windows/booth-window.js';
@@ -19,6 +20,9 @@ app.whenReady().then(async () => {
   // Background sync (F14): resumes queued uploads at startup and retries with backoff.
   const stopUploadScheduler = startUploadScheduler({ userDataPath, adapter: mockUploadAdapter, onError: (message) => console.warn(message) });
   app.on('will-quit', stopUploadScheduler);
+  // Daily retention sweep (F15): expired guest links take their photos with them.
+  const stopRetentionScheduler = startRetentionScheduler({ userDataPath, onError: (message) => console.warn(message) });
+  app.on('will-quit', stopRetentionScheduler);
   downloadServer = await startDownloadServer(userDataPath);
 
   registerIpcHandlers({

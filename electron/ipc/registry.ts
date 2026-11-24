@@ -6,6 +6,7 @@ import { registerSecurityHandlers } from './security-handlers.js';
 import { registerSessionHandlers } from './session-handlers.js';
 import { registerSettingsHandlers } from './settings-handlers.js';
 import { registerSharingHandlers } from './sharing-handlers.js';
+import { registerRetentionHandlers } from './retention-handlers.js';
 import { registerStorageHandlers } from './storage-handlers.js';
 
 /** One place to see every IPC channel the renderer may call, grouped by feature. */
@@ -17,5 +18,6 @@ export function registerIpcHandlers(context: IpcContext): void {
   registerLayoutHandlers(context);
   registerSharingHandlers(context);
   registerPrintingHandlers(context);
+  registerRetentionHandlers(context);
   registerStorageHandlers(context);
 }

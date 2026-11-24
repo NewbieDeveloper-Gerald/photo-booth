@@ -29,6 +29,7 @@ export const MAX_CONSENT_LENGTH = 1200;
 export const MAX_EVENT_NAME_LENGTH = 80;
 export const MAX_EVENT_TEXT_LENGTH = 160;
 export const MAX_OFFERED_LAYOUTS = 12;
+export const MAX_EVENT_CONTACT_LENGTH = 200;
 
 // Upload queue retry policy
 export const UPLOAD_INITIAL_RETRY_MS = 30_000;
@@ -37,3 +38,7 @@ export const UPLOAD_MAX_BACKOFF_EXPONENT = 10;
 export const MAX_UPLOAD_ERROR_LENGTH = 500;
 export const UPLOAD_SYNC_INTERVAL_MS = 60_000;
 export const UPLOAD_STATUS_POLL_MS = 15_000;
+
+// Retention
+/** Daily sweep: photos are only promised for the event's expiry period. */
+export const RETENTION_SWEEP_INTERVAL_MS = 24 * 60 * 60 * 1000;

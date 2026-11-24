@@ -1,6 +1,6 @@
 # Progress
 
-Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`; F14 implemented on `arena/9b46b6e8-photo-booth`.
+Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`; F15 implemented on `arena/8a405925-photo-booth`.
 
 ## Current status
 
@@ -15,11 +15,13 @@ Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `4215
   build-a-strip test below.
 - **F13 (template picker for guests): merged** (`f3ad680`), awaiting the manual
   two-layout session test below.
-- **F14 (offline queue and sync status): implemented**, awaiting a real upload provider
-  before the offline/online manual test can run.
-- **F15–F29: not started.**
+- **F14 (offline queue and sync status): merged** (`dc20c12`), awaiting a real upload
+  provider before the offline/online manual test can run.
+- **F15 (expiry, deletion and cleanup): implemented**, awaiting the manual 1-day-expiry
+  test below.
+- **F16–F29: not started.**
 - Automated verification today: `npm run typecheck`, `npm run lint`, `npm test`
-  (**240 tests in 41 files**), `npm run build` (Vite production build) all pass.
+  (**267 tests in 45 files**), `npm run build` (Vite production build) all pass.
   `npm run test:e2e` exists but cannot run in this environment (no browser runtime).
 
 ## Verification gaps (unrecorded or impossible here)
@@ -180,8 +182,51 @@ the last successful sync time updates.
 ### F14 out of scope (later features)
 
 The cloud provider itself, per-file progress, bandwidth throttling and a manual "sync now"
-button are not implemented; the daily cleanup job and cloud deletion are F15. Ticking
-through the queue is verified by automated tests, not by a live upload.
+button are not implemented. Ticking through the queue is verified by automated tests, not
+by a live upload.
+
+## F15. Link expiry, deletion and cleanup job (implemented)
+
+- **Retention rule** (`features/retention/domain/expiry.ts`): only a *completed* session
+  whose guest link has actually expired is removed automatically. Sessions that were never
+  shared are kept until the operator deletes them — the booth only promises a retention
+  period through a link, so it never deletes behind the operator's back.
+- **Daily sweep** (`features/retention/data/retention-repository.ts`, started in
+  `electron/main.ts`): runs at startup (catching up on days the booth was closed) and then
+  every `RETENTION_SWEEP_INTERVAL_MS` (24 h), through the shared
+  `shared/scheduling/interval-job.ts` that also drives the upload queue. Deleting a session
+  removes its photos, guest copies, finished layouts and backup versions, then its
+  `photos`/`slots`/`outputs`/`upload_queue`/`sessions` rows. A cloud provider hooks in via
+  `purgeExpiredSessions({ beforeDelete })`: if the cloud deletion fails, the local copy is
+  kept so the next sweep can retry, instead of deleting the only remaining copy.
+- **Friendly expired page**: `/d/<token>` now answers `410` with a branded page naming the
+  event, saying the photos were deleted after the sharing period, and showing the event's
+  **contact details**. Unknown tokens get a `404` page that explains how to get a fresh
+  link. Both are escaped, no-index and photo-free; the JSON listing answers `410` too.
+- **Deletion from the booth**: `deleteSessionPermanently` and `deleteEventPermanently`
+  (IPC `retention:deleteSession` / `retention:deleteEvent`). Both refuse an open session,
+  the event delete keeps at least one event on the booth and re-activates another one if
+  the active event was removed. The UI uses the new `ConfirmAction` (two-step) for
+  **Delete event** in event setup and **Delete session** on the finished screen (operator
+  mode only).
+- **Per-event consent** (migration `011_event_consent_and_contact`): every event carries
+  `consent_text` and `contact_text`. Blank consent means "use the booth-wide notice", and
+  the consent dialog now prefers the event's wording.
+- **Status**: the start screen shows the new `RetentionNote` — when the cleanup last ran and
+  how many sessions are past expiry and waiting for the next sweep.
+
+### F15 manual check
+
+Set a 1-day expiry on a test event, share one session, then push the link past its expiry:
+the QR page must show the expired page with the event's contact details, and the next
+cleanup (or app restart) must remove the session folder, its backup and its database rows.
+Also delete one session and one event from the booth and confirm the files are gone.
+
+### F15 out of scope (later features)
+
+Cloud storage/cloud database deletion is only the `beforeDelete` hook — no provider exists
+yet (same position as F14). Scheduled cleanup for early app versions, an undo window and a
+per-session retention override are not implemented. The guest gallery is F16.
 
 ## Feature log
 

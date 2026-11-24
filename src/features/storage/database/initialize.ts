@@ -177,6 +177,13 @@ const migrations: Array<{ name: string; sql: string }> = [
       UPDATE events SET offered_layout_ids = '["' || default_layout_id || '"]';
     `,
   },
+  {
+    name: '011_event_consent_and_contact',
+    sql: `
+      ALTER TABLE events ADD COLUMN consent_text TEXT NOT NULL DEFAULT '';
+      ALTER TABLE events ADD COLUMN contact_text TEXT NOT NULL DEFAULT '';
+    `,
+  },
 ];
 
 export function initializeStorage(userDataPath: string): void {
