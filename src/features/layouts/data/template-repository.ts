@@ -4,6 +4,7 @@ import { withDatabase } from '../../storage/database/connection';
 import { layoutPresets } from '../catalog';
 import { createGridTemplate, templateFromCatalogPreset } from '../domain/template-builder';
 import { addPhotoElement, emptyTemplateForPage } from '../domain/template-editing';
+import { removeUnusedLayoutAssets } from './layout-assets';
 import { getPagePreset, isValidTemplateDocument, type PagePresetId, type TemplateDocument, type TemplateElement, type TemplateSummary } from '../domain/template-document';
 
 type TemplateRow = {
@@ -191,7 +192,13 @@ export function deleteTemplate(userDataPath: string, templateId: string): void {
   const used = withDatabase(userDataPath, (database) =>
     database.prepare('SELECT COUNT(*) AS count FROM sessions WHERE layout_id = ?').get(templateId) as { count: number });
   if (used.count > 0) throw new Error('This layout was used by a saved session, so it cannot be deleted.');
-  withDatabase(userDataPath, (database) => { database.prepare('DELETE FROM templates WHERE id = ?').run(templateId); });
+  const remainingAssets = withDatabase(userDataPath, (database) => {
+    database.prepare('DELETE FROM templates WHERE id = ?').run(templateId);
+    return database.prepare('SELECT DISTINCT asset_name FROM template_elements WHERE asset_name IS NOT NULL')
+      .all().map((row) => (row as { asset_name: string }).asset_name);
+  });
+  // Artwork only this layout used is now unreachable, so drop it from disk.
+  removeUnusedLayoutAssets(userDataPath, remainingAssets);
 }
 
 export function renameTemplate(userDataPath: string, templateId: string, name: string): TemplateDocument {

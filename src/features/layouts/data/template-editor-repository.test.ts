@@ -117,6 +117,17 @@ describe('layout artwork', () => {
     expect(() => readLayoutAsset(directory, 'nope.png')).toThrow(/missing from this booth/);
   });
 
+  it('prunes that layout\'s artwork when it is deleted', () => {
+    const source = path.join(directory, 'art.png');
+    fs.writeFileSync(source, pngBytes);
+    const { assetName } = saveLayoutAsset(directory, source);
+    const created = createTemplate(directory, { pageId: '4x6', shots: 1, name: 'Art layout' });
+    saveTemplate(directory, addImageElement(created, assetName).template);
+    expect(listLayoutAssets(directory)).toContain(assetName);
+    deleteTemplate(directory, created.id);
+    expect(listLayoutAssets(directory)).not.toContain(assetName);
+  });
+
   it('removes artwork no template refers to', () => {
     const source = path.join(directory, 'keep.png');
     fs.writeFileSync(source, pngBytes);
