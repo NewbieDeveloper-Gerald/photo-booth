@@ -1,10 +1,11 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { initializeStorage } from '../../storage/database/initialize';
 import { createSession, loadSession } from '../../capture/node';
 import { duplicateEvent, getActiveEvent, getEventLogoDataUrl, listEvents, saveEventSettings, selectActiveEvent, setEventLogo } from '../node';
+import { listTemplates } from '../../layouts/node';
 
 const dirs: string[] = [];
 function setup(): string { const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'photobooth-events-')); dirs.push(dir); initializeStorage(dir); return dir; }
@@ -31,7 +32,7 @@ describe('event setup and branding', () => {
   it('validates event name, supported shot count, colors, expiry and real calendar dates', () => {
     const dir = setup();
     expect(() => saveEventSettings(dir, input({ name: ' ' }))).toThrow(/Event name/);
-    expect(() => saveEventSettings(dir, input({ shots: 5 }))).toThrow(/shot count supported by the current layouts/);
+    expect(() => saveEventSettings(dir, input({ shots: 7 }))).toThrow(/between 1 and 6 photos/);
     expect(() => saveEventSettings(dir, input({ primaryColor: 'red' }))).toThrow(/hex color/);
     expect(() => saveEventSettings(dir, input({ expiryDays: 366 }))).toThrow(/1 to 365/);
     expect(() => saveEventSettings(dir, input({ eventDate: '2027-02-30' }))).toThrow(/valid event date/);
@@ -51,5 +52,25 @@ describe('event setup and branding', () => {
     expect(getEventLogoDataUrl(dir, copy.id)).toMatch(/^data:image\/png;base64,/);
     const invalid = path.join(dir, 'bad.png'); fs.writeFileSync(invalid, 'not png');
     expect(() => setEventLogo(dir, event.id, invalid)).toThrow(/image file/);
+  });
+});
+
+describe('shot counts with templates (F11)', () => {
+  let dir: string;
+  beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'photobooth-event-shots-')); initializeStorage(dir); });
+  afterEach(() => { fs.rmSync(dir, { recursive: true, force: true }); });
+
+  it('accepts 1 to 6 photos and points each at an existing template', () => {
+    for (const shots of [1, 2, 3, 4, 5, 6]) {
+      const saved = saveEventSettings(dir, input({ name: `Event ${shots}`, shots }));
+      const summary = listTemplates(dir).find((template) => template.id === saved.defaultLayoutId);
+      expect(summary, `template for ${shots} photos`).toBeDefined();
+      expect(summary!.shots).toBe(shots);
+    }
+  });
+
+  it('rejects a zero or seven-photo event', () => {
+    expect(() => saveEventSettings(dir, input({ shots: 0 }))).toThrow(/between 1 and 6 photos/);
+    expect(() => saveEventSettings(dir, input({ shots: 7 }))).toThrow(/between 1 and 6 photos/);
   });
 });

@@ -7,6 +7,7 @@ import { initializeStorage } from '../../storage/database/initialize';
 import { abandonSession, commitRetake, createSession, listUnfinishedSessions, loadSession, readOriginalPhoto, revertRetake, saveDownloadCopy, saveOriginalPhoto, saveRetakeOriginalPhoto, saveSessionOutput } from '../node';
 import { exportEventFolder, getActiveEvent, saveEventSettings, setActiveEventRetakeLimit } from '../../events/node';
 import { getLatestSessionPrintInfo } from '../../printing/node';
+import { listTemplates, loadTemplate } from '../../layouts/node';
 
 const directories: string[] = [];
 function setup(): string {
@@ -170,5 +171,37 @@ describe('session storage', () => {
     setActiveEventRetakeLimit(directory, -1);
     const unlimited = createSession(directory);
     expect(unlimited.event.retakeLimit).toBe(-1);
+  });
+});
+
+describe('sessions follow the chosen template (F11)', () => {
+  it('creates as many slots as the template has photos, not the event', () => {
+    const directory = setup();
+    expect(getActiveEvent(directory).shots).toBe(3);
+    const fiveShot = listTemplates(directory).find((template) => template.shots === 5)!;
+    const created = createSession(directory, fiveShot.id);
+    expect(created.shots).toBe(5);
+    expect(loadSession(directory, created.sessionId).slots.map((slot) => slot.slotNumber)).toEqual([1, 2, 3, 4, 5]);
+    expect(loadSession(directory, created.sessionId).layoutId).toBe(fiveShot.id);
+  });
+
+  it('supports a single-photo session', () => {
+    const directory = setup();
+    const oneShot = listTemplates(directory).find((template) => template.shots === 1)!;
+    expect(createSession(directory, oneShot.id).shots).toBe(1);
+  });
+
+  it('refuses an unknown layout and a missing choice', () => {
+    const directory = setup();
+    expect(() => createSession(directory, 'no-such-layout')).toThrow(/does not exist/);
+    expect(() => createSession(directory, '')).toThrow(/Choose a layout/);
+  });
+
+  it('keeps the template id on the session so the output can be re-rendered', () => {
+    const directory = setup();
+    const template = listTemplates(directory).find((item) => item.pagePreset === '5x7')!;
+    const created = createSession(directory, template.id);
+    expect(loadSession(directory, created.sessionId).layoutId).toBe(template.id);
+    expect(loadTemplate(directory, template.id).page.widthPx).toBe(1500);
   });
 });

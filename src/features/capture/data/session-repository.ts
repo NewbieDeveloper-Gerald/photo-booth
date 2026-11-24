@@ -6,25 +6,29 @@ import { getConfiguredStoragePaths } from '../../storage/database/storage-paths'
 import { storedPhotoPath } from './photo-files';
 import { ensureInside } from '../../../shared/fs/safe-paths';
 import { isSessionId } from '../../../shared/validation/identifiers';
-import { getLayoutPreset } from '../../layouts/catalog';
+import { loadTemplate } from '../../layouts/data/template-repository';
 import { getActiveEvent } from '../../events/data/event-repository';
 import type { ActiveEvent } from '../../../shared/types/event';
 import type { SessionRecord, UnfinishedSession } from '../../../shared/types/session';
 
+/**
+ * The template decides how many photos a session takes (F11): 1–6 slots, not the
+ * event's advisory shot count. The chosen template id is stored on the session.
+ */
 export function createSession(userDataPath: string, layoutIdValue: unknown = 'double-strip-3'): { sessionId: string; event: ActiveEvent; shots: number; layoutId: string } {
+  if (typeof layoutIdValue !== 'string' || !layoutIdValue) throw new Error('Choose a layout before starting a session');
   const event = getActiveEvent(userDataPath);
-  const layout = getLayoutPreset(layoutIdValue);
-  if (layout.shots !== event.shots) throw new Error('Selected layout does not match the active event shot count');
+  const template = loadTemplate(userDataPath, layoutIdValue);
   const sessionId = randomUUID();
   const database = openDatabase(userDataPath);
   try {
     database.transaction(() => {
       database.prepare('INSERT INTO sessions (id, event_id, status, retake_limit, layout_id) VALUES (?, ?, ?, ?, ?)')
-        .run(sessionId, event.id, 'in_progress', event.retakeLimit, layout.id);
+        .run(sessionId, event.id, 'in_progress', event.retakeLimit, template.id);
       const insertSlot = database.prepare('INSERT INTO slots (id, session_id, slot_number, status) VALUES (?, ?, ?, ?)');
-      for (let slot = 1; slot <= layout.shots; slot += 1) insertSlot.run(randomUUID(), sessionId, slot, 'empty');
+      for (let slot = 1; slot <= template.shots; slot += 1) insertSlot.run(randomUUID(), sessionId, slot, 'empty');
     })();
-    return { sessionId, event, shots: layout.shots, layoutId: layout.id };
+    return { sessionId, event, shots: template.shots, layoutId: template.id };
   } finally {
     database.close();
   }

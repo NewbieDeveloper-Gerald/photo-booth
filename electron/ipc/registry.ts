@@ -1,5 +1,6 @@
 import type { IpcContext } from './context.js';
 import { registerEventHandlers } from './event-handlers.js';
+import { registerLayoutHandlers } from './layout-handlers.js';
 import { registerPrintingHandlers } from './printing-handlers.js';
 import { registerSecurityHandlers } from './security-handlers.js';
 import { registerSessionHandlers } from './session-handlers.js';
@@ -13,6 +14,7 @@ export function registerIpcHandlers(context: IpcContext): void {
   registerSecurityHandlers(context);
   registerEventHandlers(context);
   registerSessionHandlers(context);
+  registerLayoutHandlers(context);
   registerSharingHandlers(context);
   registerPrintingHandlers(context);
   registerStorageHandlers(context);

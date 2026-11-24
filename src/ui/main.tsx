@@ -3,7 +3,6 @@ import QRCode from 'qrcode';
 import { createRoot } from 'react-dom/client';
 import { BrowserCameraDevice, canRetake, captureOriginalJpeg, isValidRetakeLimit, type CameraInfo, type CameraResolution } from '../features/capture';
 import { cameraErrorMessage } from '../features/capture/domain/camera-messages';
-import { renderFinishedLayout } from '../features/layouts/domain/render-finished-layout';
 import { blobToBytes, bytesToJpegBlob } from '../shared/dom/blob';
 import { saveGuestDownloadCopy } from '../renderer/lib/guest-download-copy';
 import { useIdleTimeout } from '../renderer/hooks/useIdleTimeout';
@@ -18,7 +17,7 @@ import { wait } from '../renderer/lib/timing';
 import { DEFAULT_ACCENT_COLOR, DEFAULT_CONSENT_TEXT, DEFAULT_PRIMARY_COLOR, DEFAULT_THANK_YOU_TEXT, DEFAULT_WELCOME_TEXT } from '../shared/constants/branding-defaults';
 import { toErrorMessage } from '../shared/errors';
 import { CAPTURE_REVIEW_PAUSE_MS, MAX_DISK_WARNING_GB, SESSION_IDLE_TIMEOUT_MS } from '../shared/constants/limits';
-import { getLayoutPreset, layoutPresets } from '../features/layouts';
+import { renderTemplateLayout, templateFromCatalogPreset, getLayoutPreset, layoutPresets, type TemplateDocument, type TemplateSummary } from '../features/layouts';
 import { decideAutoPrint } from '../features/printing';
 import type { ActiveEvent, EventSettings } from '../shared/types/event';
 import type { SessionRecord, SessionSlot, UnfinishedSession } from '../shared/types/session';
@@ -67,6 +66,7 @@ function App(): React.JSX.Element {
   const [screen, setScreen] = useState<Screen>('ready');
   const [sessionId, setSessionId] = useState('');
   const [selectedLayoutId, setSelectedLayoutId] = useState('double-strip-3');
+  const [templates, setTemplates] = useState<TemplateSummary[]>([]);
   const [sessionShotCount, setSessionShotCount] = useState(3);
   const [reviewRecord, setReviewRecord] = useState<SessionRecord | null>(null);
   const [reviewImages, setReviewImages] = useState<ReviewImage[]>([]);
@@ -89,6 +89,12 @@ function App(): React.JSX.Element {
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [retakeBusySlot, setRetakeBusySlot] = useState<number | null>(null);
+
+  /** The stored template, or the built-in equivalent when running in the browser preview. */
+  const loadLayoutDocument = useCallback(async (templateId: string): Promise<TemplateDocument> => {
+    if (window.photobooth) return window.photobooth.getTemplate(templateId);
+    return templateFromCatalogPreset(getLayoutPreset(templateId));
+  }, []);
 
   const clearReviewUrls = useCallback(() => {
     for (const url of reviewUrls.current) URL.revokeObjectURL(url);
@@ -224,17 +230,23 @@ function App(): React.JSX.Element {
       if (Number.isInteger(seconds) && seconds >= 3 && seconds <= 10) setCountdownSeconds(seconds);
       if (savedResolution && resolutionOptions.some((item) => item.value === savedResolution)) setResolution(savedResolution as CameraResolution);
       if (window.photobooth) {
-        const [activeEvent, savedEvents] = await Promise.all([window.photobooth.getActiveEvent().catch(() => null), window.photobooth.listEvents().catch(() => []), refreshUnfinishedSessions(), refreshUploadQueue()]);
+        const [activeEvent, savedEvents, availableTemplates] = await Promise.all([
+          window.photobooth.getActiveEvent().catch(() => null),
+          window.photobooth.listEvents().catch(() => []),
+          window.photobooth.listTemplates().catch(() => []),
+        ]);
         if (cancelled) return;
         setEvents(savedEvents);
+        setTemplates(availableTemplates);
         if (activeEvent) {
           setEvent(activeEvent);
           setEventDraft(activeEvent);
-          setSelectedLayoutId(activeEvent.defaultLayoutId);
+          setSelectedLayoutId(availableTemplates.some((item) => item.id === activeEvent.defaultLayoutId) ? activeEvent.defaultLayoutId : availableTemplates.find((item) => item.shots === activeEvent.shots)?.id ?? activeEvent.defaultLayoutId);
           setEventLogoDataUrl(await window.photobooth.getEventLogoDataUrl(activeEvent.id).catch(() => null));
           setRetakeLimitDraft(activeEvent.retakeLimit === -1 ? '' : String(activeEvent.retakeLimit));
         }
       } else {
+        setTemplates(layoutPresets.map((preset) => ({ id: preset.id, name: preset.name, shots: preset.shots, copies: preset.copies, pagePreset: '4x6' as const, pageLabel: '4 × 6 in', builtIn: true })));
         setEvent({ id: 'preview-event', name: 'Default Event', shots: 3, retakeLimit: 3, printEnabled: true, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: 'double-strip-3' });
         setRetakeLimitDraft('3');
       }
@@ -616,9 +628,9 @@ function App(): React.JSX.Element {
     if (!reviewRecord || !sessionId || !window.photobooth || !event) return;
     setBusy(true);
     setErrorMessage('');
-    setStatus('Building your 4 × 6 layout…');
+    setStatus('Building your layout…');
     try {
-      const layout = getLayoutPreset(reviewRecord.layoutId);
+      const template = await loadLayoutDocument(reviewRecord.layoutId);
       let nextShareUrl = '';
       let qrDataUrl = '';
       if (downloadBaseUrl) {
@@ -629,8 +641,11 @@ function App(): React.JSX.Element {
           setShareStatus(`Link expires ${new Date(link.expiresAt).toLocaleDateString()}`);
         } catch (error) { setShareStatus(toErrorMessage(error, 'QR downloads are not available.')); }
       } else setShareStatus('Set the public HTTPS download URL on the start screen to enable QR downloads.');
-      const blob = await renderFinishedLayout(window.photobooth, reviewRecord, event.name, layout, qrDataUrl || undefined, { primaryColor: event.primaryColor, accentColor: event.accentColor, thankYouText: event.thankYouText, logoDataUrl: eventLogoDataUrl });
-      const savedPath = await window.photobooth.saveSessionOutput(sessionId, await blobToBytes(blob), layout.width, layout.height);
+      const blob = await renderTemplateLayout(window.photobooth, reviewRecord, template, {
+        eventName: event.name, qrDataUrl: qrDataUrl || undefined,
+        branding: { primaryColor: event.primaryColor, accentColor: event.accentColor, thankYouText: event.thankYouText, logoDataUrl: eventLogoDataUrl },
+      });
+      const savedPath = await window.photobooth.saveSessionOutput(sessionId, await blobToBytes(blob), template.page.widthPx, template.page.heightPx);
       await window.photobooth.enqueueSessionUploads(sessionId);
       await refreshUploadQueue();
       setShareUrl(nextShareUrl);
@@ -743,7 +758,7 @@ function App(): React.JSX.Element {
           <label className="control-field"><span>CAMERA</span><select value={selectedCameraId} onChange={(e) => void handleCameraChange(e.target.value)} disabled={isBusy || screen === 'review' || screen === 'finished' || !cameras.length}><option value="" disabled>Select a camera</option>{cameras.map((item, index) => <option key={item.deviceId || index} value={item.deviceId}>{item.label || `Camera ${index + 1}`}</option>)}</select></label>
           <label className="control-field"><span>PREVIEW QUALITY</span><select value={resolution} onChange={(e) => void handleResolutionChange(e.target.value as CameraResolution)} disabled={isBusy || screen === 'review' || screen === 'finished'}>{resolutionOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
           <label className="control-field countdown-setting"><span>COUNTDOWN</span><select value={countdownSeconds} onChange={(e) => void handleCountdownChange(Number(e.target.value))} disabled={isBusy || screen === 'review' || screen === 'finished'}>{Array.from({ length: 8 }, (_, index) => index + 3).map((seconds) => <option key={seconds} value={seconds}>{seconds} seconds</option>)}</select></label>
-          {screen === 'ready' && <label className="control-field layout-choice"><span>PRINT LAYOUT</span><select aria-label="Print layout" value={selectedLayoutId} onChange={(e) => setSelectedLayoutId(e.target.value)} disabled={busy || unfinishedSessions.length > 0}>{layoutPresets.filter((item) => item.shots === (event?.shots ?? 3)).map((item) => <option key={item.id} value={item.id}>{item.name} · {item.shots} shots · {item.copies} {item.copies === 1 ? 'copy' : 'copies'} · {item.width}×{item.height}</option>)}</select></label>}
+          {screen === 'ready' && <label className="control-field layout-choice"><span>PRINT LAYOUT</span><select aria-label="Print layout" value={selectedLayoutId} onChange={(e) => setSelectedLayoutId(e.target.value)} disabled={busy || unfinishedSessions.length > 0}>{[...new Set(templates.map((item) => item.pageLabel))].map((pageLabel) => <optgroup key={pageLabel} label={pageLabel}>{templates.filter((item) => item.pageLabel === pageLabel).map((item) => <option key={item.id} value={item.id}>{item.name} · {item.copies === 1 ? '1 copy' : `${item.copies} copies`}</option>)}</optgroup>)}</select></label>}
           {(screen === 'ready' || screen === 'finished') && <label className="control-field"><span>PRINTER</span><select aria-label="Printer" value={selectedPrinterName} onChange={(e) => handlePrinterChange(e.target.value)} disabled={busy || !window.photobooth}><option value="">Select a printer</option>{printers.map((printer) => <option key={printer.name} value={printer.name}>{printer.displayName || printer.name}{printer.isDefault ? ' · Default' : ''}</option>)}</select></label>}
           {screen === 'ready' && <label className="control-field"><span>PUBLIC DOWNLOAD URL (HTTPS)</span><input aria-label="Public HTTPS download URL" type="url" placeholder="https://photos.example.com" value={downloadBaseUrl} onChange={(e) => setDownloadBaseUrl(e.target.value)} onBlur={() => void savePreference('downloadBaseUrl', downloadBaseUrl.trim().replace(/\/$/, '')).catch(() => setErrorMessage('Enter a valid HTTPS site URL.'))} disabled={busy || !window.photobooth} /></label>}
           {screen === 'ready' && <label className="control-field"><span>LOW-DISK WARNING (GB)</span><input aria-label="Low-disk warning threshold in gigabytes" type="number" min="0" max="1000" step="0.1" value={diskWarningGB} onChange={(e) => handleDiskWarningChange(e.target.value)} onBlur={saveDiskWarning} disabled={busy || !window.photobooth} /></label>}
@@ -757,7 +772,7 @@ function App(): React.JSX.Element {
           {eventDraft && <div className="event-form-grid">
             <label>Event name<input aria-label="Event name" maxLength={80} value={eventDraft.name} onChange={(e) => setEventDraft({ ...eventDraft, name: e.target.value })} /></label>
             <label>Event date<input aria-label="Event date" type="date" value={eventDraft.eventDate ?? ''} onChange={(e) => setEventDraft({ ...eventDraft, eventDate: e.target.value || null })} /></label>
-            <label>Photo count<select aria-label="Event photo count" value={eventDraft.shots} onChange={(e) => setEventDraft({ ...eventDraft, shots: Number(e.target.value) })}><option value={2}>2 photos</option><option value={3}>3 photos</option><option value={4}>4 photos</option></select></label>
+            <label>Photo count<select aria-label="Event photo count" value={eventDraft.shots} onChange={(e) => setEventDraft({ ...eventDraft, shots: Number(e.target.value) })}>{[1, 2, 3, 4, 5, 6].map((shots) => <option key={shots} value={shots}>{shots} {shots === 1 ? 'photo' : 'photos'}</option>)}</select></label>
             <label>QR link expires after (days)<input aria-label="QR link expiry days" type="number" min={1} max={365} value={eventDraft.expiryDays} onChange={(e) => setEventDraft({ ...eventDraft, expiryDays: Number(e.target.value) })} /></label>
             <label>Primary color (hex)<input aria-label="Primary color hex" value={eventDraft.primaryColor} maxLength={7} onChange={(e) => setEventDraft({ ...eventDraft, primaryColor: e.target.value })} /></label>
             <label>Accent color (hex)<input aria-label="Accent color hex" value={eventDraft.accentColor} maxLength={7} onChange={(e) => setEventDraft({ ...eventDraft, accentColor: e.target.value })} /></label>

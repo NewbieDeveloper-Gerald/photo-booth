@@ -2,9 +2,7 @@ import type Database from 'better-sqlite3';
 import { withDatabase } from '../../storage/database/connection';
 import { layoutPresets } from '../catalog';
 import { createGridTemplate, templateFromCatalogPreset } from '../domain/template-builder';
-import { getPagePreset, isValidTemplateDocument, type PagePresetId, type TemplateDocument, type TemplateElement } from '../domain/template-document';
-
-export type TemplateSummary = { id: string; name: string; shots: number; copies: number; pagePreset: PagePresetId; pageLabel: string; builtIn: boolean };
+import { getPagePreset, isValidTemplateDocument, type PagePresetId, type TemplateDocument, type TemplateElement, type TemplateSummary } from '../domain/template-document';
 
 type TemplateRow = {
   id: string; name: string; shots: number; copies: number; page_preset: string; page_width_px: number; page_height_px: number;

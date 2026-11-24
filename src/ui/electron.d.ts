@@ -2,7 +2,9 @@ export {};
 
 import type { ActiveEvent, EventSettings } from '../shared/types/event';
 import type { SessionRecord, UnfinishedSession } from '../shared/types/session';
-import type { UploadQueueSummary } from '../features/sharing/upload-queue/repository';
+import type { UploadQueueSummary } from '../features/sharing/upload-queue/types';
+import type { TemplateDocument } from '../features/layouts/domain/template-document';
+import type { TemplateSummary } from '../features/layouts/data/template-repository';
 import type { BoothSettingKey } from '../shared/constants/settings-keys';
 
 interface PhotoRecord { photoId: string; width: number; height: number }
@@ -33,6 +35,8 @@ declare global {
       checkDiskSpace(thresholdGB: number): Promise<boolean>;
       setActiveEventRetakeLimit(limit: number): Promise<ActiveEvent>;
       createSession(layoutId: string): Promise<{ sessionId: string; event: ActiveEvent; shots: number; layoutId: string }>;
+      listTemplates(): Promise<TemplateSummary[]>;
+      getTemplate(templateId: string): Promise<TemplateDocument>;
       listUnfinishedSessions(): Promise<UnfinishedSession[]>;
       loadSession(sessionId: string): Promise<SessionRecord>;
       saveOriginalPhoto(sessionId: string, slotNumber: number, bytes: Uint8Array, width: number, height: number): Promise<PhotoRecord>;

@@ -58,6 +58,9 @@ export type QrElement = BaseElement & { kind: 'qr'; inset: number; panelColor: s
 
 export type TemplateElement = RectElement | TextElement | PhotoElement | LogoElement | QrElement;
 
+/** What the operator's layout picker needs; the full document is fetched on demand. */
+export type TemplateSummary = { id: string; name: string; shots: number; copies: number; pagePreset: PagePresetId; pageLabel: string; builtIn: boolean };
+
 export type TemplateDocument = {
   id: string;
   name: string;
