@@ -1,6 +1,6 @@
 # Progress
 
-Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`; F18 implemented on `arena/af4966d8-photo-booth`.
+Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`.
 
 ## Current status
 
@@ -22,8 +22,8 @@ Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `4215
 - **F16 (guest gallery per event): merged** (`0d1debd`), awaiting the manual phone test
   below.
 - **F17 (watermark on downloads): merged** (`484354e`), awaiting the manual compare test below.
-- **F18 (print queue, counts and limits): implemented**, awaiting the manual pause/resume
-  print test below.
+- **F18 (print queue, counts and limits): merged** (`6a0abb9`), awaiting the manual
+  pause/resume print test below.
 - **F19–F29: not started.**
 - Automated verification today: `npm run typecheck`, `npm run lint`, `npm test`
   (**319 tests in 55 files**), `npm run build` (Vite production build) all pass.
@@ -295,7 +295,7 @@ chosen corner at the chosen opacity, the original and the printed layout do not.
 Text watermarks, per-photo marks, animated/video covers and a different mark for the
 finished layout are not implemented. Print counting and limits are F18.
 
-## F18. Print queue, counts and limits (implemented)
+## F18. Print queue, counts and limits (merged)
 
 - **The queue is a table, not a timer** (migration `014_print_queue`): `print_jobs` keeps
   `session_id`, `event_id`, `printer_name`, `status` (`queued`, `printing`, `done`, `failed`,
