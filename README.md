@@ -30,7 +30,7 @@ Playwright is configured for browser UI flows. Install its browser once with `np
 
 ## Local data
 
-At first launch, the app creates its SQLite database and `photobooth-paths.json` under Electron's user data directory. That JSON file configures the `photosDirectory` and `backupDirectory`; by default both folders are created beside the database. Session images live together in `photos/<event>/<session>/`, named `slot-01-original.jpg`, `slot-01-retake-01.jpg`, `slot-01-retake-02.jpg`, and so on. Only the full-resolution version is saved; smaller download copies are not generated. Each photo version is also copied into `backup/<event>/<session>/`, including replaced versions. This backup intentionally uses additional disk space. Timed-out or discarded sessions remain backed up too. In the ready screen, set the low-disk warning threshold (default 2 GB); the app warns before a session and lets the operator continue or cancel. Use **Export event** to choose a destination folder; it contains `photos/<event>/` and `backup/<event>/`, and export leaves booth files in place. Event retake limit `-1` means unlimited; zero disables retakes.
+At first launch, the app creates its SQLite database and `photobooth-paths.json` under Electron's user data directory. That JSON file configures the `photosDirectory` and `backupDirectory`; by default both folders are created beside the database. Session images live together in `photos/<event>/<session>/`, named `slot-01-original.jpg`, `slot-01-retake-01.jpg`, `slot-01-retake-02.jpg`, and so on. Each capture also writes a guest download copy (long edge capped at 2048 px, JPEG quality 80, metadata stripped by canvas re-encoding) named `slot-01-original-download.jpg`; the full-resolution original is never modified. Each photo version is also copied into `backup/<event>/<session>/`, including replaced versions. This backup intentionally uses additional disk space. Timed-out or discarded sessions remain backed up too. In the ready screen, set the low-disk warning threshold (default 2 GB); the app warns before a session and lets the operator continue or cancel. Use **Export event** to choose a destination folder; it contains `photos/<event>/` and `backup/<event>/`, and export leaves booth files in place. Event retake limit `-1` means unlimited; zero disables retakes.
 
 ## Layout output and printing
 
@@ -44,7 +44,7 @@ The operator event panel creates, edits, duplicates, and selects events. Event f
 
 ## Security and image handling
 
-Session tokens use 16 cryptographically secure random bytes encoded as unpadded base64url (22 characters). Do not log photo contents or personal data. Image pipeline requirements: local-only full-resolution JPEG originals; download copies max 2048px, JPEG quality 80, GPS EXIF stripped; print files 1200×1800 px.
+Session tokens use 16 cryptographically secure random bytes encoded as unpadded base64url (22 characters). Do not log photo contents or personal data. Image pipeline: local-only full-resolution JPEG originals; guest download copies max 2048px on the long edge, JPEG quality 80, no source metadata (canvas re-encoding drops EXIF/GPS); print files at the selected layout's dimensions (1200×1800 px for 4×6).
 
 ## Project structure
 
@@ -57,7 +57,7 @@ Session tokens use 16 cryptographically secure random bytes encoded as unpadded 
 
 ## QR downloads without cloud storage
 
-The app can serve a completed session directly from the booth laptop. It does not upload or persist duplicate download images. The share page serves current full-resolution slot photos and the finished layout; **Download all** creates a ZIP stream on demand without writing a ZIP to disk. Links use a random 128-bit token, expire according to the event's expiry days, send no-index/no-store headers, and the local server applies a small in-memory request limit. The share service runs only while the booth app is open.
+The app can serve a completed session directly from the booth laptop. It does not upload or persist duplicate download images. The share page serves the current guest download copies plus the finished layout, falling back to the original file for sessions captured before download copies existed; **Download all** creates a ZIP stream on demand without writing a ZIP to disk. Links use a random 128-bit token, expire according to the event's expiry days, send no-index/no-store headers, and the local server applies a small in-memory request limit counted per share link (so a tunnel that makes every guest look like one address cannot throttle the whole event). The share service runs only while the booth app is open.
 
 For mobile-data access, configure a Cloudflare Tunnel (no R2 bucket or image storage is used). Photo bytes pass through Cloudflare while being streamed, so the tunnel provider is part of the network trust path even though it does not store the photo files. In the booth's **PUBLIC DOWNLOAD URL (HTTPS)** field, enter the stable HTTPS hostname routed to the tunnel. Configure the tunnel origin as `http://127.0.0.1:47625`. Example Cloudflare setup outline (keep login and tunnel credentials on the booth PC; never send them in chat):
 

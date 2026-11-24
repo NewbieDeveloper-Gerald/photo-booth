@@ -5,7 +5,7 @@ import type { Server } from 'node:http';
 import { afterEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { initializeStorage } from '../storage/database';
-import { createSession, createSessionShareLink, saveOriginalPhoto, saveSessionOutput, setEventLogo } from '../storage/sessions';
+import { createSession, createSessionShareLink, saveDownloadCopy, saveOriginalPhoto, saveSessionOutput, setEventLogo } from '../storage/sessions';
 import { createDownloadServer } from './download-server';
 
 const directories: string[] = [];
@@ -16,7 +16,7 @@ afterEach(async () => {
   for (const directory of directories.splice(0)) fs.rmSync(directory, { recursive: true, force: true });
 });
 
-async function fixture(): Promise<{ directory: string; sessionId: string; token: string; origin: string }> {
+async function fixture(rateLimit?: { windowMs: number; maxRequests: number }): Promise<{ directory: string; sessionId: string; token: string; origin: string }> {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'photobooth-download-'));
   directories.push(directory);
   initializeStorage(directory);
@@ -27,7 +27,7 @@ async function fixture(): Promise<{ directory: string; sessionId: string; token:
   const token = url.split('/').at(-1)!;
   if (!/^[A-Za-z0-9_-]{22}$/.test(token)) throw new Error('Share token is not 128-bit base64url');
   const config = JSON.parse(fs.readFileSync(path.join(directory, 'photobooth-paths.json'), 'utf8')) as { photosDirectory: string };
-  const server = await createDownloadServer(directory, config.photosDirectory, 0);
+  const server = await createDownloadServer(directory, config.photosDirectory, { port: 0, ...(rateLimit ? { rateLimit } : {}) });
   servers.push(server);
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('Test server did not bind a TCP port');
@@ -51,6 +51,23 @@ describe('private QR download server', () => {
     expect(photo.headers.get('content-type')).toBe('image/jpeg');
     expect(new Uint8Array(await photo.arrayBuffer())).toEqual(tinyJpeg);
     expect((await fetch(`${origin}/api/v1/session/AAAAAAAAAAAAAAAAAAAAAA`)).status).toBe(404);
+  });
+
+  it('serves the optimized guest copy instead of the full-resolution original', async () => {
+    const { directory, sessionId, token, origin } = await fixture();
+    const database = new Database(path.join(directory, 'photobooth.sqlite'));
+    const photo = database.prepare(`SELECT p.id AS id FROM photos p JOIN slots sl ON sl.id = p.slot_id
+      WHERE sl.session_id = ? AND sl.slot_number = 1`).get(sessionId) as { id: string };
+    database.close();
+    const guestCopy = new Uint8Array([0xff, 0xd8, 0x21, 0x22, 0x23, 0xd9]);
+    await saveDownloadCopy(directory, photo.id, guestCopy);
+
+    const listing = await (await fetch(`${origin}/api/v1/session/${token}`)).json() as { files: Array<{ id: string; name: string }> };
+    const firstPhoto = listing.files.find((file) => file.name === 'Photo 01.jpg');
+    expect(firstPhoto).toBeDefined();
+    const response = await fetch(`${origin}/api/v1/file/${token}/${firstPhoto!.id}`);
+    expect(response.status).toBe(200);
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(guestCopy);
   });
 
   it('uses event branding safely on the guest page and serves its logo only through the private token', async () => {
@@ -80,6 +97,33 @@ describe('private QR download server', () => {
     const bytes = new Uint8Array(await response.arrayBuffer());
     expect(Array.from(bytes.slice(0, 2))).toEqual([0x50, 0x4b]);
     expect(fs.readdirSync(directory, { recursive: true }).some((name) => String(name).endsWith('.zip'))).toBe(false);
+  });
+
+  it('limits each share link separately so one guest cannot exhaust the booth quota', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'photobooth-download-'));
+    directories.push(directory);
+    initializeStorage(directory);
+    const tokens: string[] = [];
+    for (let session = 0; session < 2; session += 1) {
+      const { sessionId } = createSession(directory);
+      for (const slot of [1, 2, 3]) await saveOriginalPhoto(directory, sessionId, slot, tinyJpeg, 640, 480);
+      tokens.push(createSessionShareLink(directory, sessionId, 'https://photos.example.com').url.split('/').at(-1)!);
+    }
+    const config = JSON.parse(fs.readFileSync(path.join(directory, 'photobooth-paths.json'), 'utf8')) as { photosDirectory: string };
+    const server = await createDownloadServer(directory, config.photosDirectory, { port: 0, rateLimit: { windowMs: 60_000, maxRequests: 2 } });
+    servers.push(server);
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Test server did not bind a TCP port');
+    const origin = `http://127.0.0.1:${address.port}`;
+    const [firstToken, secondToken] = tokens as [string, string];
+
+    expect((await fetch(`${origin}/d/${firstToken}`)).status).toBe(200);
+    expect((await fetch(`${origin}/d/${firstToken}`)).status).toBe(200);
+    expect((await fetch(`${origin}/d/${firstToken}`)).status).toBe(429);
+    // Same source address, different link: its own budget.
+    expect((await fetch(`${origin}/d/${secondToken}`)).status).toBe(200);
+    expect((await fetch(`${origin}/api/v1/session/${secondToken}`)).status).toBe(200);
+    expect((await fetch(`${origin}/api/v1/session/${secondToken}`)).status).toBe(429);
   });
 
   it('refuses links after their expiry time', async () => {

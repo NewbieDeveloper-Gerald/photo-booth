@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
-type SettingKey = 'selectedCameraId' | 'countdownSeconds' | 'cameraResolution' | 'lowDiskWarningGB' | 'selectedPrinterName' | 'downloadBaseUrl' | 'consentText';
+import type { BoothSettingKey } from '../src/shared/constants/settings-keys.js';
+
+type SettingKey = BoothSettingKey;
 type PhotoBytes = Uint8Array;
 
 contextBridge.exposeInMainWorld('photobooth', {
