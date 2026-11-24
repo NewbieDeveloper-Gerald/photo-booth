@@ -102,7 +102,7 @@ describe('upgrading a booth that predates templates', () => {
     // Simulate a database created before migration 008 existed.
     const database = openDatabase(directory);
     database.exec('DROP TABLE template_elements; DROP TABLE templates;');
-    database.prepare('DELETE FROM schema_migrations WHERE name = ?').run('008_templates');
+    database.prepare("DELETE FROM schema_migrations WHERE name IN ('008_templates', '009_template_assets')").run();
     database.close();
 
     initializeStorage(directory);

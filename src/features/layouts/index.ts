@@ -15,3 +15,4 @@ export {
 } from './domain/template-editing';
 export { applyEdit, canRedo, canUndo, createHistory, redo, undo, undoDepth, type TemplateHistory } from './domain/template-history';
 export { renderTemplateLayout, type TemplateBranding, type TemplateBridge } from './domain/render-template-layout';
+export { paintTemplatePreview } from './domain/render-template-preview';

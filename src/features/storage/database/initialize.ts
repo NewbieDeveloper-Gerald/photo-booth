@@ -166,6 +166,10 @@ const migrations: Array<{ name: string; sql: string }> = [
       CREATE INDEX IF NOT EXISTS idx_template_elements_order ON template_elements(template_id, layer);
     `,
   },
+  {
+    name: '009_template_assets',
+    sql: `ALTER TABLE template_elements ADD COLUMN asset_name TEXT;`,
+  },
 ];
 
 export function initializeStorage(userDataPath: string): void {

@@ -1,7 +1,9 @@
 import type Database from 'better-sqlite3';
+import { randomUUID } from 'node:crypto';
 import { withDatabase } from '../../storage/database/connection';
 import { layoutPresets } from '../catalog';
 import { createGridTemplate, templateFromCatalogPreset } from '../domain/template-builder';
+import { addPhotoElement, emptyTemplateForPage } from '../domain/template-editing';
 import { getPagePreset, isValidTemplateDocument, type PagePresetId, type TemplateDocument, type TemplateElement, type TemplateSummary } from '../domain/template-document';
 
 type TemplateRow = {
@@ -12,7 +14,7 @@ type TemplateRow = {
 type ElementRow = {
   element_id: string; position: number; kind: string; layer: number; x: number; y: number; width: number; height: number;
   slot_number: number | null; text: string | null; color: string | null; font_size: number | null; font_weight: number | null;
-  align: string | null; max_width: number | null; qr_avoid: number | null; frame_gutter: number | null; inset: number | null; panel_color: string | null;
+  align: string | null; max_width: number | null; qr_avoid: number | null; frame_gutter: number | null; inset: number | null; panel_color: string | null; asset_name: string | null;
 };
 
 type ElementValues = Omit<ElementRow, 'element_id' | 'position'> & { element_id: string };
@@ -45,6 +47,7 @@ function elementToRow(element: TemplateElement): ElementValues {
     frame_gutter: element.kind === 'photo' ? element.frameGutter : null,
     inset: element.kind === 'qr' ? element.inset : null,
     panel_color: element.kind === 'qr' ? element.panelColor : null,
+    asset_name: element.kind === 'image' ? element.assetName : null,
   };
 }
 
@@ -67,25 +70,30 @@ function rowToElement(row: ElementRow): TemplateElement {
       return { ...base, kind: 'logo' };
     case 'qr':
       return { ...base, kind: 'qr', inset: row.inset ?? 0, panelColor: row.panel_color ?? '#ffffff' };
+    case 'image':
+      return { ...base, kind: 'image', assetName: row.asset_name ?? '' };
     default:
       throw new Error(`Unknown template element kind: ${row.kind}`);
   }
 }
 
-function writeTemplate(database: Database.Database, document: TemplateDocument): void {
+function writeTemplate(database: Database.Database, document: TemplateDocument, builtIn = false): void {
   const invalid = isValidTemplateDocument(document);
   if (invalid !== true) throw new Error(`Template ${document.id}: ${invalid}`);
+  const existing = database.prepare('SELECT is_builtin FROM templates WHERE id = ?').get(document.id) as { is_builtin: number } | undefined;
+  const isBuiltIn = existing ? existing.is_builtin : builtIn ? 1 : 0;
   database.prepare(`INSERT OR REPLACE INTO templates
     (id, name, shots, copies, page_preset, page_width_px, page_height_px, dpi, margin_px, header_height_px, footer_height_px, is_builtin)
-    VALUES (@id, @name, @shots, @copies, @pagePreset, @width, @height, @dpi, @margin, @header, @footer, 1)`).run({
+    VALUES (@id, @name, @shots, @copies, @pagePreset, @width, @height, @dpi, @margin, @header, @footer, @builtIn)`).run({
     id: document.id, name: document.name, shots: document.shots, copies: document.copies,
     pagePreset: document.page.id, width: document.page.widthPx, height: document.page.heightPx,
     dpi: document.page.dpi, margin: document.page.marginPx, header: document.page.headerHeightPx, footer: document.page.footerHeightPx,
+    builtIn: isBuiltIn,
   });
   database.prepare('DELETE FROM template_elements WHERE template_id = ?').run(document.id);
   const insertElement = database.prepare(`INSERT INTO template_elements
-    (template_id, element_id, position, kind, layer, x, y, width, height, slot_number, text, color, font_size, font_weight, align, max_width, qr_avoid, frame_gutter, inset, panel_color)
-    VALUES (@templateId, @element_id, @position, @kind, @layer, @x, @y, @width, @height, @slot_number, @text, @color, @font_size, @font_weight, @align, @max_width, @qr_avoid, @frame_gutter, @inset, @panel_color)`);
+    (template_id, element_id, position, kind, layer, x, y, width, height, slot_number, text, color, font_size, font_weight, align, max_width, qr_avoid, frame_gutter, inset, panel_color, asset_name)
+    VALUES (@templateId, @element_id, @position, @kind, @layer, @x, @y, @width, @height, @slot_number, @text, @color, @font_size, @font_weight, @align, @max_width, @qr_avoid, @frame_gutter, @inset, @panel_color, @asset_name)`);
   document.elements.forEach((element, position) => {
     insertElement.run({ templateId: document.id, position, ...elementToRow(element) });
   });
@@ -97,7 +105,7 @@ export function ensureBuiltinTemplates(userDataPath: string): void {
     const existing = new Set(database.prepare('SELECT id FROM templates').all().map((row) => (row as { id: string }).id));
     const missing = builtinTemplates().filter((document) => !existing.has(document.id));
     if (missing.length === 0) return;
-    database.transaction(() => { for (const document of missing) writeTemplate(database, document); })();
+    database.transaction(() => { for (const document of missing) writeTemplate(database, document, true); })();
   });
 }
 
@@ -148,4 +156,47 @@ export function loadTemplate(userDataPath: string, templateId: string): Template
 /** Saves an edited template; F12's editor will call this, and seeding uses it too. */
 export function saveTemplate(userDataPath: string, document: TemplateDocument): void {
   withDatabase(userDataPath, (database) => { database.transaction(() => writeTemplate(database, document))(); });
+}
+
+export type NewTemplateRequest = { pageId: PagePresetId; shots: number; name: string };
+
+/** Creates an empty layout for a page size and photo count, ready to be edited. */
+export function createTemplate(userDataPath: string, request: NewTemplateRequest): TemplateDocument {
+  const page = getPagePreset(request.pageId);
+  const name = request.name.trim() || `${page.label} · ${request.shots} photos`;
+  const id = `custom-${randomUUID().slice(0, 8)}`;
+  let document = emptyTemplateForPage(page, name, id);
+  document = { ...document, shots: 1 };
+  for (let shots = 2; shots <= request.shots; shots += 1) document = addPhotoElement(document).template;
+  saveTemplate(userDataPath, document);
+  return document;
+}
+
+export function duplicateTemplate(userDataPath: string, templateId: string, name?: string): TemplateDocument {
+  const original = loadTemplate(userDataPath, templateId);
+  const copy: TemplateDocument = {
+    ...original,
+    id: `custom-${randomUUID().slice(0, 8)}`,
+    name: (name ?? `${original.name} copy`).trim(),
+  };
+  saveTemplate(userDataPath, copy);
+  return copy;
+}
+
+/** Built-ins stay (they are the seeded designs) and a layout used by a session cannot vanish. */
+export function deleteTemplate(userDataPath: string, templateId: string): void {
+  const summary = listTemplates(userDataPath).find((template) => template.id === templateId);
+  if (!summary) throw new Error('That layout does not exist on this booth.');
+  if (summary.builtIn) throw new Error('Built-in layouts can be edited, but not deleted. Duplicate it instead.');
+  const used = withDatabase(userDataPath, (database) =>
+    database.prepare('SELECT COUNT(*) AS count FROM sessions WHERE layout_id = ?').get(templateId) as { count: number });
+  if (used.count > 0) throw new Error('This layout was used by a saved session, so it cannot be deleted.');
+  withDatabase(userDataPath, (database) => { database.prepare('DELETE FROM templates WHERE id = ?').run(templateId); });
+}
+
+export function renameTemplate(userDataPath: string, templateId: string, name: string): TemplateDocument {
+  const document = loadTemplate(userDataPath, templateId);
+  const renamed = { ...document, name: name.trim() };
+  saveTemplate(userDataPath, renamed);
+  return renamed;
 }
