@@ -2,7 +2,7 @@ import { app, BrowserWindow, session } from 'electron';
 import type { Server } from 'node:http';
 import { initializeStorage } from '../src/features/storage/node.js';
 import { ensureBuiltinTemplates } from '../src/features/layouts/node.js';
-import { recoverInterruptedUploads } from '../src/features/sharing/node.js';
+import { mockUploadAdapter, recoverInterruptedUploads, startUploadScheduler } from '../src/features/sharing/node.js';
 import { registerIpcHandlers } from './ipc/registry.js';
 import { startDownloadServer } from './download-service.js';
 import { createBoothWindowController } from './windows/booth-window.js';
@@ -16,6 +16,9 @@ app.whenReady().then(async () => {
   initializeStorage(userDataPath);
   ensureBuiltinTemplates(userDataPath);
   recoverInterruptedUploads(userDataPath);
+  // Background sync (F14): resumes queued uploads at startup and retries with backoff.
+  const stopUploadScheduler = startUploadScheduler({ userDataPath, adapter: mockUploadAdapter, onError: (message) => console.warn(message) });
+  app.on('will-quit', stopUploadScheduler);
   downloadServer = await startDownloadServer(userDataPath);
 
   registerIpcHandlers({

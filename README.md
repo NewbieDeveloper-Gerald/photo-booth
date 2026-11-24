@@ -87,7 +87,7 @@ For mobile-data access, configure a Cloudflare Tunnel (no R2 bucket or image sto
 3. Set the named tunnel's local origin/service to `http://127.0.0.1:47625` and keep the tunnel process running while guests use QR links.
 4. Enter the matching public HTTPS origin in the booth settings and save it. Complete a session, scan its QR using mobile data, and verify per-photo downloads and **Download all**.
 
-The booth must remain powered, connected to the internet, and running; this F7 mode is on-demand streaming, not durable cloud hosting. If the tunnel or booth is offline, guest downloads are unavailable. F8 currently provides a persistent mock-only queue and status UI; it does not upload anything to a cloud provider. Cloudflare's [Quick Tunnel instructions](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/) describe the temporary test tunnel.
+The booth must remain powered, connected to the internet, and running; this F7 mode is on-demand streaming, not durable cloud hosting. If the tunnel or booth is offline, guest downloads are unavailable. F8/F14 provide a persistent mock-only queue with background retries and a sync-status panel; no cloud provider is configured, so nothing is uploaded. Cloudflare's [Quick Tunnel instructions](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/) describe the temporary test tunnel.
 
 ## Consent, PIN and kiosk mode (F9)
 

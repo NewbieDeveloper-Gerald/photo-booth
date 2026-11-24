@@ -21,7 +21,7 @@ import { defaultLayoutIdForShots } from '../features/events';
 import { wait } from '../renderer/lib/timing';
 import { DEFAULT_ACCENT_COLOR, DEFAULT_CONSENT_TEXT, DEFAULT_PRIMARY_COLOR, DEFAULT_THANK_YOU_TEXT, DEFAULT_WELCOME_TEXT } from '../shared/constants/branding-defaults';
 import { toErrorMessage } from '../shared/errors';
-import { CAPTURE_REVIEW_PAUSE_MS, MAX_DISK_WARNING_GB, SESSION_IDLE_TIMEOUT_MS } from '../shared/constants/limits';
+import { CAPTURE_REVIEW_PAUSE_MS, MAX_DISK_WARNING_GB, SESSION_IDLE_TIMEOUT_MS, UPLOAD_STATUS_POLL_MS } from '../shared/constants/limits';
 import { renderTemplateLayout, templateFromCatalogPreset, getLayoutPreset, layoutPresets, type TemplateDocument, type TemplateSummary } from '../features/layouts';
 import { decideAutoPrint } from '../features/printing';
 import type { ActiveEvent, EventSettings } from '../shared/types/event';
@@ -81,6 +81,7 @@ function App(): React.JSX.Element {
   const [finalOutputUrl, setFinalOutputUrl] = useState('');
   const [unfinishedSessions, setUnfinishedSessions] = useState<UnfinishedSession[]>([]);
   const [uploadQueue, setUploadQueue] = useState<UploadQueueSummary | null>(null);
+  const [queueWarning, setQueueWarning] = useState('');
   const [pinConfigured, setPinConfigured] = useState(false);
   const [adminLocked, setAdminLocked] = useState(false);
   const [showUnlock, setShowUnlock] = useState(false);
@@ -143,6 +144,13 @@ function App(): React.JSX.Element {
     try { setUploadQueue(await window.photobooth.getUploadQueue()); }
     catch { setUploadQueue(null); }
   }, []);
+
+  useEffect(() => {
+    if (!window.photobooth || screen !== 'ready') return;
+    void refreshUploadQueue();
+    const timer = setInterval(() => void refreshUploadQueue(), UPLOAD_STATUS_POLL_MS);
+    return () => clearInterval(timer);
+  }, [screen, refreshUploadQueue]);
 
   const loadReviewSession = useCallback(async (activeSessionId: string): Promise<SessionRecord> => {
     const bridge = window.photobooth;
@@ -679,8 +687,9 @@ function App(): React.JSX.Element {
         branding: { primaryColor: event.primaryColor, accentColor: event.accentColor, thankYouText: event.thankYouText, logoDataUrl: eventLogoDataUrl },
       });
       const savedPath = await window.photobooth.saveSessionOutput(sessionId, await blobToBytes(blob), template.page.widthPx, template.page.heightPx);
-      await window.photobooth.enqueueSessionUploads(sessionId);
-      await refreshUploadQueue();
+      // Queueing is local and idempotent; a failure here must never hold up the guest.
+      void window.photobooth.enqueueSessionUploads(sessionId).catch(() => setQueueWarning('This session could not be queued for sync. The photos are saved locally.'));
+      void refreshUploadQueue();
       setShareUrl(nextShareUrl);
       setFinalOutputUrl((current) => { if (current) URL.revokeObjectURL(current); return URL.createObjectURL(blob); });
       setStatus(`Finished layout saved · ${savedPath}`);
@@ -831,7 +840,8 @@ function App(): React.JSX.Element {
         {screen === 'capturing' && <SlotProgress slotCount={slotCount} currentSlot={currentSlot} capturedSlots={capturedSlots} />}
         {screen === 'review' && reviewRecord && <ReviewSection record={reviewRecord} images={reviewImages} isBusy={isBusy} cameraReady={cameraReady} onRetake={(slot) => void handleRetake(slot)} onRevert={(slot) => void handleRevert(slot)} />}
         {unfinishedSessions.length > 0 && screen === 'ready' && !adminLocked && <RecoveryCard session={unfinishedSessions[0]!} busy={busy} cameraReady={cameraReady} onResume={() => void handleResumeSession(unfinishedSessions[0]!)} onDiscard={() => void handleDiscardSession(unfinishedSessions[0]!)} />}
-        {screen === 'ready' && uploadQueue && <UploadQueueCard summary={uploadQueue} />}
+        {screen === 'ready' && !adminLocked && uploadQueue && <UploadQueueCard summary={uploadQueue} />}
+        {screen === 'ready' && !adminLocked && queueWarning && <p className="pin-error" role="alert">{queueWarning}</p>}
         {errorMessage && <p className="camera-error" role="alert">{errorMessage}<button type="button" onClick={() => void refreshCameras()}>Retry</button></p>}
         {!errorMessage && <p className="helper-note">Originals stay on this booth. No photos are uploaded in this feature.</p>}
       </section>
