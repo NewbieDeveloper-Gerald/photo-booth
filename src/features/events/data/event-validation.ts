@@ -1,5 +1,6 @@
 import {
-  MAX_CONSENT_LENGTH, MAX_EVENT_CONTACT_LENGTH, MAX_EVENT_NAME_LENGTH, MAX_EVENT_TEXT_LENGTH, MAX_OFFERED_LAYOUTS,
+  MAX_CONSENT_LENGTH, MAX_EVENT_CONTACT_LENGTH, MAX_EVENT_NAME_LENGTH, MAX_EVENT_PAPER_COUNT, MAX_EVENT_TEXT_LENGTH,
+  MAX_OFFERED_LAYOUTS, MAX_PRINT_LIMIT_PER_SESSION, MIN_PRINT_LIMIT_PER_SESSION,
   MAX_WATERMARK_OPACITY, MAX_WATERMARK_SCALE_PERCENT, MIN_WATERMARK_OPACITY, MIN_WATERMARK_SCALE_PERCENT,
 } from '../../../shared/constants/limits';
 import type { WatermarkPosition } from '../../../shared/types/watermark';
@@ -65,6 +66,22 @@ function validateWatermark(item: Record<string, unknown>): { watermarkEnabled: b
   return { watermarkEnabled: enabled === true, watermarkPosition: position, watermarkScalePercent: scale, watermarkOpacity: Math.round(opacity * 100) / 100 };
 }
 
+/**
+ * Print limits (F18): a session may be printed once by default and no more than the operator
+ * allows, and the paper count is optional because many events never count their sheets.
+ */
+function validatePrintRules(item: Record<string, unknown>): { printLimitPerSession: number; paperCount: number } {
+  const limit = item.printLimitPerSession ?? 2;
+  if (typeof limit !== 'number' || !Number.isInteger(limit) || limit < MIN_PRINT_LIMIT_PER_SESSION || limit > MAX_PRINT_LIMIT_PER_SESSION) {
+    throw new Error(`Prints per session must be ${MIN_PRINT_LIMIT_PER_SESSION} to ${MAX_PRINT_LIMIT_PER_SESSION}`);
+  }
+  const paperCount = item.paperCount ?? 0;
+  if (typeof paperCount !== 'number' || !Number.isInteger(paperCount) || paperCount < 0 || paperCount > MAX_EVENT_PAPER_COUNT) {
+    throw new Error(`Paper count must be 0 to ${MAX_EVENT_PAPER_COUNT} sheets`);
+  }
+  return { printLimitPerSession: limit, paperCount };
+}
+
 export function validateEventSettings(value: unknown): ValidatedEventFields {
   if (!value || typeof value !== 'object') throw new Error('Invalid event details');
   const item = value as Record<string, unknown>;
@@ -82,5 +99,5 @@ export function validateEventSettings(value: unknown): ValidatedEventFields {
   const contactText = optionalText(item.contactText, MAX_EVENT_CONTACT_LENGTH, `Contact details must be ${MAX_EVENT_CONTACT_LENGTH} characters or fewer`);
   return { name: item.name.trim(), shots, expiryDays, eventDate: eventDate as string | null, primaryColor: item.primaryColor as string, accentColor: item.accentColor as string,
     welcomeText: (item.welcomeText as string).trim(), thankYouText: (item.thankYouText as string).trim(),
-    defaultLayoutId: defaultLayoutIdForShots(shots), offeredLayoutIds: offered, consentText, contactText, ...validateWatermark(item) };
+    defaultLayoutId: defaultLayoutIdForShots(shots), offeredLayoutIds: offered, consentText, contactText, ...validateWatermark(item), ...validatePrintRules(item) };
 }

@@ -103,4 +103,7 @@ Features: `capture`, `events`, `layouts`, `printing`, `retention`, `sharing`, `s
 - The upload queue is a mock: `processDueUploads` exists but nothing schedules it, and
   `UploadQueueCard` says so on screen.
 - `events.print_enabled` is stored but not enforced; the operator decides via the
-  printer selector.
+  printer selector and by pausing the print queue.
+- The print worker is a single in-process loop: one printer at a time, no job priority, and
+  a job that keeps failing is retried only when the operator reprints it (a failed job is
+  never retried automatically, so paper is not wasted on a loose cable).

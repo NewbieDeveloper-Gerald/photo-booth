@@ -73,6 +73,18 @@ describe('session deletion (F15)', () => {
     expect(() => deleteSessionPermanently(directory, sessionId)).toThrow(/Finish or discard the open session/);
   });
 
+  it('takes a queued print job with the session (F18)', () => {
+    const { directory, sessionId } = setup(null);
+    const db = new Database(path.join(directory, 'photobooth.sqlite'));
+    const eventId = (db.prepare('SELECT event_id AS eventId FROM sessions WHERE id = ?').get(sessionId) as { eventId: string }).eventId;
+    db.prepare("INSERT INTO print_jobs (id, session_id, event_id, printer_name) VALUES ('print-1', ?, ?, 'DNP QW410')").run(sessionId, eventId);
+    db.close();
+    expect(deleteSessionPermanently(directory, sessionId).deletedSessions).toBe(1);
+    const after = new Database(path.join(directory, 'photobooth.sqlite'));
+    expect(after.prepare('SELECT COUNT(*) AS count FROM print_jobs').get()).toEqual({ count: 0 });
+    after.close();
+  });
+
   it('rejects unknown sessions and bad ids', () => {
     const { directory } = setup(null);
     expect(() => deleteSessionPermanently(directory, '00000000-0000-0000-0000-000000000000')).toThrow(/not found/);

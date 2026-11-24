@@ -1,6 +1,6 @@
 # Progress
 
-Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`; F17 implemented on `arena/ff2f7425-photo-booth`.
+Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`; F18 implemented on `arena/af4966d8-photo-booth`.
 
 ## Current status
 
@@ -21,10 +21,12 @@ Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `4215
   1-day-expiry test below.
 - **F16 (guest gallery per event): merged** (`0d1debd`), awaiting the manual phone test
   below.
-- **F17 (watermark on downloads): implemented**, awaiting the manual compare test below.
-- **F18–F29: not started.**
+- **F17 (watermark on downloads): merged** (`484354e`), awaiting the manual compare test below.
+- **F18 (print queue, counts and limits): implemented**, awaiting the manual pause/resume
+  print test below.
+- **F19–F29: not started.**
 - Automated verification today: `npm run typecheck`, `npm run lint`, `npm test`
-  (**291 tests in 49 files**), `npm run build` (Vite production build) all pass.
+  (**319 tests in 55 files**), `npm run build` (Vite production build) all pass.
   `npm run test:e2e` exists but cannot run in this environment (no browser runtime).
 
 ## Verification gaps (unrecorded or impossible here)
@@ -293,6 +295,52 @@ chosen corner at the chosen opacity, the original and the printed layout do not.
 Text watermarks, per-photo marks, animated/video covers and a different mark for the
 finished layout are not implemented. Print counting and limits are F18.
 
+## F18. Print queue, counts and limits (implemented)
+
+- **The queue is a table, not a timer** (migration `014_print_queue`): `print_jobs` keeps
+  `session_id`, `event_id`, `printer_name`, `status` (`queued`, `printing`, `done`, `failed`,
+  `cancelled`), `attempts` and `error`. A booth that is restarted with sheets waiting still
+  prints them, and a failed sheet stays in the list with its error instead of vanishing.
+- **One sheet at a time, claimed before use**: the worker in the main process
+  (`features/printing/scheduler.ts`, every 3 s plus an immediate wake after an enqueue) takes
+  the oldest queued row, flips it to `printing` and bumps `attempts` *before* calling the
+  printer, so a second tick or a restart cannot send the same sheet twice. A run drains at
+  most ten sheets so a backlog cannot block the main process.
+- **Pause, cancel, reprint**: pausing is a `settings` flag (`printQueuePaused`) that the
+  worker honours, so pausing never loses a job. Only a `queued` or `failed` job can be
+  cancelled — cancelling a sheet already at the printer would lie to the operator. A reprint
+  is a new queued job for the same session and printer.
+- **Per-session limit**: `events.print_limit_per_session` (1–20, default 2) is enforced in the
+  repository, not the UI, and counts `queued`, `printing`, `done` and `failed` jobs (a
+  cancelled job does not count). A session must be `completed` before it can be queued.
+- **Paper count**: `events.paper_count` (0–5000, 0 = not counted). The operator panel shows
+  printed/waiting/printing/failed, `n of N sheets papered`, and a warning as soon as the
+  planned sheets reach the count, so paper is reloaded before a guest is told to wait.
+- **The 2 × 6 strip prints two copies per sheet**: after the strip layout is saved the
+  renderer pairs it with a second copy on one 4 × 6 sheet (`renderer/lib/print-sheet.ts`) and
+  stores it as a `print-sheet-*` output; the queue prints that sheet in preference to the
+  strip and sizes it from the stored pixels (`outputs.width/height`). If pairing fails the
+  strip still prints on its own.
+- **UI**: the finished screen follows the queued job (`Queued → Printing → Done/Failed`) and
+  shows *Prints this session: n of limit*; event setup gained *Prints per session* and
+  *Paper sheets loaded*; a **Print queue** card shows the counts, the paper warning and the
+  newest jobs with Cancel, plus Pause/Resume.
+- **IPC**: `print:enqueue`, `print:reprint`, `print:list`, `print:summary`, `print:pause`,
+  `print:cancel` (the old fire-and-forget `printer:printOutput` is gone) and
+  `session:savePrintSheet`.
+
+### F18 manual check
+
+Queue five sessions with a paper count of five, pause the queue in the middle, run two more
+sessions, then resume: the queued sheets print in the order they were taken, the paper
+warning appears at five, and a print that fails (printer switched off) stays in the list with
+its error so it can be reprinted after the limit is raised.
+
+### F18 out of scope (later features)
+
+Two printers at once (jobs keep a printer name but there is one worker), per-job priority,
+automatic paper reload detection and cut lines drawn on the sheet are not implemented.
+
 ## Feature log
 
 ### F0. Project setup
@@ -330,7 +378,8 @@ finished layout are not implemented. Print counting and limits are F18.
 
 ### F6. Printing
 - Windows printer list, remembered choice, silent print at the layout's native page size with
-  no added margins or scaling, status reporting and Reprint.
+  no added margins or scaling, status reporting and Reprint. Since F18 the print goes through
+  the stored queue, so this path is retried, pausable and limited.
 
 ### F7. QR download page
 - Local HTTP server with per-link rate limiting, `noindex`/`no-store` headers, token check
@@ -361,6 +410,9 @@ finished layout are not implemented. Print counting and limits are F18.
 - Node.js 22 LTS recommended, 20 supported; 26 is not, because of the native rebuild toolchain.
 - Originals never leave the booth; the guest link serves the download copies.
 - Code is feature-first with a renderer-safe `index.ts` and a main-process `node.ts` per feature.
+- The print queue lives in SQLite, not in memory, and a job is claimed (`queued` → `printing`,
+  `attempts + 1`) before the printer is called, so a restart or a second tick cannot print a
+  sheet twice. The per-session limit counts queued/printing/done/failed, never cancelled.
 
 ## Known limits
 
@@ -369,7 +421,9 @@ finished layout are not implemented. Print counting and limits are F18.
   keeps it usable but a search or favourites list would be better.
 - Upload queue is a mock (`processDueUploads` is never scheduled).
 - `events.print_enabled` is stored but not enforced; the operator picks the printer instead.
-- `src/ui/main.tsx` still holds the session flow and the event/PIN forms (~790 lines).
+- The print worker is one in-process loop: one printer at a time, no job priority, and a failed
+  job is retried only by an explicit reprint (a loose cable should not burn paper).
+- `src/ui/main.tsx` still holds the session flow and the event/PIN forms (~1200 lines).
 - The canvas painter itself is untested (jsdom has no canvas); its geometry is pinned by
   `template-paint-plan.test.ts` and by the manual print checklist.
 - The layout editor has no zoom, multi-select or copy/paste, and text is edited in the

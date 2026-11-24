@@ -20,5 +20,9 @@ export type ActiveEvent = {
   /** Logo width as a percentage of the photo width. */
   watermarkScalePercent: number;
   watermarkOpacity: number;
+  /** F18: how many times one session may go to the queue, reprints included. */
+  printLimitPerSession: number;
+  /** F18: sheets loaded for this event; 0 means the operator did not count them. */
+  paperCount: number;
 };
 export type EventSettings = Omit<ActiveEvent, 'retakeLimit' | 'printEnabled'>;

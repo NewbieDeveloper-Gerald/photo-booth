@@ -112,3 +112,20 @@
 .watermark-toggle input { width: 18px; height: 18px; }
 .watermark-field output { color: #b39be9; font-size: 12px; }
 .watermark-field input[type="range"] { width: 100%; accent-color: #c9b4ff; }
+
+/* F18 · print queue panel and the per-session print count. */
+.print-queue-card { flex-direction: column; align-items: stretch; }
+.print-queue-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.print-queue-heading h2 { margin: 0; font-size: 15px; color: #ece7fa; }
+.print-queue-counts { margin: 8px 0 0; color: #969caf; font-size: 12px; }
+.print-queue-warning { margin: 10px 0 0; padding: 9px 11px; border: 1px solid #c9a35a55; border-radius: 8px; background: #4a3a1c40; color: #f0d9a8; font-size: 12px; }
+.print-queue-note { margin: 8px 0 0; color: #b39be9; font-size: 12px; }
+.print-queue-list { display: grid; gap: 6px; margin: 12px 0 0; padding: 0; list-style: none; }
+.print-queue-job { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border: 1px solid #ffffff14; border-radius: 8px; background: #141a27; font-size: 11px; color: #b8bccb; }
+.print-queue-job-printer { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #e2ddf0; }
+.print-queue-job.done .print-queue-job-status { color: #7fd6a8; }
+.print-queue-job.failed .print-queue-job-status { color: #f0a9ad; }
+.print-queue-job.printing .print-queue-job-status { color: #c9b4ff; }
+.print-queue-job-attempts { color: #8b93a6; }
+.print-queue-cancel { height: 28px; padding: 0 10px; font-size: 11px; }
+.print-limit-note { margin: 6px 0 0; color: #8b93a6; font-size: 11px; }

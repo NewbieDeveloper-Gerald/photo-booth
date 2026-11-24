@@ -201,6 +201,27 @@ const migrations: Array<{ name: string; sql: string }> = [
       ALTER TABLE events ADD COLUMN watermark_opacity REAL NOT NULL DEFAULT 0.6;
     `,
   },
+  {
+    name: '014_print_queue',
+    sql: `
+      CREATE TABLE print_jobs (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+        printer_name TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'queued',
+        attempts INTEGER NOT NULL DEFAULT 0,
+        error TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_print_jobs_status ON print_jobs(status, created_at);
+      ALTER TABLE events ADD COLUMN print_limit_per_session INTEGER NOT NULL DEFAULT 2;
+      ALTER TABLE events ADD COLUMN paper_count INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE outputs ADD COLUMN width INTEGER;
+      ALTER TABLE outputs ADD COLUMN height INTEGER;
+    `,
+  },
 ];
 
 export function initializeStorage(userDataPath: string): void {

@@ -5,6 +5,7 @@ import type { SessionRecord, UnfinishedSession } from '../shared/types/session';
 import type { UploadQueueSummary } from '../features/sharing/upload-queue/types';
 import type { DeletionResult, RetentionStatus } from '../features/retention';
 import type { PagePresetId, TemplateDocument, TemplateSummary } from '../features/layouts/domain/template-document';
+import type { PrintJob, PrintQueueSummary } from '../features/printing/domain/print-queue-types';
 
 import type { BoothSettingKey } from '../shared/constants/settings-keys';
 
@@ -36,7 +37,12 @@ declare global {
       deleteEvent(eventId: string): Promise<DeletionResult>;
       enqueueSessionUploads(sessionId: string): Promise<number>;
       listPrinters(): Promise<Array<{ name: string; displayName: string; isDefault?: boolean; status?: number }>>;
-      printSessionOutput(sessionId: string, printerName: string): Promise<{ success: boolean; error?: string }>;
+      enqueuePrintJob(sessionId: string, printerName: string): Promise<PrintJob>;
+      reprintJob(jobId: string): Promise<PrintJob>;
+      listPrintJobs(eventId?: string): Promise<PrintJob[]>;
+      getPrintQueueSummary(eventId?: string): Promise<PrintQueueSummary>;
+      setPrintQueuePaused(paused: boolean): Promise<boolean>;
+      cancelPrintJob(jobId: string): Promise<PrintJob>;
       exportEvent(eventId: string): Promise<string | null>;
       checkDiskSpace(thresholdGB: number): Promise<boolean>;
       setActiveEventRetakeLimit(limit: number): Promise<ActiveEvent>;
@@ -58,6 +64,7 @@ declare global {
       commitRetake(sessionId: string, slotNumber: number, photoId: string): Promise<void>;
       revertRetake(sessionId: string, slotNumber: number): Promise<void>;
       readOriginalPhoto(photoId: string): Promise<Uint8Array>;
+      savePrintSheet(sessionId: string, bytes: Uint8Array, width: number, height: number): Promise<string>;
       saveSessionOutput(sessionId: string, bytes: Uint8Array, width: number, height: number): Promise<string>;
       abandonSession(sessionId: string): Promise<void>;
       discardSession(sessionId: string): Promise<void>;

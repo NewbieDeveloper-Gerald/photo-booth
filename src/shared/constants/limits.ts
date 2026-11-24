@@ -37,6 +37,13 @@ export const GALLERY_GRANT_TTL_MS = 30 * 60 * 1000;
 // Guest-copy watermark (F17)
 export const MIN_WATERMARK_SCALE_PERCENT = 5;
 export const MAX_WATERMARK_SCALE_PERCENT = 50;
+export const MIN_PRINT_LIMIT_PER_SESSION = 1;
+export const MAX_PRINT_LIMIT_PER_SESSION = 20;
+export const MAX_EVENT_PAPER_COUNT = 5000;
+/** How often the main process looks for a queued print (F18). */
+export const PRINT_QUEUE_INTERVAL_MS = 3000;
+/** The operator panel refreshes faster than the worker so a queued job visibly moves. */
+export const PRINT_QUEUE_POLL_MS = 2000;
 export const MIN_WATERMARK_OPACITY = 0.1;
 export const MAX_WATERMARK_OPACITY = 1;
 

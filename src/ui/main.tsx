@@ -18,15 +18,21 @@ import { UploadQueueCard } from '../renderer/components/UploadQueueCard';
 import { ConfirmAction } from '../renderer/components/ConfirmAction';
 import { RetentionNote } from '../renderer/components/RetentionNote';
 import { GuestLayoutField } from '../renderer/components/GuestLayoutField';
+import { PrintQueueCard } from '../renderer/components/PrintQueueCard';
+import { composeStripCutSheet } from '../renderer/lib/print-sheet';
 import { LayoutPicker } from '../renderer/components/LayoutPicker';
 import { boothLayoutChoices } from '../renderer/lib/offered-layouts';
 import { defaultLayoutIdForShots } from '../features/events';
 import { wait } from '../renderer/lib/timing';
 import { DEFAULT_ACCENT_COLOR, DEFAULT_CONSENT_TEXT, DEFAULT_PRIMARY_COLOR, DEFAULT_THANK_YOU_TEXT, DEFAULT_WELCOME_TEXT } from '../shared/constants/branding-defaults';
 import { toErrorMessage } from '../shared/errors';
-import { CAPTURE_REVIEW_PAUSE_MS, MAX_DISK_WARNING_GB, MAX_WATERMARK_OPACITY, MAX_WATERMARK_SCALE_PERCENT, MIN_WATERMARK_OPACITY, MIN_WATERMARK_SCALE_PERCENT, SESSION_IDLE_TIMEOUT_MS, UPLOAD_STATUS_POLL_MS } from '../shared/constants/limits';
+import {
+  CAPTURE_REVIEW_PAUSE_MS, MAX_DISK_WARNING_GB, MAX_EVENT_PAPER_COUNT, MAX_PRINT_LIMIT_PER_SESSION, MAX_WATERMARK_OPACITY,
+  MAX_WATERMARK_SCALE_PERCENT, MIN_PRINT_LIMIT_PER_SESSION, MIN_WATERMARK_OPACITY, MIN_WATERMARK_SCALE_PERCENT,
+  PRINT_QUEUE_POLL_MS, SESSION_IDLE_TIMEOUT_MS, UPLOAD_STATUS_POLL_MS,
+} from '../shared/constants/limits';
 import { renderTemplateLayout, templateFromCatalogPreset, getLayoutPreset, layoutPresets, type TemplateDocument, type TemplateSummary } from '../features/layouts';
-import { decideAutoPrint } from '../features/printing';
+import { decideAutoPrint, type PrintJob, type PrintQueueSummary } from '../features/printing';
 import type { ActiveEvent, EventSettings } from '../shared/types/event';
 import type { SessionRecord, SessionSlot, UnfinishedSession } from '../shared/types/session';
 import type { UploadQueueSummary } from '../features/sharing';
@@ -69,6 +75,10 @@ function App(): React.JSX.Element {
   const [printers, setPrinters] = useState<Array<{ name: string; displayName: string; isDefault?: boolean; status?: number }>>([]);
   const [selectedPrinterName, setSelectedPrinterName] = useState('');
   const [printStatus, setPrintStatus] = useState('Not printed yet');
+  /** The job the finished screen is following, so its progress is visible to the operator. */
+  const [printJobId, setPrintJobId] = useState('');
+  const [printJobs, setPrintJobs] = useState<PrintJob[]>([]);
+  const [printSummary, setPrintSummary] = useState<PrintQueueSummary | null>(null);
   const [downloadBaseUrl, setDownloadBaseUrl] = useState('');
   const [shareUrl, setShareUrl] = useState('');
   const [shareStatus, setShareStatus] = useState('');
@@ -163,6 +173,37 @@ function App(): React.JSX.Element {
     try { setUploadQueue(await window.photobooth.getUploadQueue()); }
     catch { setUploadQueue(null); }
   }, []);
+
+  const refreshPrintQueue = useCallback(async (eventId?: string): Promise<void> => {
+    const bridge = window.photobooth;
+    if (!bridge) return;
+    try {
+      const [summary, jobs] = await Promise.all([bridge.getPrintQueueSummary(eventId), bridge.listPrintJobs(eventId)]);
+      setPrintSummary(summary);
+      setPrintJobs(jobs);
+    } catch { setPrintSummary(null); }
+  }, []);
+
+  /** Printing runs in the main process, so the panel polls rather than listening to events. */
+  useEffect(() => {
+    if (!window.photobooth || (screen !== 'ready' && screen !== 'finished')) return;
+    const activeEventId = event?.id;
+    void refreshPrintQueue(activeEventId);
+    const timer = setInterval(() => void refreshPrintQueue(activeEventId), PRINT_QUEUE_POLL_MS);
+    return () => clearInterval(timer);
+  }, [screen, event?.id, refreshPrintQueue]);
+
+  /** Follows the queued job so the operator sees it leave the queue and reach the printer. */
+  useEffect(() => {
+    if (!printJobId) return;
+    const job = printJobs.find((item) => item.id === printJobId);
+    if (!job) return;
+    if (job.status === 'queued') setPrintStatus(`Queued · ${job.printerName}`);
+    else if (job.status === 'printing') setPrintStatus(`Printing · ${job.printerName}`);
+    else if (job.status === 'done') setPrintStatus(`Done · ${job.printerName}`);
+    else if (job.status === 'failed') setPrintStatus(`Failed · ${job.error ?? 'printer error'}`);
+    else setPrintStatus('Print cancelled.');
+  }, [printJobId, printJobs]);
 
   useEffect(() => {
     if (!window.photobooth || screen !== 'ready') return;
@@ -310,7 +351,7 @@ function App(): React.JSX.Element {
         setTemplates(layoutPresets.map((preset) => ({ id: preset.id, name: preset.name, shots: preset.shots, copies: preset.copies, pagePreset: '4x6' as const, pageLabel: '4 × 6 in', builtIn: true })));
         // The browser preview has no event storage, so it offers three catalog layouts and
         // makes the guest picker visible while developing the UI.
-        setEvent({ id: 'preview-event', name: 'Default Event', shots: 3, retakeLimit: 3, printEnabled: true, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: 'double-strip-3', offeredLayoutIds: ['double-strip-3', 'double-strip-4', 'grid-4-portrait'], consentText: '', contactText: '', galleryToken: null, galleryPasswordSet: false, watermarkEnabled: false, watermarkPosition: 'bottom-right', watermarkScalePercent: 18, watermarkOpacity: 0.6 });
+        setEvent({ id: 'preview-event', name: 'Default Event', shots: 3, retakeLimit: 3, printEnabled: true, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: 'double-strip-3', offeredLayoutIds: ['double-strip-3', 'double-strip-4', 'grid-4-portrait'], consentText: '', contactText: '', galleryToken: null, galleryPasswordSet: false, watermarkEnabled: false, watermarkPosition: 'bottom-right', watermarkScalePercent: 18, watermarkOpacity: 0.6, printLimitPerSession: 2, paperCount: 0 });
         setRetakeLimitDraft('3');
       }
       if (!camera) { setStatus('Camera access is not available.'); return; }
@@ -485,7 +526,7 @@ function App(): React.JSX.Element {
   };
 
   const handleNewEvent = (): void => {
-    setEventDraft({ id: '', name: '', shots: 3, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: defaultLayoutIdForShots(3), offeredLayoutIds: [defaultLayoutIdForShots(3)], consentText: '', contactText: '', galleryToken: null, galleryPasswordSet: false, watermarkEnabled: false, watermarkPosition: 'bottom-right', watermarkScalePercent: 18, watermarkOpacity: 0.6 });
+    setEventDraft({ id: '', name: '', shots: 3, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: defaultLayoutIdForShots(3), offeredLayoutIds: [defaultLayoutIdForShots(3)], consentText: '', contactText: '', galleryToken: null, galleryPasswordSet: false, watermarkEnabled: false, watermarkPosition: 'bottom-right', watermarkScalePercent: 18, watermarkOpacity: 0.6, printLimitPerSession: 2, paperCount: 0 });
     setEventLogoDataUrl(null); setEventMessage('New event details are not saved yet.');
   };
 
@@ -679,21 +720,50 @@ function App(): React.JSX.Element {
     void savePreference('selectedPrinterName', printerName).catch(() => setErrorMessage('Could not save the printer choice.'));
   };
 
+  /**
+   * Prints are queued, not sent directly (F18): the queue survives a pause or a restart, and
+   * the per-session limit is enforced by the repository, so a reprint cannot overspend paper.
+   */
   const sendPrintJob = async (activeSessionId: string): Promise<void> => {
     const bridge = window.photobooth;
     if (!bridge || !selectedPrinterName) { setPrintStatus('No printer selected. Choose one, then print.'); return; }
-    setPrintStatus(`Sending to ${selectedPrinterName}…`);
     try {
-      const result = await bridge.printSessionOutput(activeSessionId, selectedPrinterName);
-      setPrintStatus(result.success ? `Done · ${selectedPrinterName}` : `Failed · ${result.error ?? 'printer error'}`);
+      const job = await bridge.enqueuePrintJob(activeSessionId, selectedPrinterName);
+      setPrintJobId(job.id);
+      setPrintStatus(`Queued · ${job.printerName}`);
+      await refreshPrintQueue(event?.id);
     } catch (error) { setPrintStatus(`Failed · ${toErrorMessage(error, 'printer error')}`); }
   };
 
   const handleReprint = async (): Promise<void> => {
-    if (!sessionId || !selectedPrinterName) { setPrintStatus('Choose a printer before printing.'); return; }
+    const bridge = window.photobooth;
+    if (!sessionId || !bridge || !selectedPrinterName) { setPrintStatus('Choose a printer before printing.'); return; }
     setBusy(true);
-    await sendPrintJob(sessionId);
-    setBusy(false);
+    try {
+      const previous = printJobs.find((job) => job.sessionId === sessionId && job.status !== 'cancelled');
+      const job = previous ? await bridge.reprintJob(previous.id) : await bridge.enqueuePrintJob(sessionId, selectedPrinterName);
+      setPrintJobId(job.id);
+      setPrintStatus(`Queued · ${job.printerName}`);
+      await refreshPrintQueue(event?.id);
+    } catch (error) { setPrintStatus(`Failed · ${toErrorMessage(error, 'printer error')}`); }
+    finally { setBusy(false); }
+  };
+
+  const handleSetPrintPaused = async (paused: boolean): Promise<void> => {
+    if (!window.photobooth) return;
+    try {
+      await window.photobooth.setPrintQueuePaused(paused);
+      setPrintStatus(paused ? 'Print queue paused — nothing is sent to the printer.' : 'Print queue resumed.');
+      await refreshPrintQueue(event?.id);
+    } catch (error) { setErrorMessage(toErrorMessage(error, 'Could not change the print queue.')); }
+  };
+
+  const handleCancelPrintJob = async (jobId: string): Promise<void> => {
+    if (!window.photobooth) return;
+    try {
+      await window.photobooth.cancelPrintJob(jobId);
+      await refreshPrintQueue(event?.id);
+    } catch (error) { setErrorMessage(toErrorMessage(error, 'Could not cancel that print.')); }
   };
 
   const handleContinue = async (): Promise<void> => {
@@ -718,6 +788,14 @@ function App(): React.JSX.Element {
         branding: { primaryColor: event.primaryColor, accentColor: event.accentColor, thankYouText: event.thankYouText, logoDataUrl: eventLogoDataUrl },
       });
       const savedPath = await window.photobooth.saveSessionOutput(sessionId, await blobToBytes(blob), template.page.widthPx, template.page.heightPx);
+      // A strip is paired with a second copy on one 4 × 6 sheet (F18) so printing needs only
+      // one cut. If pairing fails the strip still prints on its own, so the guest is not held up.
+      if (template.page.id === '2x6-strip') {
+        try {
+          const sheet = await composeStripCutSheet(blob, template.page.widthPx, template.page.heightPx);
+          await window.photobooth.savePrintSheet(sessionId, await blobToBytes(sheet.blob), sheet.width, sheet.height);
+        } catch { /* the strip still prints on its own */ }
+      }
       // Queueing is local and idempotent; a failure here must never hold up the guest.
       void window.photobooth.enqueueSessionUploads(sessionId).catch(() => setQueueWarning('This session could not be queued for sync. The photos are saved locally.'));
       void refreshUploadQueue();
@@ -889,6 +967,8 @@ function App(): React.JSX.Element {
             <label>Event date<input aria-label="Event date" type="date" value={eventDraft.eventDate ?? ''} onChange={(e) => setEventDraft({ ...eventDraft, eventDate: e.target.value || null })} /></label>
             <label>Photo count<select aria-label="Event photo count" value={eventDraft.shots} onChange={(e) => setEventDraft({ ...eventDraft, shots: Number(e.target.value), defaultLayoutId: defaultLayoutIdForShots(Number(e.target.value)) })}>{[1, 2, 3, 4, 5, 6].map((shots) => <option key={shots} value={shots}>{shots} {shots === 1 ? 'photo' : 'photos'}</option>)}</select></label>
             <label>QR link expires after (days)<input aria-label="QR link expiry days" type="number" min={1} max={365} value={eventDraft.expiryDays} onChange={(e) => setEventDraft({ ...eventDraft, expiryDays: Number(e.target.value) })} /></label>
+            <label>Prints per session<input aria-label="Prints per session" type="number" min={MIN_PRINT_LIMIT_PER_SESSION} max={MAX_PRINT_LIMIT_PER_SESSION} value={eventDraft.printLimitPerSession} onChange={(e) => setEventDraft({ ...eventDraft, printLimitPerSession: Number(e.target.value) })} /></label>
+            <label>Paper sheets loaded (0 = not counted)<input aria-label="Paper count" type="number" min={0} max={MAX_EVENT_PAPER_COUNT} value={eventDraft.paperCount} onChange={(e) => setEventDraft({ ...eventDraft, paperCount: Number(e.target.value) })} /></label>
             <label>Primary color (hex)<input aria-label="Primary color hex" value={eventDraft.primaryColor} maxLength={7} onChange={(e) => setEventDraft({ ...eventDraft, primaryColor: e.target.value })} /></label>
             <label>Accent color (hex)<input aria-label="Accent color hex" value={eventDraft.accentColor} maxLength={7} onChange={(e) => setEventDraft({ ...eventDraft, accentColor: e.target.value })} /></label>
             <label>Welcome text<input aria-label="Event welcome text" maxLength={160} value={eventDraft.welcomeText} onChange={(e) => setEventDraft({ ...eventDraft, welcomeText: e.target.value })} /></label>
@@ -931,10 +1011,12 @@ function App(): React.JSX.Element {
         {exitPrompt && <ExitDialog pin={exitPin} error={pinError} onPinChange={setExitPin} onCancel={() => { setExitPrompt(false); setExitPin(''); setPinError(''); }} onSubmit={() => void submitExit()} />}
         {screen === 'finished' && <p className="share-status" role="status">{shareUrl ? <>Scan to download: <a href={shareUrl} target="_blank" rel="noreferrer">{shareUrl}</a> · {shareStatus}</> : shareStatus}</p>}
         {screen === 'finished' && <p className={`print-status ${printStatus.startsWith('Failed') ? 'failed' : printStatus.startsWith('Done') ? 'done' : ''}`} role="status">{printStatus}</p>}
+        {screen === 'finished' && event && <p className="print-limit-note">Prints this session: {printJobs.filter((job) => job.sessionId === sessionId && job.status !== 'cancelled').length} of {event.printLimitPerSession}{printSummary?.paperWarning ? ` · ${printSummary.paperWarning}` : ''}</p>}
         {screen === 'capturing' && <SlotProgress slotCount={slotCount} currentSlot={currentSlot} capturedSlots={capturedSlots} />}
         {screen === 'review' && reviewRecord && <ReviewSection record={reviewRecord} images={reviewImages} isBusy={isBusy} cameraReady={cameraReady} onRetake={(slot) => void handleRetake(slot)} onRevert={(slot) => void handleRevert(slot)} />}
         {unfinishedSessions.length > 0 && screen === 'ready' && !adminLocked && <RecoveryCard session={unfinishedSessions[0]!} busy={busy} cameraReady={cameraReady} onResume={() => void handleResumeSession(unfinishedSessions[0]!)} onDiscard={() => void handleDiscardSession(unfinishedSessions[0]!)} />}
         {screen === 'ready' && !adminLocked && uploadQueue && <UploadQueueCard summary={uploadQueue} />}
+        {screen === 'ready' && !adminLocked && printSummary && <PrintQueueCard summary={printSummary} jobs={printJobs} busy={busy} onSetPaused={(paused) => void handleSetPrintPaused(paused)} onCancel={(jobId) => void handleCancelPrintJob(jobId)} />}
         {screen === 'ready' && !adminLocked && retention && <RetentionNote status={retention} />}
         {screen === 'ready' && !adminLocked && queueWarning && <p className="pin-error" role="alert">{queueWarning}</p>}
         {errorMessage && <p className="camera-error" role="alert">{errorMessage}<button type="button" onClick={() => void refreshCameras()}>Retry</button></p>}

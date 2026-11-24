@@ -1,26 +1,33 @@
 import { BrowserWindow, ipcMain } from 'electron';
-import { ElectronSystemPrinter } from '../devices/system-printer.js';
-import { pageSizeMicrons } from '../../src/features/printing/index.js';
-import { getLatestSessionPrintInfo } from '../../src/features/printing/node.js';
+import {
+  cancelPrintJob, enqueuePrintJob, getPrintQueueSummary, listPrintJobs, reprintPrintJob, setPrintQueuePaused,
+} from '../../src/features/printing/node.js';
 import type { IpcContext } from './context.js';
 
-const MAX_PRINTER_NAME_LENGTH = 256;
-
-export function registerPrintingHandlers({ userDataPath, getMainWindow }: IpcContext): void {
+export function registerPrintingHandlers({ userDataPath, getMainWindow, wakePrintQueue }: IpcContext): void {
   ipcMain.handle('printer:list', async () => {
     const owner = BrowserWindow.getFocusedWindow() ?? getMainWindow();
     if (!owner || owner.isDestroyed()) return [];
     const printers = await owner.webContents.getPrintersAsync();
     return printers.map((printer) => ({ name: printer.name, displayName: printer.displayName }));
   });
-  ipcMain.handle('printer:printOutput', async (_event, sessionId: unknown, printerName: unknown) => {
-    if (typeof printerName !== 'string' || !printerName.trim() || printerName.length > MAX_PRINTER_NAME_LENGTH) {
-      throw new Error('Choose a valid printer');
-    }
-    const printInfo = getLatestSessionPrintInfo(userDataPath, sessionId);
-    return new ElectronSystemPrinter().printImage(printInfo.imagePath, {
-      printerName,
-      ...pageSizeMicrons(printInfo.width, printInfo.height),
-    });
+  // Printing goes through the queue (F18) so jobs survive a pause, a failure or a restart.
+  ipcMain.handle('print:enqueue', (_event, sessionId: unknown, printerName: unknown) => {
+    const job = enqueuePrintJob(userDataPath, sessionId, printerName);
+    wakePrintQueue();
+    return job;
   });
+  ipcMain.handle('print:reprint', (_event, jobId: unknown) => {
+    const job = reprintPrintJob(userDataPath, jobId);
+    wakePrintQueue();
+    return job;
+  });
+  ipcMain.handle('print:list', (_event, eventId: unknown) => listPrintJobs(userDataPath, typeof eventId === 'string' ? eventId : undefined));
+  ipcMain.handle('print:summary', (_event, eventId: unknown) => getPrintQueueSummary(userDataPath, eventId));
+  ipcMain.handle('print:pause', (_event, paused: unknown) => {
+    const result = setPrintQueuePaused(userDataPath, paused);
+    wakePrintQueue();
+    return result;
+  });
+  ipcMain.handle('print:cancel', (_event, jobId: unknown) => cancelPrintJob(userDataPath, jobId));
 }

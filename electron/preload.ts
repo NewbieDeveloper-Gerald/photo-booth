@@ -33,7 +33,12 @@ contextBridge.exposeInMainWorld('photobooth', {
   deleteEvent: (eventId: string) => ipcRenderer.invoke('retention:deleteEvent', eventId),
   enqueueSessionUploads: (sessionId: string): Promise<number> => ipcRenderer.invoke('uploadQueue:enqueueSession', sessionId),
   listPrinters: () => ipcRenderer.invoke('printer:list'),
-  printSessionOutput: (sessionId: string, printerName: string) => ipcRenderer.invoke('printer:printOutput', sessionId, printerName),
+  enqueuePrintJob: (sessionId: string, printerName: string) => ipcRenderer.invoke('print:enqueue', sessionId, printerName),
+  reprintJob: (jobId: string) => ipcRenderer.invoke('print:reprint', jobId),
+  listPrintJobs: (eventId?: string) => ipcRenderer.invoke('print:list', eventId),
+  getPrintQueueSummary: (eventId?: string) => ipcRenderer.invoke('print:summary', eventId),
+  setPrintQueuePaused: (paused: boolean) => ipcRenderer.invoke('print:pause', paused),
+  cancelPrintJob: (jobId: string) => ipcRenderer.invoke('print:cancel', jobId),
   exportEvent: (eventId: string): Promise<string | null> => ipcRenderer.invoke('session:exportEvent', eventId),
   checkDiskSpace: (thresholdGB: number): Promise<boolean> => ipcRenderer.invoke('session:checkDiskSpace', thresholdGB),
   setActiveEventRetakeLimit: (limit: number) => ipcRenderer.invoke('session:setRetakeLimit', limit),
@@ -58,6 +63,8 @@ contextBridge.exposeInMainWorld('photobooth', {
   revertRetake: (sessionId: string, slotNumber: number) => ipcRenderer.invoke('session:revertRetake', sessionId, slotNumber),
 
   readOriginalPhoto: (photoId: string): Promise<PhotoBytes> => ipcRenderer.invoke('session:readOriginal', photoId),
+  savePrintSheet: (sessionId: string, bytes: PhotoBytes, width: number, height: number): Promise<string> =>
+    ipcRenderer.invoke('session:savePrintSheet', sessionId, bytes, width, height),
   saveSessionOutput: (sessionId: string, bytes: PhotoBytes, width: number, height: number): Promise<string> =>
     ipcRenderer.invoke('session:saveOutput', sessionId, bytes, width, height),
   abandonSession: (sessionId: string): Promise<void> => ipcRenderer.invoke('session:abandon', sessionId),

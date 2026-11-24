@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron';
 import {
   abandonSession, commitRetake, createSession, discardSession, listUnfinishedSessions, loadSession,
-  readOriginalPhoto, revertRetake, saveDownloadCopy, saveOriginalPhoto, saveRetakeOriginalPhoto, saveSessionOutput,
+  readOriginalPhoto, revertRetake, saveDownloadCopy, saveOriginalPhoto, saveRetakeOriginalPhoto, savePrintSheet, saveSessionOutput,
 } from '../../src/features/capture/node.js';
 import { setActiveEventRetakeLimit } from '../../src/features/events/node.js';
 import type { IpcContext } from './context.js';
@@ -19,6 +19,8 @@ export function registerSessionHandlers({ userDataPath }: IpcContext): void {
   ipcMain.handle('session:commitRetake', (_event, sessionId: unknown, slotNumber: unknown, photoId: unknown) => commitRetake(userDataPath, sessionId, slotNumber, photoId));
   ipcMain.handle('session:revertRetake', (_event, sessionId: unknown, slotNumber: unknown) => revertRetake(userDataPath, sessionId, slotNumber));
   ipcMain.handle('session:readOriginal', (_event, photoId: unknown) => readOriginalPhoto(userDataPath, photoId));
+  ipcMain.handle('session:savePrintSheet', (_event, sessionId: unknown, bytes: unknown, width: unknown, height: unknown) =>
+    savePrintSheet(userDataPath, sessionId, bytes, width, height));
   ipcMain.handle('session:saveOutput', (_event, sessionId: unknown, bytes: unknown, width: unknown, height: unknown) =>
     saveSessionOutput(userDataPath, sessionId, bytes, width, height));
   ipcMain.handle('session:abandon', (_event, sessionId: unknown) => abandonSession(userDataPath, sessionId));
