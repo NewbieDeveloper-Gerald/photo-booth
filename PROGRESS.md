@@ -1,6 +1,6 @@
 # Progress
 
-Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`, F20 as `de322a2`, F21 as `e9564c1`, F22 as `1b3d92c`, F23 as `48fab71`, F24 as `22bff4d`, F25 as `9cb5f59`, F26 as `665971d`, **F27 skipped by request**, F28 as `PENDING-F28`.
+Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`, F20 as `de322a2`, F21 as `e9564c1`, F22 as `1b3d92c`, F23 as `48fab71`, F24 as `22bff4d`, F25 as `9cb5f59`, F26 as `665971d`, **F27 skipped by request**, F28 as `f4a18d0`.
 
 ## Current status
 
@@ -36,7 +36,7 @@ Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `4215
 - **F26 (DSLR camera): merged** (`665971d`), awaiting the 50-session check below.
 - **F27 (payment / coin mode): skipped on request** — not built. The backlog still has it; walk-up
   booths are not supported yet, and nothing in the app pretends they are.
-- **F28 (email and SMS link): merged** (`PENDING-F28`), awaiting the real send below.
+- **F28 (email and SMS link): merged** (`f4a18d0`), awaiting the real send below.
 - **F29: not started.**
 - Automated verification today: `npm run typecheck`, `npm run lint`, `npm test`
   (**549 tests in 97 files**), `npm run build` (Vite production build) all pass.
@@ -558,7 +558,7 @@ produces an animation from the photos.
 Video (MP4/WebM) output, audio, a per-photo dithering/quantiser beyond 3-3-2, choosing the
 animated extra per session by the guest, and editing the loop (frame order, speed) from the UI.
 
-## F28. Email and SMS link (merged)
+## F28. Email and SMS link (merged as `f4a18d0`)
 
 - **The guest can have the link sent** from the finished screen, with the QR code still on screen
   beside it: pick email or SMS, type the address or number, press send.
