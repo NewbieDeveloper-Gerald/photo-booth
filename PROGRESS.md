@@ -38,7 +38,7 @@ Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `4215
   booths are not supported yet, and nothing in the app pretends they are.
 - **F28 (email and SMS link): merged** (`f4a18d0`), awaiting the real send below.
 - **F29: not started.**
-- **F22 extension, APK follow-up: landscape + an installable APK** (`PENDING-APK`). The app is now
+- **F22 extension, APK follow-up: landscape + an installable APK** (`677cada`). The app is now
   `sensorLandscape`, `BoothScreen-debug.apk` is committed and built without Gradle
   (`tools/build_apk.py`: aapt2 + a hand-assembled `classes.dex` + apkforge signing v1/v2/v3), and
   the cable link starts the app **by component** so the URL cannot land in a browser. Verified with
