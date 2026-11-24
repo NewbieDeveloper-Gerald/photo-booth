@@ -3,8 +3,8 @@ export {};
 import type { ActiveEvent, EventSettings } from '../shared/types/event';
 import type { SessionRecord, UnfinishedSession } from '../shared/types/session';
 import type { UploadQueueSummary } from '../features/sharing/upload-queue/types';
-import type { TemplateDocument } from '../features/layouts/domain/template-document';
-import type { TemplateSummary } from '../features/layouts/data/template-repository';
+import type { PagePresetId, TemplateDocument, TemplateSummary } from '../features/layouts/domain/template-document';
+
 import type { BoothSettingKey } from '../shared/constants/settings-keys';
 
 interface PhotoRecord { photoId: string; width: number; height: number }
@@ -37,6 +37,13 @@ declare global {
       createSession(layoutId: string): Promise<{ sessionId: string; event: ActiveEvent; shots: number; layoutId: string }>;
       listTemplates(): Promise<TemplateSummary[]>;
       getTemplate(templateId: string): Promise<TemplateDocument>;
+      saveTemplate(document: TemplateDocument): Promise<TemplateSummary[]>;
+      createTemplate(request: { pageId: PagePresetId; shots: number; name: string }): Promise<TemplateDocument>;
+      duplicateTemplate(templateId: string): Promise<TemplateDocument>;
+      deleteTemplate(templateId: string): Promise<TemplateSummary[]>;
+      renameTemplate(templateId: string, name: string): Promise<TemplateSummary[]>;
+      pickLayoutAsset(): Promise<{ assetName: string; bytes: number } | null>;
+      readLayoutAsset(assetName: string): Promise<Uint8Array>;
       listUnfinishedSessions(): Promise<UnfinishedSession[]>;
       loadSession(sessionId: string): Promise<SessionRecord>;
       saveOriginalPhoto(sessionId: string, slotNumber: number, bytes: Uint8Array, width: number, height: number): Promise<PhotoRecord>;

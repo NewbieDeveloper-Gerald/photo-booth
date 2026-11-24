@@ -63,7 +63,8 @@ Features: `capture`, `events`, `layouts`, `printing`, `sharing`, `storage`, `sec
 | You are adding… | Put it in… |
 | --- | --- |
 | A new guest-facing button, dialog or card | `src/renderer/components/` + wire it in `src/ui/main.tsx` |
-| Reusable renderer state logic | `src/renderer/hooks/` |
+| Reusable renderer state logic | `src/renderer/hooks/` (e.g. `useTemplateEditor` for history + autosave) |
+| A template editing rule (snapping, adding an element kind) | `features/layouts/domain/template-editing.ts`, then surface it in `TemplateEditor.tsx` |
 | A pure rule (pricing, limits, geometry) | `src/features/<feature>/domain/` with a test beside it |
 | A table, query or file write | `src/features/<feature>/data/`, exported from `node.ts` |
 | A new IPC channel | `electron/ipc/<area>-handlers.ts`, registered in `electron/ipc/registry.ts`, typed in `src/ui/electron.d.ts` and `electron/preload.ts` |
@@ -93,8 +94,10 @@ Features: `capture`, `events`, `layouts`, `printing`, `sharing`, `storage`, `sec
   test — jsdom has no canvas. Its geometry lives in `template-paint-plan.ts`, which is
   tested against the Phase 1 numbers, and the rest is covered by the per-page-size manual
   print checklist in the README.
-- Templates can be read and saved from the main process, but nothing edits them in the app
-  yet: the picker only consumes seeded templates until F12's editor lands.
+- The layout editor edits text through inspector fields rather than in place on the page, and
+  has no zoom, multi-select or copy/paste. Undo is per edit, not per drag frame.
+- Deleting a layout prunes its artwork, but replacing a picture leaves the old file on disk
+  until the next delete.
 - The upload queue is a mock: `processDueUploads` exists but nothing schedules it, and
   `UploadQueueCard` says so on screen.
 - `events.print_enabled` is stored but not enforced; the operator decides via the

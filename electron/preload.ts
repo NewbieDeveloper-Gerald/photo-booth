@@ -35,6 +35,13 @@ contextBridge.exposeInMainWorld('photobooth', {
   createSession: (layoutId: string) => ipcRenderer.invoke('session:create', layoutId),
   listTemplates: () => ipcRenderer.invoke('layouts:list'),
   getTemplate: (templateId: string) => ipcRenderer.invoke('layouts:get', templateId),
+  saveTemplate: (document: unknown) => ipcRenderer.invoke('layouts:save', document),
+  createTemplate: (request: { pageId: string; shots: number; name: string }) => ipcRenderer.invoke('layouts:create', request),
+  duplicateTemplate: (templateId: string) => ipcRenderer.invoke('layouts:duplicate', templateId),
+  deleteTemplate: (templateId: string) => ipcRenderer.invoke('layouts:delete', templateId),
+  renameTemplate: (templateId: string, name: string) => ipcRenderer.invoke('layouts:rename', templateId, name),
+  pickLayoutAsset: () => ipcRenderer.invoke('layouts:pickAsset'),
+  readLayoutAsset: (assetName: string) => ipcRenderer.invoke('layouts:readAsset', assetName),
   listUnfinishedSessions: () => ipcRenderer.invoke('session:listUnfinished'),
   loadSession: (sessionId: string) => ipcRenderer.invoke('session:load', sessionId),
   saveOriginalPhoto: (sessionId: string, slotNumber: number, bytes: PhotoBytes, width: number, height: number) =>

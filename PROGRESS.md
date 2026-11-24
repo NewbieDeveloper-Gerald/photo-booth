@@ -1,6 +1,6 @@
 # Progress
 
-Updated 2026-11-24. Refactor merged as `0e8c9a1`; F11 implemented on `arena/16b52e91-photo-booth`.
+Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 merged as `4833af7`; F12 implemented on `arena/61d39d04-photo-booth`.
 
 ## Current status
 
@@ -9,11 +9,13 @@ Updated 2026-11-24. Refactor merged as `0e8c9a1`; F11 implemented on `arena/16b5
 - **F10 (events and branding): implemented.** The old progress note said "Stage 2, awaiting
   approval to enter Test"; no Test result was ever recorded, so it is listed as implemented
   but not formally accepted.
-- **F11 (templates as data, extra print sizes): implemented** in four steps, awaiting a
-  manual print check per page size (checklist below).
-- **F12–F29: not started.**
+- **F11 (templates as data, extra print sizes): merged**; awaiting a manual print check per
+  page size (checklist below).
+- **F12 (drag-and-drop template editor): implemented**, awaiting the manual build-a-strip
+  test below.
+- **F13–F29: not started.**
 - Automated verification today: `npm run typecheck`, `npm run lint`, `npm test`
-  (**146 tests in 29 files**), `npm run build` (Vite production build) all pass.
+  (**198 tests in 34 files**), `npm run build` (Vite production build) all pass.
   `npm run test:e2e` exists but cannot run in this environment (no browser runtime).
 
 ## Verification gaps (unrecorded or impossible here)
@@ -72,6 +74,37 @@ and the event's thank-you text appears in the footer.
 
 Drag-and-drop editing (F12), guest template picker (F13), more than six photo slots,
 watermarking (F17).
+
+## F12. Drag-and-drop layout editor (implemented)
+
+- **Editing rules** (`features/layouts/domain/template-editing.ts`): move and resize with
+  10 px grid snapping plus snaps to the page centre and edges, page and minimum-size
+  clamping, layer up/down/front/back, add photo slot (max 6) / text / band / logo / QR /
+  picture, remove element or slot (remaining photos renumber), inspector patches filtered by
+  element kind, background colour, hit testing.
+- **Undo/redo** (`template-history.ts`): 50-step cap, redo invalidated by a new edit.
+- **Storage**: migration `009_template_assets` adds the picture column; `createTemplate`,
+  `duplicateTemplate`, `deleteTemplate`, `renameTemplate`, and a layout-artwork store
+  (`layout-assets/`, 8 MB cap, PNG/JPEG/WebP, validated names). Built-ins can be edited but
+  not deleted, a layout used by a saved session cannot be deleted, and deleting a layout
+  prunes artwork nothing else refers to.
+- **Editor UI**: `renderer/components/TemplateEditor.tsx` (list, name, create/duplicate/
+  delete, add buttons, inspector, undo/redo, autosave status) with
+  `TemplateEditorCanvas.tsx` (click to select, drag to move, corner handle to resize) and
+  `renderer/hooks/useTemplateEditor.ts` (history + 600 ms autosave + save state). The
+  preview uses `paintTemplatePreview`, i.e. the same geometry as the print.
+
+### F12 manual check
+
+Build a strip layout from scratch: **Layouts…** → New (2 × 6 strip, 3 photos) → add a band,
+a text element and the QR → drag them into place → close the editor and run a session with
+that layout → **Continue** → print. Confirm the print matches the editor preview, the QR
+scans, and reopening the editor shows the saved result.
+
+### F12 out of scope (later features)
+
+In-place text editing on the canvas, zoom, multi-select and copy/paste are not implemented.
+Guest template picking is F13; watermarking is F17.
 
 ## Feature log
 
@@ -152,7 +185,9 @@ watermarking (F17).
 - `src/ui/main.tsx` still holds the session flow and the event/PIN forms (~790 lines).
 - The canvas painter itself is untested (jsdom has no canvas); its geometry is pinned by
   `template-paint-plan.test.ts` and by the manual print checklist.
-- Templates can be read and saved, but no in-app editor exists yet (F12).
+- The layout editor has no zoom, multi-select or copy/paste, and text is edited in the
+  inspector rather than on the page.
+- Replacing a layout picture leaves the old file on disk until the next layout delete.
 - Phase 1 gate rehearsals and the Phase 2 real-event dry run are open.
 
 ## IDEAS
