@@ -40,3 +40,24 @@
 @media (max-width: 720px) { .event-form-grid { grid-template-columns: 1fr; } .event-manager-heading { align-items: flex-start; flex-direction: column; } }
 .booth-app .stage-heading .eyebrow { color: var(--event-primary, #c90000); }
 .event-manager-card { border-top: 4px solid var(--event-accent, #f4f0ec); }
+
+/* Layout editor (F12): a full-screen modal with the page in the middle. */
+.template-editor { width: min(1500px, 96vw); max-height: 94vh; overflow: auto; background: #ffffff; border-radius: 18px; padding: 20px 24px; display: flex; flex-direction: column; gap: 12px; }
+.template-editor-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.template-editor-header h2 { margin: 2px 0 4px; }
+.template-editor-header-actions, .editor-row { display: flex; gap: 8px; align-items: center; }
+.editor-row.wrap { flex-wrap: wrap; }
+.editor-state { font-size: 13px; color: #475569; }
+.editor-state.dirty, .editor-state.saving { color: #b45309; }
+.editor-state.saved { color: #15803d; }
+.editor-state.error { color: #b91c1c; }
+.template-editor-body { display: grid; grid-template-columns: 220px minmax(0, 1fr) 260px; gap: 18px; align-items: start; }
+.template-editor-list, .template-editor-inspector { display: flex; flex-direction: column; gap: 12px; }
+.template-editor-list label, .template-editor-inspector label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 600; color: #334155; }
+.template-editor-list select, .template-editor-list input, .template-editor-inspector input { padding: 6px 8px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; }
+.editor-new { border: 1px solid #e2e8f0; border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.editor-new legend { font-size: 12px; font-weight: 700; color: #64748b; padding: 0 4px; }
+.template-editor-stage { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.template-editor-canvas { width: 100%; max-height: 72vh; height: auto; border: 1px solid #cbd5e1; border-radius: 8px; touch-action: none; cursor: crosshair; box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12); }
+.template-editor-inspector section { border-top: 1px solid #e2e8f0; padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.editor-hint { font-size: 12px; color: #64748b; margin: 0; }
