@@ -1,7 +1,8 @@
 export {};
 
-import type { ActiveEvent, EventSettings, SessionRecord, UnfinishedSession } from '../storage/sessions';
-import type { UploadQueueSummary } from '../cloud/upload-queue';
+import type { ActiveEvent, EventSettings } from '../shared/types/event';
+import type { SessionRecord, UnfinishedSession } from '../shared/types/session';
+import type { UploadQueueSummary } from '../features/sharing/upload-queue/repository';
 import type { BoothSettingKey } from '../shared/constants/settings-keys';
 
 interface PhotoRecord { photoId: string; width: number; height: number }

@@ -7,7 +7,10 @@ export default defineConfig({
   base: './',
   server: { allowedHosts: true },
   test: {
+    // Logic tests run in node; component tests opt into jsdom with a
+    // `// @vitest-environment jsdom` docblock so the default stays fast.
     environment: 'node',
-    include: ['src/**/*.test.ts', 'tests/**/*.test.ts'],
+    setupFiles: ['src/renderer/test-setup.ts'],
+    include: ['src/**/*.test.{ts,tsx}', 'tests/**/*.test.ts'],
   },
 });
