@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  deviceGuidance, describeAdbFailure, launchArgs, listDevicesArgs, parseAdbDevices, parseReverseList,
-  pickUsbDevice, removeReverseArgs, reverseArgs, reverseListArgs, usbGuestUrl,
+  ANDROID_APP_ACTIVITY, ANDROID_APP_PACKAGE, deviceGuidance, describeAdbFailure, describeLaunchFailure,
+  launchArgs, listDevicesArgs, parseAdbDevices, parseReverseList, pickUsbDevice, removeReverseArgs,
+  reverseArgs, reverseListArgs, usbGuestUrl,
 } from './adb';
 
 describe('android USB link commands (F22 extension)', () => {
@@ -10,9 +11,18 @@ describe('android USB link commands (F22 extension)', () => {
     expect(reverseListArgs()).toEqual(['reverse', '--list']);
     expect(reverseArgs(47626)).toEqual(['reverse', 'tcp:47626', 'tcp:47626']);
     expect(removeReverseArgs()).toEqual(['reverse', '--remove', 'tcp:47626']);
+    // The component is named, so an http URL cannot land in a browser instead of the app.
     expect(launchArgs('http://127.0.0.1:47626/remote/token/')).toEqual([
-      'shell', 'am', 'start', '-a', 'android.intent.action.VIEW', '-d', 'http://127.0.0.1:47626/remote/token/',
+      'shell', 'am', 'start', '-a', 'android.intent.action.VIEW', '-n',
+      'ph.photobooth.screen/ph.photobooth.screen.MainActivity', '-d', 'http://127.0.0.1:47626/remote/token/',
     ]);
+    expect(`${ANDROID_APP_PACKAGE}/${ANDROID_APP_ACTIVITY}`).toBe('ph.photobooth.screen/ph.photobooth.screen.MainActivity');
+  });
+
+  it('says to install the app when the phone does not have it', () => {
+    expect(describeLaunchFailure('Error type 3\nError: Activity class {ph.photobooth.screen/ph.photobooth.screen.MainActivity} does not exist.'))
+      .toContain('not installed on this phone');
+    expect(describeLaunchFailure('')).toBeNull();
   });
 
   it('reads the device table, keeping the cable apart from wireless devices', () => {

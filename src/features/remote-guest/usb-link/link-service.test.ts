@@ -59,7 +59,8 @@ describe('USB screen link (F22 extension)', () => {
     const status = await service.connect();
     expect(status).toMatchObject({ device: 'R58M12345', portForwarded: true, url: URL, reason: null });
     expect(run.calls).toContainEqual(['reverse', 'tcp:47626', 'tcp:47626']);
-    expect(run.calls).toContainEqual(['-s', 'R58M12345', 'shell', 'am', 'start', '-a', 'android.intent.action.VIEW', '-d', URL]);
+    expect(run.calls).toContainEqual(['-s', 'R58M12345', 'shell', 'am', 'start', '-a', 'android.intent.action.VIEW',
+      '-n', 'ph.photobooth.screen/ph.photobooth.screen.MainActivity', '-d', URL]);
   });
 
   it('can map without opening the screen on the device', async () => {

@@ -1,5 +1,6 @@
 import {
-  ADB_LIST_TIMEOUT_MS, ADB_SETUP_TIMEOUT_MS, deviceGuidance, describeAdbFailure, launchArgs, listDevicesArgs,
+  ADB_LIST_TIMEOUT_MS, ADB_SETUP_TIMEOUT_MS, describeAdbFailure, describeLaunchFailure, deviceGuidance, launchArgs,
+  listDevicesArgs,
   parseAdbDevices, parseReverseList, pickUsbDevice, removeReverseArgs, reverseArgs, reverseListArgs,
   usbGuestUrl, USB_SCREEN_PORT, type AdbDevice,
 } from './adb';
@@ -102,7 +103,11 @@ export function createUsbLinkService({ run, getToken, port = USB_SCREEN_PORT }: 
         const url = usbGuestUrl(port, token);
         const opened = await run(['-s', current.device, ...launchArgs(url)], { timeoutMs: ADB_SETUP_TIMEOUT_MS });
         if (opened.code !== 0) {
-          return base({ ...current, portForwarded: true, url, reason: `The port is mapped, but the screen did not open on the phone: ${opened.stderr.trim() || 'open the booth screen app yourself'}.` });
+          const hint = describeLaunchFailure(opened.stderr);
+          return base({
+            ...current, portForwarded: true, url,
+            reason: hint ?? `The port is mapped, but the screen did not open on the phone: ${opened.stderr.trim() || 'open the booth screen app yourself'}.`,
+          });
         }
       }
       return await status();

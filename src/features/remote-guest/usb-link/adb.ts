@@ -6,6 +6,9 @@ import { REMOTE_GUEST_PORT } from '../domain/remote-port';
  * needs USB debugging allowed once; the booth then does everything else.
  */
 export const ADB_PROGRAM = 'adb';
+/** The Android app the cable opens (android/booth-screen): a package that is only a screen. */
+export const ANDROID_APP_PACKAGE = 'ph.photobooth.screen';
+export const ANDROID_APP_ACTIVITY = `${ANDROID_APP_PACKAGE}.MainActivity`;
 export const USB_SCREEN_PORT = REMOTE_GUEST_PORT;
 export const ADB_LIST_TIMEOUT_MS = 8_000;
 export const ADB_SETUP_TIMEOUT_MS = 15_000;
@@ -72,8 +75,21 @@ export function parseReverseList(stdout: string): number[] {
 }
 
 /** Opens the booth screen on the device itself, so nobody types a URL on a phone. */
+/**
+ * Opens the booth screen app on the phone. The component is named explicitly: a bare VIEW intent for
+ * an http URL would let the phone offer a browser instead, and this must land in the app.
+ */
 export function launchArgs(url: string): string[] {
-  return ['shell', 'am', 'start', '-a', 'android.intent.action.VIEW', '-d', url];
+  return ['shell', 'am', 'start', '-a', 'android.intent.action.VIEW', '-n',
+    `${ANDROID_APP_PACKAGE}/${ANDROID_APP_ACTIVITY}`, '-d', url];
+}
+
+/** `am start` says this when the Booth Screen app is not on the phone. */
+export function describeLaunchFailure(stderr: string): string | null {
+  if (/Activity class .* does not exist|Error type 3|unable to resolve Intent/i.test(stderr)) {
+    return 'The Booth Screen app is not installed on this phone yet. Install it from android/booth-screen and press Connect again.';
+  }
+  return null;
 }
 
 /** Over USB the device reaches the booth at its own loopback, not at a LAN address. */
