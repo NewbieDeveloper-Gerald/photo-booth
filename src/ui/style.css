@@ -168,3 +168,17 @@
 .attract-media-item.video .attract-media-kind { color: #84ddb3; }
 .attract-media-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #e2ddf0; }
 .attract-media-size { color: #8b93a6; }
+
+/* F20 · guest look picker and the look field in event setup. */
+.filter-picker { margin-top: 16px; }
+.filter-picker-title { margin: 0 0 10px; color: #9299ac; font-size: 9px; font-weight: 700; letter-spacing: 0.13em; text-transform: uppercase; }
+.filter-options { display: flex; gap: 10px; flex-wrap: wrap; }
+.filter-option { display: flex; align-items: center; gap: 9px; padding: 8px 12px 8px 8px; border: 1px solid #ffffff1c; border-radius: 10px; background: #171c28; color: #cfd3df; font: inherit; font-size: 12px; cursor: pointer; }
+.filter-option:hover:not(:disabled) { border-color: #ffffff3d; }
+.filter-option.selected { border-color: #c9b4ff; background: #241f36; color: #f4efff; }
+.filter-option:disabled { opacity: 0.5; cursor: not-allowed; }
+.filter-swatch { width: 34px; height: 34px; border-radius: 7px; display: block; }
+.filter-label { white-space: nowrap; }
+
+.filter-field { grid-column: 1 / -1; display: grid; gap: 8px; padding: 12px 14px; border: 1px solid #ffffff1c; border-radius: 10px; }
+.filter-field .eyebrow { margin: 0; }

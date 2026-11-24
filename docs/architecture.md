@@ -30,6 +30,11 @@ renderer (src/ui, src/renderer)  →  window.photobooth  →  main process (elec
 
 Features: `capture`, `events`, `layouts`, `printing`, `retention`, `sharing`, `storage`, `security`.
 
+A guest look (F20) is a list of canvas draw passes in `features/capture/domain/photo-filters.ts`.
+It is applied at the two places pixels are produced — the guest copy (`createDownloadCopy`) and
+the finished layout (`renderTemplateLayout`, which also feeds the print) — so the stored original
+is never touched and a look can never cost a photo.
+
 The attract screen (F19) is a renderer overlay (`renderer/components/AttractScreen.tsx`) fed by
 `features/events/data/attract-media.ts`, which keeps the loop's files under
 `event-assets/<event>/attract/`. The renderer reads them once per event through `attract:read`

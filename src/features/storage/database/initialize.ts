@@ -230,6 +230,15 @@ const migrations: Array<{ name: string; sql: string }> = [
       ALTER TABLE events ADD COLUMN attract_idle_seconds INTEGER NOT NULL DEFAULT 60;
     `,
   },
+  {
+    // F20: the guest look is an event default plus an optional per-session choice.
+    name: '016_photo_filters',
+    sql: `
+      ALTER TABLE events ADD COLUMN filter_id TEXT NOT NULL DEFAULT 'none';
+      ALTER TABLE events ADD COLUMN filter_choice_enabled INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE sessions ADD COLUMN filter_id TEXT NOT NULL DEFAULT 'none';
+    `,
+  },
 ];
 
 export function initializeStorage(userDataPath: string): void {

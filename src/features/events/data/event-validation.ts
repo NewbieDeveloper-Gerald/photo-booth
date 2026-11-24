@@ -6,6 +6,8 @@ import {
 } from '../../../shared/constants/limits';
 import type { WatermarkPosition } from '../../../shared/types/watermark';
 import { isWatermarkPosition } from '../../capture/domain/watermark';
+import { isPhotoFilterId } from '../../capture/domain/photo-filters';
+import type { PhotoFilterId } from '../../../shared/types/photo-filter';
 import type { EventSettings } from '../../../shared/types/event';
 import { MAX_GALLERY_PASSWORD_LENGTH, MIN_GALLERY_PASSWORD_LENGTH } from '../../../shared/constants/limits';
 import { defaultLayoutIdForShots, isSupportedShotCount } from '../domain/default-layouts';
@@ -97,6 +99,18 @@ function validateAttract(item: Record<string, unknown>): { attractEnabled: boole
   return { attractEnabled: enabled, attractIdleSeconds: idle };
 }
 
+/**
+ * Guest looks (F20): an event either fixes one look or lets the guest pick per session. The
+ * stored id must be one the renderer knows, because it is baked into every copy and print.
+ */
+function validatePhotoFilter(item: Record<string, unknown>): { filterId: PhotoFilterId; filterChoiceEnabled: boolean } {
+  const filterId = item.filterId ?? 'none';
+  if (!isPhotoFilterId(filterId)) throw new Error('Choose one of the available photo filters');
+  const choice = item.filterChoiceEnabled ?? false;
+  if (typeof choice !== 'boolean') throw new Error('Invalid guest filter setting');
+  return { filterId, filterChoiceEnabled: choice };
+}
+
 export function validateEventSettings(value: unknown): ValidatedEventFields {
   if (!value || typeof value !== 'object') throw new Error('Invalid event details');
   const item = value as Record<string, unknown>;
@@ -114,5 +128,5 @@ export function validateEventSettings(value: unknown): ValidatedEventFields {
   const contactText = optionalText(item.contactText, MAX_EVENT_CONTACT_LENGTH, `Contact details must be ${MAX_EVENT_CONTACT_LENGTH} characters or fewer`);
   return { name: item.name.trim(), shots, expiryDays, eventDate: eventDate as string | null, primaryColor: item.primaryColor as string, accentColor: item.accentColor as string,
     welcomeText: (item.welcomeText as string).trim(), thankYouText: (item.thankYouText as string).trim(),
-    defaultLayoutId: defaultLayoutIdForShots(shots), offeredLayoutIds: offered, consentText, contactText, ...validateWatermark(item), ...validatePrintRules(item), ...validateAttract(item) };
+    defaultLayoutId: defaultLayoutIdForShots(shots), offeredLayoutIds: offered, consentText, contactText, ...validateWatermark(item), ...validatePrintRules(item), ...validateAttract(item), ...validatePhotoFilter(item) };
 }

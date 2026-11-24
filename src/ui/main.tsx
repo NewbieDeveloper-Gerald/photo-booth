@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { createRoot } from 'react-dom/client';
-import { BrowserCameraDevice, canRetake, captureOriginalJpeg, isValidRetakeLimit, type CameraInfo, type CameraResolution, type WatermarkPosition } from '../features/capture';
+import { BrowserCameraDevice, canRetake, captureOriginalJpeg, isValidRetakeLimit, PHOTO_FILTERS, type CameraInfo, type CameraResolution, type PhotoFilterId, type WatermarkPosition } from '../features/capture';
 import { cameraErrorMessage } from '../features/capture/domain/camera-messages';
 import { blobToBytes, bytesToJpegBlob } from '../shared/dom/blob';
 import { saveGuestDownloadCopy, type GuestCopyWatermark } from '../renderer/lib/guest-download-copy';
@@ -21,6 +21,7 @@ import { GuestLayoutField } from '../renderer/components/GuestLayoutField';
 import { PrintQueueCard } from '../renderer/components/PrintQueueCard';
 import { AttractScreen } from '../renderer/components/AttractScreen';
 import { AttractMediaField } from '../renderer/components/AttractMediaField';
+import { FilterPicker } from '../renderer/components/FilterPicker';
 import { loadAttractSlides, type AttractSlide } from '../renderer/lib/attract-slides';
 import { composeStripCutSheet } from '../renderer/lib/print-sheet';
 import { LayoutPicker } from '../renderer/components/LayoutPicker';
@@ -87,6 +88,9 @@ function App(): React.JSX.Element {
   const [attractVisible, setAttractVisible] = useState(false);
   const [attractMedia, setAttractMedia] = useState<AttractMedia[]>([]);
   const [attractSlides, setAttractSlides] = useState<AttractSlide[]>([]);
+  /** F20: the look the guest picked, and the one this session was actually shot with. */
+  const [selectedFilterId, setSelectedFilterId] = useState<PhotoFilterId>('none');
+  const [sessionFilterId, setSessionFilterId] = useState<PhotoFilterId>('none');
   const [downloadBaseUrl, setDownloadBaseUrl] = useState('');
   const [shareUrl, setShareUrl] = useState('');
   const [shareStatus, setShareStatus] = useState('');
@@ -145,6 +149,12 @@ function App(): React.JSX.Element {
     return () => { cancelled = true; };
     // `layoutDocuments` is read as a cache guard; adding it would loop on every fetch.
   }, [layoutChoices, loadLayoutDocument]);
+
+  /** A new event brings its own default look; a locked event shows only that look (F20). */
+  useEffect(() => {
+    if (!event) return;
+    setSelectedFilterId((current) => (event.filterChoiceEnabled ? current : event.filterId));
+  }, [event]);
 
   /** The picker's choice must always be a layout the active event actually offers. */
   useEffect(() => {
@@ -380,7 +390,7 @@ function App(): React.JSX.Element {
         setTemplates(layoutPresets.map((preset) => ({ id: preset.id, name: preset.name, shots: preset.shots, copies: preset.copies, pagePreset: '4x6' as const, pageLabel: '4 × 6 in', builtIn: true })));
         // The browser preview has no event storage, so it offers three catalog layouts and
         // makes the guest picker visible while developing the UI.
-        setEvent({ id: 'preview-event', name: 'Default Event', shots: 3, retakeLimit: 3, printEnabled: true, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: 'double-strip-3', offeredLayoutIds: ['double-strip-3', 'double-strip-4', 'grid-4-portrait'], consentText: '', contactText: '', galleryToken: null, galleryPasswordSet: false, watermarkEnabled: false, watermarkPosition: 'bottom-right', watermarkScalePercent: 18, watermarkOpacity: 0.6, printLimitPerSession: 2, paperCount: 0, attractEnabled: true, attractIdleSeconds: 60 });
+        setEvent({ id: 'preview-event', name: 'Default Event', shots: 3, retakeLimit: 3, printEnabled: true, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: 'double-strip-3', offeredLayoutIds: ['double-strip-3', 'double-strip-4', 'grid-4-portrait'], consentText: '', contactText: '', galleryToken: null, galleryPasswordSet: false, watermarkEnabled: false, watermarkPosition: 'bottom-right', watermarkScalePercent: 18, watermarkOpacity: 0.6, printLimitPerSession: 2, paperCount: 0, attractEnabled: true, attractIdleSeconds: 60, filterId: 'none', filterChoiceEnabled: false });
         setRetakeLimitDraft('3');
       }
       if (!camera) { setStatus('Camera access is not available.'); return; }
@@ -487,7 +497,7 @@ function App(): React.JSX.Element {
     setCapturedSlots((current) => new Set(current).add(slotNumber));
     setPreviewImage(original.blob);
     setStatus(`Photo ${slotNumber} saved.`);
-    await saveGuestDownloadCopy(bridge, saved.photoId, original.blob, guestCopyWatermark());
+    await saveGuestDownloadCopy(bridge, saved.photoId, original.blob, { filter: sessionFilterId, watermark: guestCopyWatermark() });
   };
 
   const captureSlots = async (activeSessionId: string, slots: number[], totalSlots: number): Promise<void> => {
@@ -541,10 +551,11 @@ function App(): React.JSX.Element {
     clearReviewUrls();
     try {
       if (!await window.photobooth.checkDiskSpace(Number(diskWarningGB))) return;
-      const created = await window.photobooth.createSession(selectedLayoutId);
+      const created = await window.photobooth.createSession(selectedLayoutId, event?.filterChoiceEnabled ? selectedFilterId : undefined);
       setEvent(created.event);
       setSessionId(created.sessionId);
       setSessionShotCount(created.shots);
+      setSessionFilterId(created.filterId);
       setScreen('capturing');
       resetActivity();
       await captureSlots(created.sessionId, Array.from({ length: created.shots }, (_, index) => index + 1), created.shots);
@@ -568,7 +579,7 @@ function App(): React.JSX.Element {
   };
 
   const handleNewEvent = (): void => {
-    setEventDraft({ id: '', name: '', shots: 3, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: defaultLayoutIdForShots(3), offeredLayoutIds: [defaultLayoutIdForShots(3)], consentText: '', contactText: '', galleryToken: null, galleryPasswordSet: false, watermarkEnabled: false, watermarkPosition: 'bottom-right', watermarkScalePercent: 18, watermarkOpacity: 0.6, printLimitPerSession: 2, paperCount: 0, attractEnabled: true, attractIdleSeconds: 60 });
+    setEventDraft({ id: '', name: '', shots: 3, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: defaultLayoutIdForShots(3), offeredLayoutIds: [defaultLayoutIdForShots(3)], consentText: '', contactText: '', galleryToken: null, galleryPasswordSet: false, watermarkEnabled: false, watermarkPosition: 'bottom-right', watermarkScalePercent: 18, watermarkOpacity: 0.6, printLimitPerSession: 2, paperCount: 0, attractEnabled: true, attractIdleSeconds: 60, filterId: 'none', filterChoiceEnabled: false });
     setEventLogoDataUrl(null); setEventMessage('New event details are not saved yet.');
   };
 
@@ -653,6 +664,7 @@ function App(): React.JSX.Element {
       const saved = await bridge.loadSession(unfinished.id);
       setSessionId(saved.id);
       setSelectedLayoutId(saved.layoutId);
+      setSessionFilterId(saved.filterId);
       setSessionShotCount(saved.slots.length);
       resetActivity();
       if (saved.status === 'completed') {
@@ -727,7 +739,7 @@ function App(): React.JSX.Element {
       if (!video || !currentStream.current) throw new Error('The camera is not ready for capture.');
       const original = await captureOriginalJpeg(video);
       const pending = await bridge.saveRetakeOriginalPhoto(sessionId, slot.slotNumber, await blobToBytes(original.blob), original.width, original.height);
-      await saveGuestDownloadCopy(bridge, pending.photoId, original.blob);
+      await saveGuestDownloadCopy(bridge, pending.photoId, original.blob, { filter: sessionFilterId, watermark: guestCopyWatermark() });
       setPreviewImage(original.blob);
       setStatus('Retake photo saved.');
       await bridge.commitRetake(sessionId, slot.slotNumber, pending.photoId);
@@ -828,6 +840,7 @@ function App(): React.JSX.Element {
       const blob = await renderTemplateLayout(window.photobooth, reviewRecord, template, {
         eventName: event.name, qrDataUrl: qrDataUrl || undefined,
         branding: { primaryColor: event.primaryColor, accentColor: event.accentColor, thankYouText: event.thankYouText, logoDataUrl: eventLogoDataUrl },
+        photoFilter: sessionFilterId,
       });
       const savedPath = await window.photobooth.saveSessionOutput(sessionId, await blobToBytes(blob), template.page.widthPx, template.page.heightPx);
       // A strip is paired with a second copy on one 4 × 6 sheet (F18) so printing needs only
@@ -1015,6 +1028,7 @@ function App(): React.JSX.Element {
           {countdown !== null && <div className="countdown-overlay" aria-live="assertive"><span>{countdown}</span></div>}
           <div className="preview-meta"><span>{actualResolution || (cameraReady ? 'Camera ready' : 'Waiting for camera')}</span><span className="mirror-label">MIRRORED</span></div>
         </div>
+        {screen === 'ready' && event?.filterChoiceEnabled && <FilterPicker selected={selectedFilterId} onSelect={setSelectedFilterId} disabled={isBusy || unfinishedSessions.length > 0} />}
         {screen === 'ready' && <LayoutPicker choices={layoutChoices.map((summary) => ({ summary, document: layoutDocuments[summary.id] ?? null }))} selectedId={selectedLayoutId} onSelect={setSelectedLayoutId} disabled={isBusy || unfinishedSessions.length > 0} />}
         <div className={`controls-grid ${screen === 'ready' && adminLocked ? 'settings-locked' : ''}`}>
           <label className="control-field"><span>CAMERA</span><select value={selectedCameraId} onChange={(e) => void handleCameraChange(e.target.value)} disabled={isBusy || screen === 'review' || screen === 'finished' || !cameras.length}><option value="" disabled>Select a camera</option>{cameras.map((item, index) => <option key={item.deviceId || index} value={item.deviceId}>{item.label || `Camera ${index + 1}`}</option>)}</select></label>
@@ -1061,6 +1075,12 @@ function App(): React.JSX.Element {
                 {eventDraft.galleryPasswordSet && <button type="button" className="secondary-button" onClick={() => void handleRemoveGalleryPassword()} disabled={!eventDraft.id}>Remove gallery password</button>}
               </div>
               {galleryLink && <input aria-label="Gallery link" readOnly value={galleryLink} onFocus={(e) => e.currentTarget.select()} />}
+            </div>
+            <div className="filter-field">
+              <p className="eyebrow">PHOTO LOOK</p>
+              <label>Look for this event<select aria-label="Event photo filter" value={eventDraft.filterId} onChange={(e) => setEventDraft({ ...eventDraft, filterId: e.target.value as PhotoFilterId })}>{PHOTO_FILTERS.map((filter) => <option key={filter.id} value={filter.id}>{filter.label}</option>)}</select></label>
+              <label className="attract-toggle"><input type="checkbox" aria-label="Let guests choose a look" checked={eventDraft.filterChoiceEnabled} onChange={(e) => setEventDraft({ ...eventDraft, filterChoiceEnabled: e.target.checked })} /> <span>Let guests choose a look</span></label>
+              <p className="gallery-hint">{eventDraft.filterChoiceEnabled ? 'Guests pick from the looks on the start screen; this one is preselected.' : 'Every session uses this look. Originals are always saved unfiltered; copies and prints get the look.'}</p>
             </div>
             <div className="attract-field">
               <div className="attract-field-heading">

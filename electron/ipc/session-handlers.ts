@@ -8,7 +8,7 @@ import type { IpcContext } from './context.js';
 
 export function registerSessionHandlers({ userDataPath }: IpcContext): void {
   ipcMain.handle('session:setRetakeLimit', (_event, limit: unknown) => setActiveEventRetakeLimit(userDataPath, limit));
-  ipcMain.handle('session:create', (_event, layoutId: unknown) => createSession(userDataPath, layoutId));
+  ipcMain.handle('session:create', (_event, layoutId: unknown, filterId: unknown) => createSession(userDataPath, layoutId, filterId));
   ipcMain.handle('session:listUnfinished', () => listUnfinishedSessions(userDataPath));
   ipcMain.handle('session:load', (_event, sessionId: unknown) => loadSession(userDataPath, sessionId));
   ipcMain.handle('session:saveOriginal', (_event, sessionId: unknown, slotNumber: unknown, bytes: unknown, width: unknown, height: unknown) =>

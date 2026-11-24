@@ -1,5 +1,6 @@
 import { GUEST_COPY_JPEG_QUALITY, GUEST_COPY_MAX_EDGE_PX, ORIGINAL_JPEG_QUALITY } from '../../../shared/constants/limits';
 import { drawWatermark, watermarkPlacement, type WatermarkSettings } from './watermark';
+import { drawFiltered, type PhotoFilterId } from './photo-filters';
 
 export type ImageDimensions = { width: number; height: number };
 
@@ -24,13 +25,20 @@ export async function captureOriginalJpeg(video: HTMLVideoElement): Promise<{ bl
   return { blob: await toJpeg(canvas, ORIGINAL_JPEG_QUALITY), width, height };
 }
 
+export type DownloadCopyOptions = {
+  /** The session's look (F20). The original on disk is never filtered. */
+  filter?: PhotoFilterId;
+  watermark?: { logo: CanvasImageSource; logoWidth: number; logoHeight: number; settings: WatermarkSettings };
+};
+
 /**
- * The guest copy. An optional watermark is drawn *after* the photo is scaled, so the mark is
- * baked into the downloadable JPEG while the original on disk stays untouched (F17).
+ * The guest copy. The look is drawn while the photo is scaled, then the watermark on top, so
+ * both are baked into the downloadable JPEG while the original on disk stays untouched (F17,
+ * F20).
  */
 export async function createDownloadCopy(
   original: Blob,
-  watermark?: { logo: CanvasImageSource; logoWidth: number; logoHeight: number; settings: WatermarkSettings },
+  { filter = 'none', watermark }: DownloadCopyOptions = {},
 ): Promise<{ blob: Blob; width: number; height: number }> {
   const bitmap = await createImageBitmap(original);
   try {
@@ -40,7 +48,7 @@ export async function createDownloadCopy(
     canvas.height = dimensions.height;
     const context = canvas.getContext('2d');
     if (!context) throw new Error('Could not prepare the download copy');
-    context.drawImage(bitmap, 0, 0, dimensions.width, dimensions.height);
+    drawFiltered(context, filter, (drawing) => drawing.drawImage(bitmap, 0, 0, dimensions.width, dimensions.height));
     if (watermark) {
       const placement = watermarkPlacement({ photoWidth: dimensions.width, photoHeight: dimensions.height, logoWidth: watermark.logoWidth, logoHeight: watermark.logoHeight, settings: watermark.settings });
       drawWatermark(context, watermark.logo, placement, watermark.settings.opacity);
