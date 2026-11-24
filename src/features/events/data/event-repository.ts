@@ -7,13 +7,49 @@ import { storeEventLogoPath } from './event-assets';
 import { isValidRetakeLimit } from '../../capture/domain/retake-rules';
 import { validateEventSettings } from './event-validation';
 
-type EventRow = { id: string; name: string; shots: number; retake_limit: number; print_enabled: number; expiry_days: number };
+const EVENT_COLUMNS = `id, name, shots, expiry_days AS expiryDays, event_date AS eventDate, logo_path AS logoPath,
+  primary_color AS primaryColor, accent_color AS accentColor, welcome_text AS welcomeText, thank_you_text AS thankYouText,
+  default_layout_id AS defaultLayoutId, offered_layout_ids AS offeredLayoutIds`;
+
+type EventListRow = EventSettings & { offeredLayoutIds: string };
+
+/** The column is JSON; a corrupt value must not break the booth screen, so fall back to the default layout. */
+function parseOfferedLayoutIds(raw: string, defaultLayoutId: string): string[] {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      const ids = parsed.filter((item): item is string => typeof item === 'string' && item.length > 0);
+      if (ids.length > 0) return ids;
+    }
+  } catch { /* fall through to the default */ }
+  return [defaultLayoutId];
+}
+
+/** Mapped field by field (never spread) so extra SELECT columns cannot leak into the public shape. */
+function toEventSettings(row: EventListRow): EventSettings {
+  return {
+    id: row.id, name: row.name, shots: row.shots, expiryDays: row.expiryDays, eventDate: row.eventDate,
+    logoPath: row.logoPath, primaryColor: row.primaryColor, accentColor: row.accentColor,
+    welcomeText: row.welcomeText, thankYouText: row.thankYouText, defaultLayoutId: row.defaultLayoutId,
+    offeredLayoutIds: parseOfferedLayoutIds(row.offeredLayoutIds, row.defaultLayoutId),
+  };
+}
+
+/**
+ * The guest list must reference real layouts: unknown ids are dropped, and an empty list
+ * falls back to the event's default layout so the booth always has something to shoot.
+ */
+function resolveOfferedLayoutIds(database: ReturnType<typeof openDatabase>, offered: string[], defaultLayoutId: string): string[] {
+  const known = new Set(database.prepare('SELECT id FROM templates').all().map((row) => (row as { id: string }).id));
+  const valid = offered.filter((id) => known.has(id));
+  if (valid.length === 0) return known.has(defaultLayoutId) ? [defaultLayoutId] : [];
+  const ordered = [...new Set([defaultLayoutId, ...valid])].filter((id) => known.has(id));
+  return ordered;
+}
 
 export function listEvents(userDataPath: string): EventSettings[] {
   const database = openDatabase(userDataPath);
-  try { return database.prepare(`SELECT id, name, shots, expiry_days AS expiryDays, event_date AS eventDate, logo_path AS logoPath,
-    primary_color AS primaryColor, accent_color AS accentColor, welcome_text AS welcomeText, thank_you_text AS thankYouText,
-    default_layout_id AS defaultLayoutId FROM events ORDER BY name COLLATE NOCASE`).all() as EventSettings[]; }
+  try { return (database.prepare(`SELECT ${EVENT_COLUMNS} FROM events ORDER BY name COLLATE NOCASE`).all() as EventListRow[]).map(toEventSettings); }
   finally { database.close(); }
 }
 
@@ -26,15 +62,15 @@ export function saveEventSettings(userDataPath: string, input: unknown): EventSe
   try {
     const exists = database.prepare('SELECT 1 FROM events WHERE id = ?').get(id);
     if (item.id && !exists) throw new Error('Event not found');
+    const offeredLayoutIds = resolveOfferedLayoutIds(database, fields.offeredLayoutIds, fields.defaultLayoutId);
+    const offeredJson = JSON.stringify(offeredLayoutIds);
     if (exists) database.prepare(`UPDATE events SET name = ?, shots = ?, expiry_days = ?, event_date = ?, primary_color = ?, accent_color = ?,
-      welcome_text = ?, thank_you_text = ?, default_layout_id = ? WHERE id = ?`).run(fields.name, fields.shots, fields.expiryDays, fields.eventDate,
-      fields.primaryColor, fields.accentColor, fields.welcomeText, fields.thankYouText, fields.defaultLayoutId, id);
+      welcome_text = ?, thank_you_text = ?, default_layout_id = ?, offered_layout_ids = ? WHERE id = ?`).run(fields.name, fields.shots, fields.expiryDays, fields.eventDate,
+      fields.primaryColor, fields.accentColor, fields.welcomeText, fields.thankYouText, fields.defaultLayoutId, offeredJson, id);
     else database.prepare(`INSERT INTO events (id, name, shots, retake_limit, print_enabled, expiry_days, event_date, primary_color, accent_color,
-      welcome_text, thank_you_text, default_layout_id) VALUES (?, ?, ?, 3, 1, ?, ?, ?, ?, ?, ?, ?)`).run(id, fields.name, fields.shots, fields.expiryDays,
-      fields.eventDate, fields.primaryColor, fields.accentColor, fields.welcomeText, fields.thankYouText, fields.defaultLayoutId);
-    return database.prepare(`SELECT id, name, shots, expiry_days AS expiryDays, event_date AS eventDate, logo_path AS logoPath,
-      primary_color AS primaryColor, accent_color AS accentColor, welcome_text AS welcomeText, thank_you_text AS thankYouText,
-      default_layout_id AS defaultLayoutId FROM events WHERE id = ?`).get(id) as EventSettings;
+      welcome_text, thank_you_text, default_layout_id, offered_layout_ids) VALUES (?, ?, ?, 3, 1, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, fields.name, fields.shots, fields.expiryDays,
+      fields.eventDate, fields.primaryColor, fields.accentColor, fields.welcomeText, fields.thankYouText, fields.defaultLayoutId, offeredJson);
+    return toEventSettings(database.prepare(`SELECT ${EVENT_COLUMNS} FROM events WHERE id = ?`).get(id) as EventListRow);
   } finally { database.close(); }
 }
 
@@ -52,10 +88,10 @@ export function duplicateEvent(userDataPath: string, eventId: unknown): EventSet
   if (!isEventId(eventId)) throw new Error('Invalid event');
   const database = openDatabase(userDataPath);
   let source: EventSettings | undefined;
-  try { source = database.prepare(`SELECT id, name, shots, expiry_days AS expiryDays, event_date AS eventDate, logo_path AS logoPath,
-    primary_color AS primaryColor, accent_color AS accentColor, welcome_text AS welcomeText, thank_you_text AS thankYouText,
-    default_layout_id AS defaultLayoutId FROM events WHERE id = ?`).get(eventId) as EventSettings | undefined; }
-  finally { database.close(); }
+  try {
+    const row = database.prepare(`SELECT ${EVENT_COLUMNS} FROM events WHERE id = ?`).get(eventId) as EventListRow | undefined;
+    source = row ? toEventSettings(row) : undefined;
+  } finally { database.close(); }
   if (!source) throw new Error('Event not found');
   const copy = saveEventSettings(userDataPath, { ...source, id: undefined, name: `${source.name} Copy` });
   if (source.logoPath && fs.existsSync(source.logoPath)) {
@@ -71,17 +107,11 @@ export function duplicateEvent(userDataPath: string, eventId: unknown): EventSet
 export function getActiveEvent(userDataPath: string): ActiveEvent {
   const database = openDatabase(userDataPath);
   try {
-    const row = database.prepare(`SELECT e.id, e.name, e.shots, e.retake_limit, e.print_enabled, e.expiry_days,
-      e.event_date AS eventDate, e.logo_path AS logoPath, e.primary_color AS primaryColor, e.accent_color AS accentColor,
-      e.welcome_text AS welcomeText, e.thank_you_text AS thankYouText, e.default_layout_id AS defaultLayoutId
-      FROM events e JOIN settings s ON s.key = 'activeEventId' AND s.value = e.id LIMIT 1`).get() as (EventRow & {
-        eventDate: string | null; logoPath: string | null; primaryColor: string; accentColor: string;
-        welcomeText: string; thankYouText: string; defaultLayoutId: string;
-      }) | undefined;
+    const row = database.prepare(`SELECT ${EVENT_COLUMNS}, e.retake_limit AS retakeLimit, e.print_enabled AS printEnabled
+      FROM events e JOIN settings s ON s.key = 'activeEventId' AND s.value = e.id LIMIT 1`).get() as
+      (EventListRow & { retakeLimit: number; printEnabled: number }) | undefined;
     if (!row) throw new Error('No active event is configured');
-    return { id: row.id, name: row.name, shots: row.shots, retakeLimit: row.retake_limit, printEnabled: Boolean(row.print_enabled), expiryDays: row.expiry_days,
-      eventDate: row.eventDate, logoPath: row.logoPath, primaryColor: row.primaryColor, accentColor: row.accentColor,
-      welcomeText: row.welcomeText, thankYouText: row.thankYouText, defaultLayoutId: row.defaultLayoutId };
+    return { ...toEventSettings(row), retakeLimit: row.retakeLimit, printEnabled: Boolean(row.printEnabled) };
   } finally {
     database.close();
   }

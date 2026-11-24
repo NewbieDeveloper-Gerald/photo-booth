@@ -249,7 +249,7 @@ function App(): React.JSX.Element {
         }
       } else {
         setTemplates(layoutPresets.map((preset) => ({ id: preset.id, name: preset.name, shots: preset.shots, copies: preset.copies, pagePreset: '4x6' as const, pageLabel: '4 × 6 in', builtIn: true })));
-        setEvent({ id: 'preview-event', name: 'Default Event', shots: 3, retakeLimit: 3, printEnabled: true, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: 'double-strip-3' });
+        setEvent({ id: 'preview-event', name: 'Default Event', shots: 3, retakeLimit: 3, printEnabled: true, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: 'double-strip-3', offeredLayoutIds: ['double-strip-3'] });
         setRetakeLimitDraft('3');
       }
       if (!camera) { setStatus('Camera access is not available.'); return; }
@@ -416,7 +416,7 @@ function App(): React.JSX.Element {
   };
 
   const handleNewEvent = (): void => {
-    setEventDraft({ id: '', name: '', shots: 3, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: 'double-strip-3' });
+    setEventDraft({ id: '', name: '', shots: 3, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: 'double-strip-3', offeredLayoutIds: ['double-strip-3'] });
     setEventLogoDataUrl(null); setEventMessage('New event details are not saved yet.');
   };
 

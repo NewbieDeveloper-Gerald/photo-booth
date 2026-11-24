@@ -9,6 +9,20 @@ const DEFAULT_TEMPLATE_BY_SHOTS: Record<number, string> = {
   1: '5x7-1x1', 2: 'double-strip-2', 3: 'double-strip-3', 4: 'double-strip-4', 5: '5x7-5x1', 6: '5x7-6x1',
 };
 
+const MAX_OFFERED_LAYOUTS = 12;
+const MAX_LAYOUT_ID_LENGTH = 64;
+
+/** Layout ids the guest may pick from; empty means "just the event's default". */
+export function validateOfferedLayoutIds(value: unknown): string[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) throw new Error('Invalid list of guest layouts');
+  const ids = value.filter((item): item is string => typeof item === 'string' && item.length > 0);
+  if (ids.length !== value.length) throw new Error('Invalid list of guest layouts');
+  if (ids.length > MAX_OFFERED_LAYOUTS) throw new Error(`Offer at most ${MAX_OFFERED_LAYOUTS} layouts to guests`);
+  if (ids.some((id) => id.length > MAX_LAYOUT_ID_LENGTH)) throw new Error('Invalid list of guest layouts');
+  return [...new Set(ids)];
+}
+
 export function validateEventSettings(value: unknown): Omit<EventSettings, 'id' | 'logoPath'> {
   if (!value || typeof value !== 'object') throw new Error('Invalid event details');
   const item = value as Record<string, unknown>;
@@ -21,6 +35,8 @@ export function validateEventSettings(value: unknown): Omit<EventSettings, 'id' 
   for (const key of ['welcomeText', 'thankYouText'] as const) if (typeof item[key] !== 'string' || item[key].trim().length > MAX_EVENT_TEXT_LENGTH) throw new Error(`${key === 'welcomeText' ? 'Welcome' : 'Thank-you'} text must be 160 characters or fewer`);
   const expiryDays = item.expiryDays;
   if (typeof expiryDays !== 'number' || !Number.isInteger(expiryDays) || expiryDays < 1 || expiryDays > 365) throw new Error('QR link expiry must be from 1 to 365 days');
+  const offered = validateOfferedLayoutIds(item.offeredLayoutIds);
   return { name: item.name.trim(), shots, expiryDays, eventDate: eventDate as string | null, primaryColor: item.primaryColor as string, accentColor: item.accentColor as string,
-    welcomeText: (item.welcomeText as string).trim(), thankYouText: (item.thankYouText as string).trim(), defaultLayoutId: DEFAULT_TEMPLATE_BY_SHOTS[shots]! };
+    welcomeText: (item.welcomeText as string).trim(), thankYouText: (item.thankYouText as string).trim(),
+    defaultLayoutId: DEFAULT_TEMPLATE_BY_SHOTS[shots]!, offeredLayoutIds: offered };
 }

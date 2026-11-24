@@ -26,7 +26,7 @@ describe('session storage', () => {
   it('creates the default event once with required settings and creates three slots', () => {
     const directory = setup();
     initializeStorage(directory);
-    expect(getActiveEvent(directory)).toEqual({ id: 'default-event', name: 'Default Event', shots: 3, retakeLimit: 3, printEnabled: true, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: '#c90000', accentColor: '#f4f0ec', welcomeText: 'Ready for your event. Check the preview, then start a session.', thankYouText: 'Your layout is ready.', defaultLayoutId: 'double-strip-3' });
+    expect(getActiveEvent(directory)).toEqual({ id: 'default-event', name: 'Default Event', shots: 3, retakeLimit: 3, printEnabled: true, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: '#c90000', accentColor: '#f4f0ec', welcomeText: 'Ready for your event. Check the preview, then start a session.', thankYouText: 'Your layout is ready.', defaultLayoutId: 'double-strip-3', offeredLayoutIds: ['double-strip-3'] });
     const { sessionId } = createSession(directory);
     expect(loadSession(directory, sessionId).slots.map((slot) => slot.slotNumber)).toEqual([1, 2, 3]);
   });
