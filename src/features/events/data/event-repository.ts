@@ -4,7 +4,7 @@ import { openDatabase } from '../../storage/database/connection';
 import { isEventId } from '../../../shared/validation/identifiers';
 import type { ActiveEvent, EventSettings } from '../../../shared/types/event';
 import { storeEventLogoPath } from './event-assets';
-import { isValidRetakeLimit } from '../../../core/retakes';
+import { isValidRetakeLimit } from '../../capture/domain/retake-rules';
 import { validateEventSettings } from './event-validation';
 
 type EventRow = { id: string; name: string; shots: number; retake_limit: number; print_enabled: number; expiry_days: number };

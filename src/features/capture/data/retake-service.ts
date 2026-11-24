@@ -4,7 +4,7 @@ import { openDatabase } from '../../storage/database/connection';
 import { getConfiguredStoragePaths } from '../../storage/database/storage-paths';
 import { copyBackupVersion, moveWithinPhotos, storedPhotoPath } from './photo-files';
 import { ensureInside } from '../../../shared/fs/safe-paths';
-import { canRetake } from '../../../core/retakes';
+import { canRetake } from '../domain/retake-rules';
 import { isRecordId, isSessionId } from '../../../shared/validation/identifiers';
 
 export async function commitRetake(userDataPath: string, sessionId: unknown, slotNumber: unknown, newPhotoId: unknown): Promise<void> {

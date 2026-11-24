@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { openDatabase } from '../../storage/database/connection';
 import { getConfiguredStoragePaths } from '../../storage/database/storage-paths';
 import { writeAtomically, copyBackupVersion, storedPhotoPath, toPhotoBuffer } from './photo-files';
-import { canRetake } from '../../../core/retakes';
+import { canRetake } from '../domain/retake-rules';
 import { ensureInside } from '../../../shared/fs/safe-paths';
 import { isRecordId, isSessionId } from '../../../shared/validation/identifiers';
 

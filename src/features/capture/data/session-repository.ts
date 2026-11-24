@@ -6,7 +6,7 @@ import { getConfiguredStoragePaths } from '../../storage/database/storage-paths'
 import { storedPhotoPath } from './photo-files';
 import { ensureInside } from '../../../shared/fs/safe-paths';
 import { isSessionId } from '../../../shared/validation/identifiers';
-import { getLayoutPreset } from '../../../core/layouts';
+import { getLayoutPreset } from '../../layouts/catalog';
 import { getActiveEvent } from '../../events/data/event-repository';
 import type { ActiveEvent } from '../../../shared/types/event';
 import type { SessionRecord, UnfinishedSession } from '../../../shared/types/session';

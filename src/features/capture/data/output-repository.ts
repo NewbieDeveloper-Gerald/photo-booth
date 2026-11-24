@@ -5,7 +5,7 @@ import path from 'node:path';
 import { toPhotoBuffer, writeAtomically } from './photo-files';
 import { ensureInside } from '../../../shared/fs/safe-paths';
 import { isSessionId } from '../../../shared/validation/identifiers';
-import { getLayoutPreset } from '../../../core/layouts';
+import { getLayoutPreset } from '../../layouts/catalog';
 
 export async function saveSessionOutput(userDataPath: string, sessionIdValue: unknown, data: unknown, widthValue: unknown, heightValue: unknown): Promise<string> {
   if (!isSessionId(sessionIdValue) || !Number.isInteger(widthValue) || !Number.isInteger(heightValue)) throw new Error('Invalid finished image details');

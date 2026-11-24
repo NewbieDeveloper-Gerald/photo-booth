@@ -1,17 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { createRoot } from 'react-dom/client';
-import { canRetake, isValidRetakeLimit, retakesRemaining } from '../core/retakes';
-import { captureOriginalJpeg, createDownloadCopy } from '../core/photo-pipeline';
+import { BrowserCameraDevice, canRetake, captureOriginalJpeg, createDownloadCopy, isValidRetakeLimit, retakesRemaining, type CameraInfo, type CameraResolution } from '../features/capture';
 import { toErrorMessage } from '../shared/errors';
 import { CAPTURE_REVIEW_PAUSE_MS, MAX_DISK_WARNING_GB, SESSION_IDLE_TIMEOUT_MS } from '../shared/constants/limits';
-import { coverCrop } from '../core/layout';
-import { decideAutoPrint } from '../core/printing';
-import { getLayoutPreset, layoutPresets } from '../core/layouts';
-import { BrowserCameraDevice, type CameraInfo, type CameraResolution } from '../hardware/camera';
+import { coverCrop, getLayoutPreset, layoutPresets } from '../features/layouts';
+import { decideAutoPrint } from '../features/printing';
 import type { ActiveEvent, EventSettings } from '../shared/types/event';
 import type { SessionRecord, SessionSlot, UnfinishedSession } from '../shared/types/session';
-import type { UploadQueueSummary } from '../cloud/upload-queue';
+import type { UploadQueueSummary } from '../features/sharing/upload-queue/repository';
 import './style.css';
 
 const resolutionOptions: Array<{ value: CameraResolution; label: string }> = [

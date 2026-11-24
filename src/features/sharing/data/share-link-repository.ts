@@ -1,6 +1,6 @@
 import { openDatabase } from '../../storage/database/connection';
 import { isSessionId } from '../../../shared/validation/identifiers';
-import { generateSessionToken } from '../../../core/token';
+import { generateSessionToken } from '../share-token';
 
 export function createSessionShareLink(userDataPath: string, sessionIdValue: unknown, baseUrlValue: unknown): { url: string; expiresAt: string } {
   if (!isSessionId(sessionIdValue) || typeof baseUrlValue !== 'string') throw new Error('Invalid share-link request');

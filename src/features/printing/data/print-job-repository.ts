@@ -2,7 +2,7 @@ import { openDatabase } from '../../storage/database/connection';
 import { getConfiguredStoragePaths } from '../../storage/database/storage-paths';
 import { ensureInside } from '../../../shared/fs/safe-paths';
 import { isSessionId } from '../../../shared/validation/identifiers';
-import { getLayoutPreset } from '../../../core/layouts';
+import { getLayoutPreset } from '../../layouts/catalog';
 
 export function getLatestSessionPrintInfo(userDataPath: string, sessionIdValue: unknown): { imagePath: string; width: number; height: number } {
   if (!isSessionId(sessionIdValue)) throw new Error('Invalid session id');
