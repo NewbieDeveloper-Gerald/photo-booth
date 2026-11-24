@@ -1,6 +1,6 @@
 # Progress
 
-Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`, F20 as `de322a2`, F21 as `e9564c1`, F22 as `1b3d92c`, F23 as `48fab71`, F24 as `22bff4d`, F25 as `9cb5f59`, F26 as `PENDING-F26`.
+Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`, F20 as `de322a2`, F21 as `e9564c1`, F22 as `1b3d92c`, F23 as `48fab71`, F24 as `22bff4d`, F25 as `9cb5f59`, F26 as `665971d`.
 
 ## Current status
 
@@ -33,7 +33,7 @@ Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `4215
 - **F23 (GIF and boomerang): merged** (`48fab71`), awaiting the two-phone check below.
 - **F24 (admin dashboard): merged** (`22bff4d`), awaiting the hand-count check below.
 - **F25 (printer profiles): merged** (`9cb5f59`), awaiting the real-printer check below.
-- **F26 (DSLR camera): merged** (`PENDING-F26`), awaiting the 50-session check below.
+- **F26 (DSLR camera): merged** (`665971d`), awaiting the 50-session check below.
 - **F27–F29: not started.**
 - Automated verification today: `npm run typecheck`, `npm run lint`, `npm test`
   (**524 tests in 91 files**), `npm run build` (Vite production build) all pass.
@@ -555,7 +555,7 @@ produces an animation from the photos.
 Video (MP4/WebM) output, audio, a per-photo dithering/quantiser beyond 3-3-2, choosing the
 animated extra per session by the guest, and editing the loop (frame order, speed) from the UI.
 
-## F26. DSLR and mirrorless camera (merged)
+## F26. DSLR and mirrorless camera (merged as `665971d`)
 
 - **One promised model: the Canon EOS 250D**, through the `gphoto2` helper. The booth builds the
   helper's command lines, reads the camera list, cuts the JPEG out of stdout and turns gphoto2's
