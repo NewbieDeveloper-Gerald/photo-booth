@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { canRetake, isValidRetakeLimit, retakesRemaining } from '../core/retakes';
 import { captureOriginalJpeg, createDownloadCopy } from '../core/photo-pipeline';
 import { coverCrop } from '../core/layout';
+import { decideAutoPrint } from '../core/printing';
 import { getLayoutPreset, layoutPresets } from '../core/layouts';
 import { BrowserCameraDevice, type CameraInfo, type CameraResolution } from '../hardware/camera';
 import type { ActiveEvent, EventSettings, SessionRecord, SessionSlot, UnfinishedSession } from '../storage/sessions';
@@ -723,7 +724,9 @@ function App(): React.JSX.Element {
       setFinalOutputUrl((current) => { if (current) URL.revokeObjectURL(current); return URL.createObjectURL(blob); });
       setStatus(`Finished layout saved · ${savedPath}`);
       setScreen('finished');
-      await sendPrintJob(sessionId);
+      const autoPrint = decideAutoPrint(event, selectedPrinterName);
+      if (autoPrint.shouldPrint) await sendPrintJob(sessionId);
+      else setPrintStatus(autoPrint.status);
     } catch (error) { setErrorMessage(error instanceof Error ? error.message : 'Could not build the finished layout. Your photos are safe.'); }
     finally { setBusy(false); }
   };
