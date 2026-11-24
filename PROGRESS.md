@@ -1,6 +1,6 @@
 # Progress
 
-Updated 2026-11-24, after the structural refactor (PR #2) merged into `main` as `0e8c9a1`.
+Updated 2026-11-24. Refactor merged as `0e8c9a1`; F11 implemented on `arena/16b52e91-photo-booth`.
 
 ## Current status
 
@@ -9,10 +9,11 @@ Updated 2026-11-24, after the structural refactor (PR #2) merged into `main` as 
 - **F10 (events and branding): implemented.** The old progress note said "Stage 2, awaiting
   approval to enter Test"; no Test result was ever recorded, so it is listed as implemented
   but not formally accepted.
-- **F11 (templates as data, extra print sizes): Stage 1 (Plan), awaiting approval.** Plan below.
+- **F11 (templates as data, extra print sizes): implemented** in four steps, awaiting a
+  manual print check per page size (checklist below).
 - **F12–F29: not started.**
 - Automated verification today: `npm run typecheck`, `npm run lint`, `npm test`
-  (**90 tests in 25 files**), `npm run build` (Vite production build) all pass.
+  (**146 tests in 29 files**), `npm run build` (Vite production build) all pass.
   `npm run test:e2e` exists but cannot run in this environment (no browser runtime).
 
 ## Verification gaps (unrecorded or impossible here)
@@ -36,36 +37,41 @@ Electron main process split into `electron/ipc` + `electron/windows`, the render
 components/hooks/lib, dead `templates/*.json` deleted. Layout and rules:
 `docs/architecture.md`; old-to-new file map: `docs/refactor-migration-map.md`.
 
-## F11 plan (Stage 1 — awaiting approval)
+## F11. Template engine and preset sizes (implemented)
 
-Per `FEATURES.md` F11: templates become data (elements with position, size and layer),
-presets for 4×6, 2×6 strip, 5×7 and square exist with print-safe margins, 1–6 photo slots
-work, the session's slot count follows the template, and today's 4×6 output still prints
-identically.
+Templates are data in SQLite: a page plus elements (background, bands, text, logo, guest
+QR, one box per photo) with position, size and layer.
 
-Four reviewable steps, code working and tests green after each:
+- **Model + presets** — `features/layouts/domain/template-document.ts` and
+  `template-builder.ts`. Page presets 4 × 6 (1200×1800), 2 × 6 strip (600×1800), 5 × 7
+  (1500×2100) and square (1800×1800), all 300 dpi with print-safe margins. The six Phase 1
+  layouts convert to documents with their exact geometry, so today's print is unchanged.
+- **Storage** — migration `008_templates` adds `templates` and `template_elements`.
+  `features/layouts/data/template-repository.ts` seeds the six catalog layouts plus grid
+  templates for the three new sizes at 1–6 photos (24 templates), idempotently, before any
+  read. Stored templates are validated on write and on read.
+- **Rendering** — `render-template-layout.ts` paints any document by layer; the geometry
+  rules live in `template-paint-plan.ts` and are pinned to the Phase 1 numbers by tests.
+  The renderer's picker lists stored templates grouped by page size, and both `session:create`
+  and the finished output follow the chosen template's shot count and page size. IPC adds
+  `layouts:list` and `layouts:get`.
+- **Printing** — the page size comes from the template, so 2 × 6, 5 × 7 and square print at
+  their own dimensions; the JOB is still silent, one copy, no margins.
 
-1. **Model + presets (no behaviour change).** `layouts/domain/template-document.ts`
-   (page, elements, layer order), `layouts/presets.ts` (4×6 = 1200×1800, 2×6 = 600×1800,
-   5×7 = 1500×2100, square = 1800×1800 at 300 dpi, with margins), and a converter that turns
-   today's six catalog layouts into documents. A test asserts the converter reproduces the
-   current geometry exactly — this is the guard for "still prints correctly".
-2. **Schema + repository.** Migration `008_templates` (`templates`, `template_elements`),
-   seeded with the six catalog layouts and the four page presets; read/validate via
-   `layouts/node.ts`. No renderer change yet.
-3. **Renderer uses documents.** `render-finished-layout.ts` becomes a generic element painter
-   (background → images → photos → text, ordered by layer); the session shot count comes from
-   the chosen template; new IPC channels `layouts:list` / `layouts:get`; the operator picks
-   all sizes from the same selector.
-4. **Print + docs.** Page-size mapping for 2×6/5×7/square verified in tests, README and
-   `docs/architecture.md` updated, manual print checklist per preset added here.
+Behaviour change worth noting: an event's photo count now accepts 1–6 (it was 2–4) and acts
+as the default when picking a template; the template itself decides the session's slots.
 
-Out of scope for F11: drag-and-drop editing (F12), guest template picker (F13), more than
-6 slots, watermarking (F17).
+### F11 manual check (Windows, real printer)
 
-Main risks: printing output drifting (mitigated by step 1's equivalence test before the
-renderer switches), and migrating an existing database (a migration test applies 001–007 and
-then 008 against a database that already holds sessions).
+For each of 4 × 6, 2 × 6 strip, 5 × 7 and square: choose the template, run one session,
+press **Continue**, and confirm the printed sheet matches the page size, nothing is
+clipped, the 2 × 6 strip is half the width of a 4 × 6, the QR still lands in its corner,
+and the event's thank-you text appears in the footer.
+
+### F11 out of scope (belongs to later features)
+
+Drag-and-drop editing (F12), guest template picker (F13), more than six photo slots,
+watermarking (F17).
 
 ## Feature log
 
@@ -139,10 +145,14 @@ then 008 against a database that already holds sessions).
 ## Known limits
 
 - No cloud uploader; QR delivery depends on the operator's tunnel staying up.
+- The layout picker lists every seeded template (24), so it is long; grouping by page size
+  keeps it usable but a search or favourites list would be better.
 - Upload queue is a mock (`processDueUploads` is never scheduled).
 - `events.print_enabled` is stored but not enforced; the operator picks the printer instead.
 - `src/ui/main.tsx` still holds the session flow and the event/PIN forms (~790 lines).
-- `render-finished-layout.ts` has no unit test (canvas drawing needs a canvas implementation).
+- The canvas painter itself is untested (jsdom has no canvas); its geometry is pinned by
+  `template-paint-plan.test.ts` and by the manual print checklist.
+- Templates can be read and saved, but no in-app editor exists yet (F12).
 - Phase 1 gate rehearsals and the Phase 2 real-event dry run are open.
 
 ## IDEAS

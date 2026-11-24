@@ -19,3 +19,26 @@ describe('printer interface', () => {
     expect(printer.jobs).toHaveLength(1);
   });
 });
+
+describe('page sizes for every template preset (F11)', () => {
+  const inches = (microns: number): number => Math.round(microns / 25_400);
+  it.each([
+    ['4x6', 1200, 1800],
+    ['2x6-strip', 600, 1800],
+    ['5x7', 1500, 2100],
+    ['square', 1800, 1800],
+  ] as const)('%s prints at its own paper size', (_preset, widthPx, heightPx) => {
+    const size = pageSizeMicrons(widthPx, heightPx);
+    expect(size).toEqual({
+      widthMicrons: Math.round(widthPx / 300 * 25_400),
+      heightMicrons: Math.round(heightPx / 300 * 25_400),
+    });
+    expect([inches(size.widthMicrons), inches(size.heightMicrons)]).toEqual([widthPx / 300, heightPx / 300]);
+  });
+
+  it('keeps a 2x6 strip and a 5x7 page distinct from 4x6', () => {
+    const fourBySix = pageSizeMicrons(1200, 1800);
+    expect(pageSizeMicrons(600, 1800).widthMicrons).toBe(fourBySix.widthMicrons / 2);
+    expect(pageSizeMicrons(1500, 2100).heightMicrons).toBeGreaterThan(fourBySix.heightMicrons);
+  });
+});

@@ -205,3 +205,15 @@ describe('sessions follow the chosen template (F11)', () => {
     expect(loadTemplate(directory, template.id).page.widthPx).toBe(1500);
   });
 });
+
+describe('printing follows the stored template (F11)', () => {
+  it('reports the 5x7 page size for a session using a 5x7 template', async () => {
+    const directory = setup();
+    const fiveBySeven = listTemplates(directory).find((template) => template.pagePreset === '5x7' && template.shots === 2)!;
+    const created = createSession(directory, fiveBySeven.id);
+    await saveOriginalPhoto(directory, created.sessionId, 1, tinyJpeg, 4000, 3000);
+    await saveOriginalPhoto(directory, created.sessionId, 2, tinyJpeg, 4000, 3000);
+    await saveSessionOutput(directory, created.sessionId, tinyJpeg, 1500, 2100);
+    expect(getLatestSessionPrintInfo(directory, created.sessionId)).toMatchObject({ width: 1500, height: 2100 });
+  });
+});
