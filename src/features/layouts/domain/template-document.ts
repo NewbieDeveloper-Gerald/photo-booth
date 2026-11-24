@@ -56,7 +56,10 @@ export type LogoElement = BaseElement & { kind: 'logo' };
 /** Guest download QR: a white panel with the code inset inside it. */
 export type QrElement = BaseElement & { kind: 'qr'; inset: number; panelColor: string };
 
-export type TemplateElement = RectElement | TextElement | PhotoElement | LogoElement | QrElement;
+/** A picture from the layout asset store: background artwork, a frame, a sponsor image. */
+export type ImageElement = BaseElement & { kind: 'image'; assetName: string };
+
+export type TemplateElement = RectElement | TextElement | PhotoElement | LogoElement | QrElement | ImageElement;
 
 /** What the operator's layout picker needs; the full document is fetched on demand. */
 export type TemplateSummary = { id: string; name: string; shots: number; copies: number; pagePreset: PagePresetId; pageLabel: string; builtIn: boolean };
@@ -88,6 +91,7 @@ export function isValidTemplateDocument(document: TemplateDocument): true | stri
       && element.x + element.width <= document.page.widthPx && element.y + element.height <= document.page.heightPx;
     if (!inside) return `Element ${element.id} is outside the page`;
     if (element.kind === 'text' && element.fontSize < MIN_FONT_SIZE) return `Element ${element.id} has an unreadable font size`;
+    if (element.kind === 'image' && !element.assetName) return `Element ${element.id} has no picture`;
     if (element.kind === 'photo') {
       if (element.slotNumber < 1 || element.slotNumber > document.shots) return `Element ${element.id} references an unknown photo slot`;
       slots.add(element.slotNumber);
