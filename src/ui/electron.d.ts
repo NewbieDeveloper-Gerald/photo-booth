@@ -9,6 +9,7 @@ import type { PrintJob, PrintQueueSummary } from '../features/printing/domain/pr
 import type { AttractMedia } from '../shared/types/attract';
 import type { PhotoFilterId } from '../shared/types/photo-filter';
 import type { AdminPinAttempt, AdminPinLockout } from '../shared/types/admin-pin';
+import type { RemoteCommand, RemoteServerInfo, RemoteView } from '../shared/types/remote-guest';
 
 import type { BoothSettingKey } from '../shared/constants/settings-keys';
 
@@ -24,6 +25,13 @@ declare global {
       getAdminPinLockout(): Promise<AdminPinLockout>;
       setAdminPin(pin: string, currentPin: string): Promise<AdminPinLockout>;
       exitKioskWithPin(pin: string): Promise<AdminPinAttempt>;
+      getRemoteInfo(): Promise<RemoteServerInfo>;
+      setRemoteEnabled(enabled: boolean): Promise<RemoteServerInfo>;
+      rotateRemoteLink(): Promise<RemoteServerInfo>;
+      publishRemoteView(view: RemoteView): Promise<void>;
+      sendRemoteFrame(jpeg: Uint8Array): Promise<void>;
+      onRemoteCommand(listener: (command: RemoteCommand) => void): () => void;
+      onRemoteStatus(listener: (info: RemoteServerInfo) => void): () => void;
       onExitRequested(callback: () => void): () => void;
       getActiveEvent(): Promise<ActiveEvent>;
       listEvents(): Promise<EventSettings[]>;

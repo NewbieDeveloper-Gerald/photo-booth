@@ -54,6 +54,16 @@ When the booth is idle it invites guests in: after an event-set wait (default 60
 
 Event setup has an **Attract screen** block: the toggle, the wait, and **Add photos or video** (PNG/JPEG/WebP, MP4/M4V/WebM, up to eight files of 25 MB each). The files are copied into the event's own folder under the booth's data directory, so the memory card can go home with the operator; **Remove** deletes that copy. With no media, the loop cycles the layouts the event offers, so a brand-new event still has an invite screen. **Preview attract screen** shows the loop immediately instead of waiting.
 
+## Tablet guest screen (F22)
+
+The guest screen can run on a tablet while the booth computer keeps the camera, the files and the printer. In the operator panel, **Tablet guest screen** has one switch, one link and a count of connected tablets. Switch it on, open the link on a tablet on the same Wi-Fi, and the tablet shows the welcome text, a live preview streamed from the booth, and — as the session runs — the countdown, the review slots with **Retake**, **Use these photos**, **Print another** and **New session**.
+
+- **The stream is MJPEG**, drawn from the booth's own camera preview (about 6 frames a second at 640 px, JPEG quality 0.6) and only while at least one tablet is connected. The camera itself is never opened twice and its stream never leaves the booth raw.
+- **State syncs over one WebSocket.** The booth publishes a small view — stage, countdown, shot number, slot list, event branding, the consent notice and the share link — and the tablet renders exactly that. Commands come back only from the current stage (`start`, `consent`, `retake`, `continue`, `done`, `reprint`) and are checked twice: by the server and by the booth screen.
+- **Drops are visible, not silent.** The tablet shows **Reconnecting to the booth…**, retries with a growing delay, reconnects when the tab comes back, and keeps the last state on screen. If the preview itself fails it says so and notes that photos are still taken on the booth, which carries on regardless — nothing on the tablet is required for a session to work.
+- **Touch first:** full-height layout, 62 px buttons, safe-area padding, no hover-only controls, portrait or landscape (two columns from 900 px).
+- **Access is the link.** The screen is off until the operator turns it on, and the URL carries a random 22-character token; **New link** rotates it and locks out any tablet still holding the old one. The page sets its own strict CSP, is `noindex`, and shows no operator control, PIN or file path.
+
 ## Operator hotkeys and PIN lockout (F21)
 
 The booth can be driven without leaving the kiosk. **Ctrl + Shift + R** restarts the session on screen (only while settings are unlocked — it backs its photos up first), **Ctrl + Shift + P** reprints the finished layout, **Ctrl + Shift + U** skips the waiting sync files (they are marked `skipped`, never deleted) and **Ctrl + Shift + A** opens the admin PIN prompt. The keys are ignored while a guest is typing in a field, a held key fires once, and **Keyboard shortcuts** in the operator panel (or the same key list) is the help screen. Every shortcut needs Ctrl and Shift together, which is why the kiosk's blocked keys (Ctrl+R reload, F5, F12, Ctrl+Shift+I/J/C) can be swallowed without ever swallowing an operator key.

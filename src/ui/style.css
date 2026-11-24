@@ -195,3 +195,9 @@
 .hotkey-label { color: #f0ecfa; font-size: 13px; font-weight: 650; }
 .hotkey-description { grid-column: 2; color: #9aa1b4; font-size: 12px; }
 .hotkey-help .start-button { justify-self: start; }
+
+/* F22 · the tablet guest screen card: one switch, one link, and who is watching. */
+.remote-card { align-items: start; }
+.remote-link { width: 100%; margin-top: 8px; padding: 9px 11px; border: 1px solid #ffffff26; border-radius: 8px; background: #111725; color: #dbeafe; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.remote-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; align-items: center; }
+@media (max-width: 720px) { .remote-actions { justify-content: stretch; } .remote-actions button { flex: 1 1 auto; min-height: 48px; } }

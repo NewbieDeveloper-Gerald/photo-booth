@@ -23,7 +23,9 @@ import { AttractScreen } from '../renderer/components/AttractScreen';
 import { AttractMediaField } from '../renderer/components/AttractMediaField';
 import { FilterPicker } from '../renderer/components/FilterPicker';
 import { HotkeyHelp } from '../renderer/components/HotkeyHelp';
+import { RemoteGuestCard } from '../renderer/components/RemoteGuestCard';
 import { isTypingTarget, matchHotkey } from '../renderer/lib/hotkeys';
+import { buildRemoteView, isRemoteCommandAllowed, remoteViewSignature } from '../features/remote-guest';
 import { loadAttractSlides, type AttractSlide } from '../renderer/lib/attract-slides';
 import { composeStripCutSheet } from '../renderer/lib/print-sheet';
 import { LayoutPicker } from '../renderer/components/LayoutPicker';
@@ -45,6 +47,7 @@ import type { UploadQueueSummary } from '../features/sharing';
 import type { RetentionStatus } from '../features/retention';
 import type { AttractMedia } from '../shared/types/attract';
 import type { AdminPinAttempt } from '../shared/types/admin-pin';
+import type { RemoteCommand, RemoteServerInfo, RemoteView } from '../shared/types/remote-guest';
 import './style.css';
 
 const resolutionOptions: Array<{ value: CameraResolution; label: string }> = [
@@ -64,6 +67,9 @@ function App(): React.JSX.Element {
   const sequenceCancelled = useRef(false);
   const cancelCountdown = useRef<(() => void) | null>(null);
   const reviewUrls = useRef<string[]>([]);
+  /** F22: the view the tablet is showing, and the last one actually broadcast. */
+  const remoteViewRef = useRef<RemoteView | null>(null);
+  const remotePublished = useRef('');
   const [cameras, setCameras] = useState<CameraInfo[]>([]);
   const [selectedCameraId, setSelectedCameraId] = useState('');
   const [resolution, setResolution] = useState<CameraResolution>('best');
@@ -125,6 +131,9 @@ function App(): React.JSX.Element {
   const [consentOpen, setConsentOpen] = useState(false);
   /** F21: the operator's help screen with the hotkeys and the PIN lockout rule. */
   const [helpOpen, setHelpOpen] = useState(false);
+  /** F22: the tablet guest screen — its switch, its link and how many tablets are watching. */
+  const [remoteInfo, setRemoteInfo] = useState<RemoteServerInfo | null>(null);
+  const [remoteError, setRemoteError] = useState('');
   const [exitPrompt, setExitPrompt] = useState(false);
   const [exitPin, setExitPin] = useState('');
   const [capturedSlots, setCapturedSlots] = useState<Set<number>>(new Set());
@@ -140,6 +149,15 @@ function App(): React.JSX.Element {
   }, []);
 
   const layoutChoices = useMemo(() => event ? boothLayoutChoices(event, templates) : [], [event, templates]);
+
+  /** The tablet screen's switch and link are read once; changes come back over `remote:status`. */
+  useEffect(() => {
+    const bridge = window.photobooth;
+    if (!bridge) return;
+    void bridge.getRemoteInfo().then(setRemoteInfo).catch(() => setRemoteInfo(null));
+    const unsubscribe = bridge.onRemoteStatus((info) => setRemoteInfo(info));
+    return unsubscribe;
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1016,6 +1034,108 @@ function App(): React.JSX.Element {
   const slotCount = sessionShotCount || event?.shots || 3;
   const isBusy = busy || screen === 'capturing' || retakeBusySlot !== null;
 
+  /** F22: switch the tablet screen on or off, or mint a link that locks older tablets out. */
+  const handleRemoteToggle = async (enabled: boolean): Promise<void> => {
+    const bridge = window.photobooth;
+    if (!bridge) return;
+    setRemoteError('');
+    try { setRemoteInfo(await bridge.setRemoteEnabled(enabled)); } catch (error) { setRemoteError(toErrorMessage(error, 'Could not change the tablet screen.')); }
+  };
+
+  const handleRemoteRotateLink = async (): Promise<void> => {
+    const bridge = window.photobooth;
+    if (!bridge) return;
+    setRemoteError('');
+    try { setRemoteInfo(await bridge.rotateRemoteLink()); } catch (error) { setRemoteError(toErrorMessage(error, 'Could not make a new link.')); }
+  };
+
+  /** The tablet's own gate: only the commands its current stage offers are acted on. */
+  const runRemoteCommand = (command: RemoteCommand): void => {
+    const view = remoteViewRef.current;
+    if (!view || !isRemoteCommandAllowed(view, command)) return;
+    // A guest driving the booth from the tablet still gets the booth screen out of the loop.
+    setAttractVisible(false);
+    if (command.type === 'start') { void handleStartSession(); return; }
+    if (command.type === 'consent') { void confirmConsentAndStart(); return; }
+    if (command.type === 'continue') { void handleContinue(); return; }
+    if (command.type === 'done') { returnToReady(); return; }
+    if (command.type === 'reprint') { void handleReprint(); return; }
+    const slot = reviewRecord?.slots.find((candidate) => candidate.slotNumber === command.slotNumber);
+    if (slot) void handleRetake(slot);
+  };
+
+  const remoteView = buildRemoteView({
+    boothScreen: screen === 'capturing' ? 'capturing' : screen === 'review' ? 'review' : screen === 'finished' ? 'finished' : 'ready',
+    operatorWorking: !adminLocked,
+    consentOpen,
+    paused: Boolean(errorMessage),
+    eventName: event?.name ?? '',
+    welcomeText: event?.welcomeText ?? '',
+    thankYouText: event?.thankYouText ?? '',
+    primaryColor: event?.primaryColor ?? DEFAULT_PRIMARY_COLOR,
+    accentColor: event?.accentColor ?? DEFAULT_ACCENT_COLOR,
+    // A logo big enough to bloat every state message is simply left off; the tablet keeps the name.
+    logoUrl: eventLogoDataUrl && eventLogoDataUrl.length < 120_000 ? eventLogoDataUrl : '',
+    layoutCount: layoutChoices.length,
+    shotCount: sessionShotCount || event?.shots || 3,
+    currentShot: currentSlot,
+    countdown,
+    slots: (reviewRecord?.slots ?? []).map((slot) => ({ slotNumber: slot.slotNumber, photoId: slot.photoId })),
+    shareUrl,
+    consentText,
+    now: Date.now(),
+  });
+
+  /**
+   * The tablet only hears about real changes (a new countdown second, a new stage), so a busy
+   * booth does not spend its time serialising the same state.
+   */
+  useEffect(() => {
+    const bridge = window.photobooth;
+    remoteViewRef.current = remoteView;
+    if (!bridge) return;
+    const signature = remoteViewSignature(remoteView);
+    if (signature === remotePublished.current) return;
+    remotePublished.current = signature;
+    void bridge.publishRemoteView(remoteView).catch(() => { /* the booth never depends on this */ });
+  });
+
+  useEffect(() => {
+    const bridge = window.photobooth;
+    if (!bridge) return;
+    return bridge.onRemoteCommand(runRemoteCommand);
+  });
+
+  /**
+   * The preview is the booth's own video element drawn small and sent as JPEGs — the tablet
+   * never touches the camera. Frames stop the moment the last tablet leaves.
+   */
+  useEffect(() => {
+    const bridge = window.photobooth;
+    if (!bridge || (remoteInfo?.clients ?? 0) === 0) return;
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    let sending = false;
+    const timer = window.setInterval(() => {
+      const video = videoRef.current;
+      if (sending || !video || video.readyState < 2 || !video.videoWidth) return;
+      const scale = Math.min(1, 640 / video.videoWidth);
+      canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+      canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+      sending = true;
+      try { context.drawImage(video, 0, 0, canvas.width, canvas.height); } catch { sending = false; return; }
+      canvas.toBlob((blob) => {
+        if (!blob) { sending = false; return; }
+        void blob.arrayBuffer()
+          .then((buffer) => bridge.sendRemoteFrame(new Uint8Array(buffer)))
+          .catch(() => { /* a dropped frame is not a problem */ })
+          .finally(() => { sending = false; });
+      }, 'image/jpeg', 0.6);
+    }, 160);
+    return () => window.clearInterval(timer);
+  }, [remoteInfo?.clients]);
+
   /**
    * Operator hotkeys (F21). A held key, a typing guest or a dialog all leave the booth alone;
    * the destructive one (restart) is refused unless the settings are already unlocked.
@@ -1168,6 +1288,8 @@ function App(): React.JSX.Element {
         {screen === 'review' && reviewRecord && <ReviewSection record={reviewRecord} images={reviewImages} isBusy={isBusy} cameraReady={cameraReady} onRetake={(slot) => void handleRetake(slot)} onRevert={(slot) => void handleRevert(slot)} />}
         {unfinishedSessions.length > 0 && screen === 'ready' && !adminLocked && <RecoveryCard session={unfinishedSessions[0]!} busy={busy} cameraReady={cameraReady} onResume={() => void handleResumeSession(unfinishedSessions[0]!)} onDiscard={() => void handleDiscardSession(unfinishedSessions[0]!)} />}
         {screen === 'ready' && !adminLocked && uploadQueue && <UploadQueueCard summary={uploadQueue} />}
+        {screen === 'ready' && !adminLocked && <RemoteGuestCard info={remoteInfo} busy={busy} error={remoteError}
+          onToggle={(enabled) => void handleRemoteToggle(enabled)} onRotate={() => void handleRemoteRotateLink()} />}
         {screen === 'ready' && !adminLocked && printSummary && <PrintQueueCard summary={printSummary} jobs={printJobs} busy={busy} onSetPaused={(paused) => void handleSetPrintPaused(paused)} onCancel={(jobId) => void handleCancelPrintJob(jobId)} />}
         {screen === 'ready' && !adminLocked && retention && <RetentionNote status={retention} />}
         {screen === 'ready' && !adminLocked && queueWarning && <p className="pin-error" role="alert">{queueWarning}</p>}

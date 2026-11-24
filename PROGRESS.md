@@ -1,6 +1,6 @@
 # Progress
 
-Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`, F20 as `de322a2`, F21 as `e9564c1`.
+Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`, F20 as `de322a2`, F21 as `e9564c1`, F22 as `PENDING-F22`.
 
 ## Current status
 
@@ -28,9 +28,11 @@ Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `4215
 - **F20 (photo filters): merged** (`de322a2`), awaiting the per-look print check below.
 - **F21 (operator hotkeys, PIN lockout): merged** (`e9564c1`), awaiting the manual
   guest/keyboard and wrong-PIN checks below.
-- **F22 (tablet guest screen) and F23–F29: not started.**
+- **F22 (tablet guest screen): merged** (`PENDING-F22`), awaiting the full session from a
+  tablet below.
+- **F23–F29: not started.**
 - Automated verification today: `npm run typecheck`, `npm run lint`, `npm test`
-  (**384 tests in 68 files**), `npm run build` (Vite production build) all pass.
+  (**428 tests in 76 files**), `npm run build` (Vite production build) all pass.
   `npm run test:e2e` exists but cannot run in this environment (no browser runtime).
 
 ## Verification gaps (unrecorded or impossible here)
@@ -465,6 +467,52 @@ Rebindable shortcuts, shortcuts shown as on-screen buttons, a per-IP attempt lim
 guest gallery password (it has its own throttle), and blocking Windows system shortcuts — the
 last one needs Windows Assigned Access, which the app cannot replace.
 
+## F22. Tablet guest screen (merged)
+
+- **A second screen, not a second app.** `features/remote-guest/` serves one page plus a
+  WebSocket and an MJPEG stream on port 47626, reachable from the booth's LAN address. The
+  booth renderer keeps owning the session; it publishes a `RemoteView` and preview JPEGs over
+  IPC, and receives the tablet's commands as events. Camera, files, database and printer never
+  move off the booth.
+- **Streaming:** the booth draws its own `<video>` into a 640 px canvas about six times a
+  second (JPEG q0.6) and sends the frames while at least one tablet holds a socket; frames stop
+  the moment the last one leaves, so an idle booth does no encoding. A tablet joining late gets
+  the last frame immediately.
+- **State sync:** the view carries the stage, event branding, welcome/thank-you text, consent
+  notice, countdown, shot number, the review slots and the share link — nothing operator-only.
+  The booth broadcasts only when `remoteViewSignature` changes, and a new tablet is greeted with
+  the current view at once.
+- **Commands:** `start`, `consent`, `retake{slot}`, `continue`, `done`, `reprint`, allowed per
+  stage and checked twice (`remote-server.ts` and the booth). Retake needs a filled slot; a busy
+  or switched-off booth accepts nothing. The tablet also throttles to one command per 600 ms.
+- **Recovery:** the tablet shows *Reconnecting to the booth…* and retries with backoff
+  (1 s → 8 s), reconnects when the tab becomes visible again, and shows a preview-failure notice
+  that says the booth still works. The booth never waits on a tablet for anything.
+- **Access:** the screen is off by default (`settings.remoteGuestEnabled`), the URL carries a
+  random token (`remoteGuestToken`), **New link** rotates it and drops connected tablets, at
+  most six sockets are served, non-token paths are 404, and the page ships a strict CSP,
+  `noindex`, no inline script and a touch-sized layout.
+- **No dependency:** the WebSocket is hand-rolled (handshake, masked client frames, text only,
+  16 KB cap, ping/pong, close) and covered by tests against the RFC handshake vector; MJPEG
+  framing is tested byte for byte. The server is integration-tested with a real HTTP client and
+  a raw socket, including token refusal, off-switch refusal, client cap, command gating and a
+  clean shutdown with a tablet attached.
+
+### F22 manual check
+
+Switch the tablet screen on, open the link on a tablet on the booth's Wi-Fi and run a whole
+session from it: start, agree to the consent, watch the countdown and the photo, retake one
+slot, use the photos, then print another. Walk the tablet out of range mid-session (it must say
+*Reconnecting…* and recover when it comes back; the booth keeps working), turn the booth
+computer's Wi-Fi off (preview message, booth still shoots), rotate the link (the old tablet page
+must stop working) and check the layout in portrait and landscape.
+
+### F22 out of scope (later features)
+
+WebRTC (MJPEG was chosen for size and simplicity), tablet-side thumbnails of the photos,
+tablet camera capture, several tablets driving different events, and any cross-internet
+exposure — the tablet screen is LAN-only by design.
+
 ## Feature log
 
 ### F0. Project setup
@@ -554,7 +602,16 @@ last one needs Windows Assigned Access, which the app cannot replace.
   job is retried only by an explicit reprint (a loose cable should not burn paper).
 - The attract loop keeps the camera stream alive behind it, so the first photo after a touch
   does not wait for a camera restart; the stream is hidden, never sent anywhere.
-- `src/ui/main.tsx` still holds the session flow and the event/PIN forms (~1300 lines).
+- `src/ui/main.tsx` still holds the session flow and the event/PIN forms (~1400 lines), now
+  including the tablet view mapping and frame sender.
+- The tablet screen is plain HTTP on the LAN: the token keeps strangers out, but anyone who
+  can read the tablet's URL bar or history while it is on the same network can drive the booth.
+  It is off by default and the link rotates; TLS would need a certificate the booth does not
+  have.
+- The tablet sees a streamed preview, not its own copies of the photos: thumbnails and the
+  finished layout stay on the booth screen and the download link.
+- MJPEG costs roughly 200–350 KB/s per connected tablet; frames simply skip while a tablet is
+  slower than the stream.
 - `ctx.filter` needs a canvas2D implementation that supports filters (Chromium does); anywhere
   it silently ignores the string, a look simply draws the photo unfiltered rather than failing.
 - The canvas painter itself is untested (jsdom has no canvas); its geometry is pinned by

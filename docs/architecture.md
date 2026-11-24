@@ -80,12 +80,34 @@ and keeps blob URLs for the lifetime of that event, so a 25 MB clip is not re-re
 | A table, query or file write | `src/features/<feature>/data/`, exported from `node.ts` |
 | A new IPC channel | `electron/ipc/<area>-handlers.ts`, registered in `electron/ipc/registry.ts`, typed in `src/ui/electron.d.ts` and `electron/preload.ts` |
 | A new window | `electron/windows/` |
+| A new tablet-facing screen or route | `src/features/remote-guest/data/remote-server.ts` + the page in `remote-page-html.ts`, gated by the same token |
 | An operator hotkey | a row in `src/renderer/lib/hotkeys.ts` (the key map the handler and the help screen both read), then handle the action in `src/ui/main.tsx` |
 | A new setting | `src/shared/constants/settings-keys.ts`, then read it in the handler |
 | A new print size | `pagePresets` in `features/layouts/domain/template-document.ts`, then add it to the seeding list in `features/layouts/data/template-repository.ts` |
 | A new background job | `src/shared/scheduling/interval-job.ts` (no overlap, unref'd timer), started from the feature scheduler and `electron/main.ts` |
 | A new hardware device | `src/features/<feature>/devices/` behind an interface, with a mock |
 | A rule that must hold for every caller (lockouts, limits) | `src/features/<feature>/domain/`, called from the node-layer data module so no IPC handler can bypass it |
+
+## Tablet guest screen (F22)
+
+- `features/remote-guest/` is its own feature: `data/remote-server.ts` (the HTTP + WebSocket
+  server), `data/websocket-frame.ts` and `data/mjpeg.ts` (the two wire formats, both pure),
+  `data/remote-settings.ts` (the switch and the link token in `settings`), and
+  `domain/remote-view.ts` (the stage mapping and the command gate, pure and renderer-safe).
+- **The booth stays the boss.** The renderer owns the session, so it publishes a `RemoteView`
+  and preview JPEGs over IPC (`remote:publish`, `remote:frame`); the tablet's commands come
+  back as `remote:command` events. The server never touches SQLite, the camera or the printer.
+- **No new dependency.** The WebSocket is the 60 lines of RFC 6455 this needs: masked client
+  frames, unmasked server frames, text only, 16 KB cap, ping every 15 s, pings and closes
+  answered. Anything else is a protocol error and the socket is closed with code 1002.
+- **Two gates for one command.** `isRemoteCommandAllowed` decides from the view what the
+  current stage offers (start only while ready, retake only for a filled slot in review), the
+  server drops anything that does not match, and the booth checks again before acting. A
+  tablet that keeps an old page open cannot push the booth into another stage.
+- **Long-lived connections:** `close()` destroys sockets and streams rather than waiting for
+  them, MJPEG writers skip frames while a tablet is slower than the stream,
+  `onClientsChanged` tells the booth when to start or stop sending frames, and at most six
+  tablets may hold a socket.
 
 ## Security layers (F9 + F21)
 
