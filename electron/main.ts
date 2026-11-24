@@ -7,12 +7,15 @@ import { startRetentionScheduler } from '../src/features/retention/node.js';
 import { startPrintQueueScheduler } from '../src/features/printing/node.js';
 import { registerIpcHandlers } from './ipc/registry.js';
 import { startDownloadServer } from './download-service.js';
+import { startRemoteGuestService } from './remote-service.js';
+import type { RemoteGuestService } from './remote-service.js';
 import { ElectronSystemPrinter } from './devices/system-printer.js';
 import { createBoothWindowController } from './windows/booth-window.js';
 
 const boothWindow = createBoothWindowController();
 let mainWindow: BrowserWindow | null = null;
 let downloadServer: Server | null = null;
+let remoteGuest: RemoteGuestService | null = null;
 
 app.whenReady().then(async () => {
   const userDataPath = app.getPath('userData');
@@ -26,6 +29,14 @@ app.whenReady().then(async () => {
   const stopRetentionScheduler = startRetentionScheduler({ userDataPath, onError: (message) => console.warn(message) });
   app.on('will-quit', stopRetentionScheduler);
   downloadServer = await startDownloadServer(userDataPath);
+  // The tablet guest screen (F22): started now, switched on by the operator, token in the URL.
+  remoteGuest = await startRemoteGuestService({
+    userDataPath,
+    onClientsChanged: () => {
+      const info = remoteGuest?.info();
+      if (info) mainWindow?.webContents.send('remote:status', info);
+    },
+  });
 
   // The print worker (F18): queued sheets print in order, retried after a pause or a restart.
   const printQueue = startPrintQueueScheduler({
@@ -43,7 +54,7 @@ app.whenReady().then(async () => {
       boothWindow.permitClose();
       app.quit();
     },
-  });
+  }, remoteGuest);
 
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
     callback(permission === 'media');
@@ -55,7 +66,10 @@ app.whenReady().then(async () => {
   });
 });
 
-app.on('before-quit', () => { if (downloadServer) downloadServer.close(); });
+app.on('before-quit', () => {
+  if (downloadServer) downloadServer.close();
+  void remoteGuest?.stop();
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

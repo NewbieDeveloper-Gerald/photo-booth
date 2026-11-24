@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { AdminPinAttempt, AdminPinLockout } from '../src/shared/types/admin-pin';
+import type { RemoteCommand, RemoteServerInfo, RemoteView } from '../src/shared/types/remote-guest';
 
 import type { BoothSettingKey } from '../src/shared/constants/settings-keys.js';
 
@@ -14,6 +15,23 @@ contextBridge.exposeInMainWorld('photobooth', {
   getAdminPinLockout: (): Promise<AdminPinLockout> => ipcRenderer.invoke('admin:lockout'),
   setAdminPin: (pin: string, currentPin: string): Promise<AdminPinLockout> => ipcRenderer.invoke('admin:setPin', pin, currentPin),
   exitKioskWithPin: (pin: string): Promise<AdminPinAttempt> => ipcRenderer.invoke('kiosk:exitWithPin', pin),
+  // Tablet guest screen (F22): the booth publishes its state and preview frames, the tablet's
+  // commands come back as events.
+  getRemoteInfo: (): Promise<RemoteServerInfo> => ipcRenderer.invoke('remote:info'),
+  setRemoteEnabled: (enabled: boolean): Promise<RemoteServerInfo> => ipcRenderer.invoke('remote:setEnabled', enabled),
+  rotateRemoteLink: (): Promise<RemoteServerInfo> => ipcRenderer.invoke('remote:rotateLink'),
+  publishRemoteView: (view: RemoteView): Promise<void> => ipcRenderer.invoke('remote:publish', view),
+  sendRemoteFrame: (jpeg: Uint8Array): Promise<void> => ipcRenderer.invoke('remote:frame', jpeg),
+  onRemoteCommand: (listener: (command: RemoteCommand) => void): (() => void) => {
+    const handler = (_event: unknown, command: RemoteCommand): void => listener(command);
+    ipcRenderer.on('remote:command', handler);
+    return () => { ipcRenderer.removeListener('remote:command', handler); };
+  },
+  onRemoteStatus: (listener: (info: RemoteServerInfo) => void): (() => void) => {
+    const handler = (_event: unknown, info: RemoteServerInfo): void => listener(info);
+    ipcRenderer.on('remote:status', handler);
+    return () => { ipcRenderer.removeListener('remote:status', handler); };
+  },
   onExitRequested: (callback: () => void): (() => void) => {
     const listener = (): void => callback();
     ipcRenderer.on('kiosk:exitRequested', listener);
