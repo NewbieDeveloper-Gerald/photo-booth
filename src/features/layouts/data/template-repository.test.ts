@@ -8,6 +8,8 @@ import { layoutPresets } from '../catalog';
 import { isValidTemplateDocument } from '../domain/template-document';
 import { templateFromCatalogPreset } from '../domain/template-builder';
 import { builtinTemplates, ensureBuiltinTemplates, listTemplates, loadTemplate, saveTemplate } from './template-repository';
+import { createSession } from '../../capture/node';
+import { loadSession } from '../../capture/node';
 
 let directory: string;
 
@@ -89,5 +91,24 @@ describe('template storage', () => {
     ensureBuiltinTemplates(directory);
     expect(listTemplates(directory).some((template) => template.id === 'custom-1')).toBe(true);
     expect(listTemplates(directory).some((template) => template.id === '5x7-2x1')).toBe(true);
+  });
+});
+
+describe('upgrading a booth that predates templates', () => {
+  it('adds the template tables and keeps existing sessions intact', async () => {
+    const created = createSession(directory);
+    expect(loadSession(directory, created.sessionId).slots).toHaveLength(3);
+
+    // Simulate a database created before migration 008 existed.
+    const database = openDatabase(directory);
+    database.exec('DROP TABLE template_elements; DROP TABLE templates;');
+    database.prepare('DELETE FROM schema_migrations WHERE name = ?').run('008_templates');
+    database.close();
+
+    initializeStorage(directory);
+
+    const summary = listTemplates(directory);
+    expect(summary.length).toBe(builtinTemplates().length);
+    expect(loadSession(directory, created.sessionId).slots).toHaveLength(3);
   });
 });
