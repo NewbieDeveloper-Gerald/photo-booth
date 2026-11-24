@@ -4,7 +4,9 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { initializeStorage } from './database';
-import { abandonSession, commitRetake, createSession, exportEventFolder, getActiveEvent, getLatestSessionPrintInfo, listUnfinishedSessions, loadSession, readOriginalPhoto, revertRetake, saveDownloadCopy, saveOriginalPhoto, saveRetakeOriginalPhoto, saveSessionOutput, setActiveEventRetakeLimit, saveEventSettings } from './sessions';
+import { abandonSession, commitRetake, createSession, listUnfinishedSessions, loadSession, readOriginalPhoto, revertRetake, saveDownloadCopy, saveOriginalPhoto, saveRetakeOriginalPhoto, saveSessionOutput } from '../features/capture';
+import { exportEventFolder, getActiveEvent, saveEventSettings, setActiveEventRetakeLimit } from '../features/events';
+import { getLatestSessionPrintInfo } from '../features/printing';
 
 const directories: string[] = [];
 function setup(): string {

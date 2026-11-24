@@ -9,7 +9,8 @@ import { coverCrop } from '../core/layout';
 import { decideAutoPrint } from '../core/printing';
 import { getLayoutPreset, layoutPresets } from '../core/layouts';
 import { BrowserCameraDevice, type CameraInfo, type CameraResolution } from '../hardware/camera';
-import type { ActiveEvent, EventSettings, SessionRecord, SessionSlot, UnfinishedSession } from '../storage/sessions';
+import type { ActiveEvent, EventSettings } from '../shared/types/event';
+import type { SessionRecord, SessionSlot, UnfinishedSession } from '../shared/types/session';
 import type { UploadQueueSummary } from '../cloud/upload-queue';
 import './style.css';
 

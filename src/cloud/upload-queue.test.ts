@@ -4,7 +4,7 @@ import path from 'node:path';
 import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 import { initializeStorage } from '../storage/database';
-import { createSession } from '../storage/sessions';
+import { createSession } from '../features/capture';
 import { enqueueSessionFiles, listUploadQueue, processDueUploads, recoverInterruptedUploads, type UploadQueueItem } from './upload-queue';
 
 const dirs: string[] = [];

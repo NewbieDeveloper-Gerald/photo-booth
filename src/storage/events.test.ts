@@ -3,7 +3,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { initializeStorage } from './database';
-import { createSession, duplicateEvent, getActiveEvent, getEventLogoDataUrl, listEvents, loadSession, saveEventSettings, selectActiveEvent, setEventLogo } from './sessions';
+import { createSession, loadSession } from '../features/capture';
+import { duplicateEvent, getActiveEvent, getEventLogoDataUrl, listEvents, saveEventSettings, selectActiveEvent, setEventLogo } from '../features/events';
 
 const dirs: string[] = [];
 function setup(): string { const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'photobooth-events-')); dirs.push(dir); initializeStorage(dir); return dir; }

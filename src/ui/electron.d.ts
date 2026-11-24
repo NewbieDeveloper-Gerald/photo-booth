@@ -1,6 +1,7 @@
 export {};
 
-import type { ActiveEvent, EventSettings, SessionRecord, UnfinishedSession } from '../storage/sessions';
+import type { ActiveEvent, EventSettings } from '../shared/types/event';
+import type { SessionRecord, UnfinishedSession } from '../shared/types/session';
 import type { UploadQueueSummary } from '../cloud/upload-queue';
 import type { BoothSettingKey } from '../shared/constants/settings-keys';
 

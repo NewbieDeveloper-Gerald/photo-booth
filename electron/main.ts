@@ -12,7 +12,11 @@ import { isBoothSettingKey } from '../src/shared/constants/settings-keys.js';
 import { BYTES_PER_GIGABYTE, MAX_DISK_WARNING_GB } from '../src/shared/constants/limits.js';
 import { enqueueSessionFiles, listUploadQueue, recoverInterruptedUploads } from '../src/cloud/upload-queue.js';
 import type { Server } from 'node:http';
-import { abandonSession, commitRetake, createSession, discardSession, exportEventFolder, getActiveEvent, getConfiguredStoragePaths, createSessionShareLink, getLatestSessionPrintInfo, listUnfinishedSessions, loadSession, readOriginalPhoto, revertRetake, saveDownloadCopy, saveOriginalPhoto, saveRetakeOriginalPhoto, saveSessionOutput, setActiveEventRetakeLimit, listEvents, saveEventSettings, duplicateEvent, selectActiveEvent, setEventLogo, getEventLogoDataUrl } from '../src/storage/sessions.js';
+import { getConfiguredStoragePaths } from '../src/features/storage/index.js';
+import { abandonSession, commitRetake, createSession, discardSession, listUnfinishedSessions, loadSession, readOriginalPhoto, revertRetake, saveDownloadCopy, saveOriginalPhoto, saveRetakeOriginalPhoto, saveSessionOutput } from '../src/features/capture/index.js';
+import { duplicateEvent, exportEventFolder, getActiveEvent, getEventLogoDataUrl, listEvents, saveEventSettings, selectActiveEvent, setActiveEventRetakeLimit, setEventLogo } from '../src/features/events/index.js';
+import { getLatestSessionPrintInfo } from '../src/features/printing/index.js';
+import { createSessionShareLink } from '../src/features/sharing/index.js';
 
 function validateSettingKey(key: unknown): void {
   if (!isBoothSettingKey(key)) throw new Error('Unsupported setting');
