@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Clear text is allowed only for the phone's own loopback, which is where `adb reverse` puts the
+  booth. Everything else would have to be HTTPS, so the app cannot quietly become a plain internet
+  client even if someone typed another address into it.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>

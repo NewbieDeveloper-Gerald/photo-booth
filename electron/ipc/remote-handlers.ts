@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron';
 import type { IpcContext } from './context.js';
 import type { RemoteGuestService } from '../remote-service.js';
+import type { UsbLinkService } from '../../src/features/remote-guest/node.js';
 import type { RemoteView } from '../../src/shared/types/remote-guest.js';
 
 const STAGES = ['off', 'busy', 'ready', 'consent', 'capturing', 'review', 'finished', 'paused'];
@@ -18,7 +19,15 @@ function isRemoteView(value: unknown): value is RemoteView {
  * The renderer owns the booth state and the camera, so it publishes the tablet view and the
  * preview frames; this module just carries them to the server and the tablet's commands back.
  */
-export function registerRemoteHandlers({ getMainWindow }: IpcContext, remote: RemoteGuestService | null): void {
+export function registerRemoteHandlers({ getMainWindow }: IpcContext, remote: RemoteGuestService | null, usb: UsbLinkService | null = null): void {
+  // The USB cable link (F22 extension): adb maps a port, the device opens 127.0.0.1 — no network.
+  ipcMain.handle('usbLink:status', () => usb?.status() ?? null);
+  ipcMain.handle('usbLink:connect', () => {
+    if (!usb) throw new Error('The USB link needs the desktop app.');
+    if (!remote?.info().enabled) throw new Error('Switch on the tablet screen first: the cable link serves that screen.');
+    return usb.connect();
+  });
+  ipcMain.handle('usbLink:disconnect', () => usb?.disconnect() ?? null);
   ipcMain.handle('remote:info', () => remote?.info() ?? { enabled: false, url: null, clients: 0 });
   ipcMain.handle('remote:setEnabled', (_event, enabled: unknown) => {
     if (!remote) throw new Error('The tablet screen needs the desktop app');

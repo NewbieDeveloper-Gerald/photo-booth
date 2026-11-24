@@ -35,3 +35,16 @@ describe('the tablet page (F22)', () => {
     expect(new Set(sent)).toEqual(new Set(['start', 'consent', 'retake', 'continue', 'reprint', 'done']));
   });
 });
+
+describe('the guest screen fits phones and tablets (F22, USB app)', () => {
+  it('lays itself out fluidly instead of by fixed pixels', () => {
+    const html = renderRemotePage({ eventName: 'Ana & Ben' });
+    // Safe areas, dynamic viewport height, fluid type and a two-column layout only when there is room.
+    expect(html).toContain('viewport-fit=cover');
+    expect(html).toContain('100dvh');
+    expect(html).toContain('env(safe-area-inset-top)');
+    expect(html).toContain('clamp(');
+    expect(html).toContain('@media (min-width: 900px)');
+    expect(html).toContain('repeat(auto-fit, minmax(150px, 1fr))');
+  });
+});

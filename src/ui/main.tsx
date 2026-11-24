@@ -29,6 +29,8 @@ import { HotkeyHelp } from '../renderer/components/HotkeyHelp';
 import { RemoteGuestCard } from '../renderer/components/RemoteGuestCard';
 import type { LinkChannel, SendLinkOutcome } from '../features/sharing';
 import { CameraSourceCard } from '../renderer/components/CameraSourceCard';
+import { UsbScreenCard } from '../renderer/components/UsbScreenCard';
+import type { UsbLinkStatus } from '../features/remote-guest';
 import { SendLinkCard } from '../renderer/components/SendLinkCard';
 import { createTetherBridge } from '../renderer/lib/tether-bridge';
 import { AnalyticsCard } from '../renderer/components/AnalyticsCard';
@@ -116,6 +118,8 @@ function App(): React.JSX.Element {
   const [printSummary, setPrintSummary] = useState<PrintQueueSummary | null>(null);
   /** F25: the saved printer profiles the operator maintains on the panel. */
   const [printerProfiles, setPrinterProfiles] = useState<PrinterProfile[]>([]);
+  /** F22 extension: the phone on a USB cable, mapped with adb so no network is needed. */
+  const [usbLink, setUsbLink] = useState<UsbLinkStatus | null>(null);
   /** F19: the idle loop that invites guests in, and the media it cycles through. */
   const [attractVisible, setAttractVisible] = useState(false);
   const [attractMedia, setAttractMedia] = useState<AttractMedia[]>([]);
@@ -455,6 +459,7 @@ function App(): React.JSX.Element {
         const preferred = savedPrinter && availablePrinters.some((printer) => printer.name === savedPrinter) ? savedPrinter : availablePrinters.find((printer) => printer.isDefault)?.name ?? availablePrinters[0]?.name ?? '';
         setSelectedPrinterName(preferred);
         if (!savedPrinter && preferred) void savePreference('selectedPrinterName', preferred);
+        setUsbLink(await window.photobooth.getUsbLinkStatus().catch(() => null));
         const savedProfiles = await window.photobooth.listPrinterProfiles().catch(() => []);
         if (!cancelled) setPrinterProfiles(savedProfiles);
       }
@@ -970,6 +975,21 @@ function App(): React.JSX.Element {
       await refreshPrintQueue(event?.id);
     } catch (error) { setPrintStatus(`Failed · ${toErrorMessage(error, 'printer error')}`); }
     finally { setBusy(false); }
+  };
+
+  const refreshUsbLink = async (): Promise<void> => {
+    if (!window.photobooth) return;
+    setUsbLink(await window.photobooth.getUsbLinkStatus().catch(() => null));
+  };
+
+  const handleUsbConnect = async (): Promise<void> => {
+    if (!window.photobooth) throw new Error('The cable link needs the desktop app.');
+    setUsbLink(await window.photobooth.connectUsbLink());
+  };
+
+  const handleUsbDisconnect = async (): Promise<void> => {
+    if (!window.photobooth) return;
+    setUsbLink(await window.photobooth.disconnectUsbLink());
   };
 
   const refreshPrinterProfiles = async (): Promise<void> => {
@@ -1492,6 +1512,13 @@ function App(): React.JSX.Element {
         {screen === 'ready' && !adminLocked && <AnalyticsCard downloadBaseUrl={downloadBaseUrl} />}
         {screen === 'ready' && !adminLocked && <RemoteGuestCard info={remoteInfo} busy={busy} error={remoteError}
           onToggle={(enabled) => void handleRemoteToggle(enabled)} onRotate={() => void handleRemoteRotateLink()} />}
+        {screen === 'ready' && !adminLocked && <UsbScreenCard
+          status={usbLink}
+          remoteEnabled={Boolean(remoteInfo?.enabled)}
+          busy={busy}
+          onRefresh={() => void refreshUsbLink()}
+          onConnect={handleUsbConnect}
+          onDisconnect={handleUsbDisconnect} />}
         {screen === 'ready' && !adminLocked && printSummary && <PrintQueueCard summary={printSummary} jobs={printJobs} busy={busy} onSetPaused={(paused) => void handleSetPrintPaused(paused)} onCancel={(jobId) => void handleCancelPrintJob(jobId)} />}
         {screen === 'ready' && !adminLocked && <CameraSourceCard
           status={tetherStatus}

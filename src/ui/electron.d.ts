@@ -9,6 +9,7 @@ import type { PrintJob, PrintQueueSummary } from '../features/printing/domain/pr
 import type { PrinterProfile, PrinterProfileDraft } from '../features/printing/domain/printer-profile';
 import type { TetherStatus } from '../features/capture/dslr/dslr-types';
 import type { LinkChannel, SendLinkOutcome } from '../features/sharing/link-delivery/types';
+import type { UsbLinkStatus } from '../features/remote-guest/usb-link/link-service';
 import type { AttractMedia } from '../shared/types/attract';
 import type { PhotoFilterId } from '../shared/types/photo-filter';
 import type { AdminPinAttempt, AdminPinLockout } from '../shared/types/admin-pin';
@@ -33,6 +34,9 @@ declare global {
       rotateRemoteLink(): Promise<RemoteServerInfo>;
       publishRemoteView(view: RemoteView): Promise<void>;
       sendRemoteFrame(jpeg: Uint8Array): Promise<void>;
+      getUsbLinkStatus(): Promise<UsbLinkStatus | null>;
+      connectUsbLink(): Promise<UsbLinkStatus | null>;
+      disconnectUsbLink(): Promise<UsbLinkStatus | null>;
       onRemoteCommand(listener: (command: RemoteCommand) => void): () => void;
       onRemoteStatus(listener: (info: RemoteServerInfo) => void): () => void;
       dslrStatus(): Promise<TetherStatus>;

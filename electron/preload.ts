@@ -3,6 +3,7 @@ import type { AdminPinAttempt, AdminPinLockout } from '../src/shared/types/admin
 import type { RemoteCommand, RemoteServerInfo, RemoteView } from '../src/shared/types/remote-guest';
 import type { TetherStatus } from '../src/features/capture/dslr/dslr-types';
 import type { LinkChannel, SendLinkOutcome } from '../src/features/sharing/link-delivery/types';
+import type { UsbLinkStatus } from '../src/features/remote-guest/usb-link/link-service';
 
 import type { BoothSettingKey } from '../src/shared/constants/settings-keys.js';
 
@@ -24,6 +25,10 @@ contextBridge.exposeInMainWorld('photobooth', {
   rotateRemoteLink: (): Promise<RemoteServerInfo> => ipcRenderer.invoke('remote:rotateLink'),
   publishRemoteView: (view: RemoteView): Promise<void> => ipcRenderer.invoke('remote:publish', view),
   sendRemoteFrame: (jpeg: Uint8Array): Promise<void> => ipcRenderer.invoke('remote:frame', jpeg),
+  // The USB cable link (F22 extension): map the port with adb, then the device opens 127.0.0.1.
+  getUsbLinkStatus: (): Promise<UsbLinkStatus | null> => ipcRenderer.invoke('usbLink:status'),
+  connectUsbLink: (): Promise<UsbLinkStatus | null> => ipcRenderer.invoke('usbLink:connect'),
+  disconnectUsbLink: (): Promise<UsbLinkStatus | null> => ipcRenderer.invoke('usbLink:disconnect'),
   onRemoteCommand: (listener: (command: RemoteCommand) => void): (() => void) => {
     const handler = (_event: unknown, command: RemoteCommand): void => listener(command);
     ipcRenderer.on('remote:command', handler);

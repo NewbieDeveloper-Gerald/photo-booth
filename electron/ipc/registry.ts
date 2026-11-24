@@ -11,10 +11,11 @@ import { registerStorageHandlers } from './storage-handlers.js';
 import { registerRemoteHandlers } from './remote-handlers.js';
 import type { RemoteGuestService } from '../remote-service.js';
 import type { DslrService } from '../dslr-service.js';
+import type { UsbLinkService } from '../../src/features/remote-guest/node.js';
 import { registerCameraHandlers } from './camera-handlers.js';
 
 /** One place to see every IPC channel the renderer may call, grouped by feature. */
-export function registerIpcHandlers(context: IpcContext, remote: RemoteGuestService | null = null, dslr: DslrService | null = null): void {
+export function registerIpcHandlers(context: IpcContext, remote: RemoteGuestService | null = null, dslr: DslrService | null = null, usbLink: UsbLinkService | null = null): void {
   registerSettingsHandlers(context);
   registerSecurityHandlers(context);
   registerEventHandlers(context);
@@ -25,5 +26,5 @@ export function registerIpcHandlers(context: IpcContext, remote: RemoteGuestServ
   if (dslr) registerCameraHandlers(dslr);
   registerRetentionHandlers(context);
   registerStorageHandlers(context);
-  registerRemoteHandlers(context, remote);
+  registerRemoteHandlers(context, remote, usbLink);
 }

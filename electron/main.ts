@@ -11,6 +11,8 @@ import { startRemoteGuestService } from './remote-service.js';
 import type { RemoteGuestService } from './remote-service.js';
 import { ElectronSystemPrinter } from './devices/system-printer.js';
 import { startDslrService } from './dslr-service.js';
+import { startAndroidUsbService } from './android-usb-service.js';
+import { readRemoteToken } from '../src/features/remote-guest/node.js';
 import type { DslrService } from './dslr-service.js';
 import { createBoothWindowController } from './windows/booth-window.js';
 
@@ -47,6 +49,10 @@ app.whenReady().then(async () => {
   });
   app.on('will-quit', printQueue.stop);
 
+  // The USB cable link (F22 extension): adb reverse maps the tablet port, so a phone on a cable
+  // shows the guest screen with no internet, no router and no typing.
+  const usbLink = startAndroidUsbService(() => readRemoteToken(userDataPath));
+
   // The tether camera (F26): the helper only runs while live view or a capture asks for it.
   dslr = startDslrService(() => mainWindow);
   app.on('will-quit', () => dslr?.dispose());
@@ -61,7 +67,7 @@ app.whenReady().then(async () => {
       boothWindow.permitClose();
       app.quit();
     },
-  }, remoteGuest, dslr);
+  }, remoteGuest, dslr, usbLink);
 
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
     callback(permission === 'media');

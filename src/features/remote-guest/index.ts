@@ -3,3 +3,6 @@ export { allowedRemoteCommands, buildRemoteView, isRemoteCommandAllowed, offRemo
 export { pickLanAddress, remoteGuestUrl } from './domain/lan-address';
 export type { NetworkInterfaces } from './domain/lan-address';
 export type { RemoteCommand, RemoteServerInfo, RemoteSlot, RemoteStage, RemoteView } from '../../shared/types/remote-guest';
+// Renderer-safe parts of the USB cable link (F22 extension): the status shape and the URL helper.
+export { USB_SCREEN_PORT, usbGuestUrl, type AdbDevice, type AdbDeviceState } from './usb-link/adb';
+export type { UsbLinkStatus } from './usb-link/link-service';
