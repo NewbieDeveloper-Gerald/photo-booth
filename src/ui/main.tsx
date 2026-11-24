@@ -86,6 +86,8 @@ function App(): React.JSX.Element {
   const [uploadQueue, setUploadQueue] = useState<UploadQueueSummary | null>(null);
   const [queueWarning, setQueueWarning] = useState('');
   const [retention, setRetention] = useState<RetentionStatus | null>(null);
+  const [galleryPasswordDraft, setGalleryPasswordDraft] = useState('');
+  const [galleryLink, setGalleryLink] = useState('');
   const [pinConfigured, setPinConfigured] = useState(false);
   const [adminLocked, setAdminLocked] = useState(false);
   const [showUnlock, setShowUnlock] = useState(false);
@@ -295,7 +297,7 @@ function App(): React.JSX.Element {
         setTemplates(layoutPresets.map((preset) => ({ id: preset.id, name: preset.name, shots: preset.shots, copies: preset.copies, pagePreset: '4x6' as const, pageLabel: '4 × 6 in', builtIn: true })));
         // The browser preview has no event storage, so it offers three catalog layouts and
         // makes the guest picker visible while developing the UI.
-        setEvent({ id: 'preview-event', name: 'Default Event', shots: 3, retakeLimit: 3, printEnabled: true, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: 'double-strip-3', offeredLayoutIds: ['double-strip-3', 'double-strip-4', 'grid-4-portrait'], consentText: '', contactText: '' });
+        setEvent({ id: 'preview-event', name: 'Default Event', shots: 3, retakeLimit: 3, printEnabled: true, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: 'double-strip-3', offeredLayoutIds: ['double-strip-3', 'double-strip-4', 'grid-4-portrait'], consentText: '', contactText: '', galleryToken: null, galleryPasswordSet: false });
         setRetakeLimitDraft('3');
       }
       if (!camera) { setStatus('Camera access is not available.'); return; }
@@ -451,6 +453,7 @@ function App(): React.JSX.Element {
 
   const loadEventBrand = async (active: ActiveEvent): Promise<void> => {
     setEvent(active); setEventDraft(active); setSelectedLayoutId(active.defaultLayoutId);
+    setGalleryPasswordDraft(''); setGalleryLink('');
     setEventLogoDataUrl(await window.photobooth?.getEventLogoDataUrl(active.id).catch(() => null) ?? null);
     setRetakeLimitDraft(active.retakeLimit === -1 ? '' : String(active.retakeLimit));
   };
@@ -462,18 +465,19 @@ function App(): React.JSX.Element {
   };
 
   const handleNewEvent = (): void => {
-    setEventDraft({ id: '', name: '', shots: 3, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: defaultLayoutIdForShots(3), offeredLayoutIds: [defaultLayoutIdForShots(3)], consentText: '', contactText: '' });
+    setEventDraft({ id: '', name: '', shots: 3, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: defaultLayoutIdForShots(3), offeredLayoutIds: [defaultLayoutIdForShots(3)], consentText: '', contactText: '', galleryToken: null, galleryPasswordSet: false });
     setEventLogoDataUrl(null); setEventMessage('New event details are not saved yet.');
   };
 
   const handleSaveEvent = async (): Promise<void> => {
     if (!window.photobooth || !eventDraft) return;
     try {
-      const saved = await window.photobooth.saveEvent(eventDraft);
+      const saved = await window.photobooth.saveEvent(galleryPasswordDraft ? { ...eventDraft, galleryPassword: galleryPasswordDraft } : eventDraft);
       const active = await window.photobooth.selectActiveEvent(saved.id);
       await loadEventBrand(active);
       setEvents(await window.photobooth.listEvents());
-      setEventMessage('Event saved and selected as active.');
+      setGalleryPasswordDraft('');
+      setEventMessage(galleryPasswordDraft ? 'Event saved, selected as active, and the gallery password updated.' : 'Event saved and selected as active.');
     } catch (error) { setEventMessage(toErrorMessage(error, 'Could not save event.')); }
   };
 
@@ -493,7 +497,7 @@ function App(): React.JSX.Element {
     try {
       let eventId = eventDraft.id;
       if (!eventId) {
-        const saved = await window.photobooth.saveEvent(eventDraft);
+        const saved = await window.photobooth.saveEvent(galleryPasswordDraft ? { ...eventDraft, galleryPassword: galleryPasswordDraft } : eventDraft);
         eventId = saved.id;
         const active = await window.photobooth.selectActiveEvent(eventId);
         await loadEventBrand(active);
@@ -728,6 +732,25 @@ function App(): React.JSX.Element {
     setDiskWarningGB(String(threshold));
     void savePreference('lowDiskWarningGB', String(threshold)).catch(() => setErrorMessage('Could not save the disk warning threshold.'));
   };
+  const handleShowGalleryLink = async (): Promise<void> => {
+    if (!window.photobooth || !event) return;
+    try {
+      const link = await window.photobooth.createGalleryLink(event.id);
+      setGalleryLink(link.url);
+      setEventMessage(link.passwordProtected ? 'Gallery link ready (password protected).' : 'Gallery link ready. Set a password if guests should not open it freely.');
+    } catch (error) { setEventMessage(toErrorMessage(error, 'Could not create the gallery link. Set the public HTTPS download URL first.')); }
+  };
+
+  const handleRemoveGalleryPassword = async (): Promise<void> => {
+    if (!window.photobooth || !eventDraft?.id) return;
+    try {
+      await window.photobooth.setGalleryPassword(eventDraft.id, null);
+      const active = await window.photobooth.getActiveEvent().catch(() => null);
+      if (active) await loadEventBrand(active);
+      setEventMessage('Gallery password removed.');
+    } catch (error) { setEventMessage(toErrorMessage(error, 'Could not remove the gallery password.')); }
+  };
+
   const handleDeleteSession = async (): Promise<void> => {
     if (!window.photobooth || !sessionId) return;
     try {
@@ -852,6 +875,18 @@ function App(): React.JSX.Element {
             <label>Thank-you text<input aria-label="Event thank-you text" maxLength={160} value={eventDraft.thankYouText} onChange={(e) => setEventDraft({ ...eventDraft, thankYouText: e.target.value })} /></label>
             <label>Contact details on expired links<input aria-label="Event contact details" maxLength={200} placeholder="e.g. Message @partybooth or hello@example.com" value={eventDraft.contactText} onChange={(e) => setEventDraft({ ...eventDraft, contactText: e.target.value })} /></label>
             <label>Consent notice for this event<textarea aria-label="Event consent notice" maxLength={1200} rows={3} placeholder="Leave blank to use the booth-wide notice" value={eventDraft.consentText} onChange={(e) => setEventDraft({ ...eventDraft, consentText: e.target.value })} /></label>
+            <div className="gallery-field">
+              <div>
+                <p className="eyebrow">GUEST GALLERY</p>
+                <p className="gallery-hint">One link to every session of this event. {eventDraft.galleryPasswordSet ? 'A password is set; leave the field blank to keep it.' : 'No password yet.'}</p>
+              </div>
+              <label>Gallery password<input aria-label="Gallery password" type="password" maxLength={64} autoComplete="new-password" placeholder={eventDraft.galleryPasswordSet ? 'Type to replace the password' : 'Optional, 4 to 64 characters'} value={galleryPasswordDraft} onChange={(e) => setGalleryPasswordDraft(e.target.value)} /></label>
+              <div className="gallery-actions">
+                <button type="button" className="secondary-button" onClick={() => void handleShowGalleryLink()} disabled={!event || !window.photobooth}>Show gallery link</button>
+                {eventDraft.galleryPasswordSet && <button type="button" className="secondary-button" onClick={() => void handleRemoveGalleryPassword()} disabled={!eventDraft.id}>Remove gallery password</button>}
+              </div>
+              {galleryLink && <input aria-label="Gallery link" readOnly value={galleryLink} onFocus={(e) => e.currentTarget.select()} />}
+            </div>
             <GuestLayoutField templates={templates} defaultLayoutId={eventDraft.defaultLayoutId} offeredLayoutIds={eventDraft.offeredLayoutIds} onChange={(offeredLayoutIds) => setEventDraft({ ...eventDraft, offeredLayoutIds })} />
             <div className="event-logo-field">{eventLogoDataUrl ? <img src={eventLogoDataUrl} alt="Selected event logo preview" /> : <span>No logo selected</span>}<button type="button" className="secondary-button" onClick={() => void handleChooseEventLogo()} disabled={unfinishedSessions.length > 0}>Choose PNG/JPEG logo</button><small>Files are copied locally; limit 5 MB.</small></div>
             <button type="button" className="start-button" onClick={() => void handleSaveEvent()} disabled={unfinishedSessions.length > 0}>Save and use this event</button>

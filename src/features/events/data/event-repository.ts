@@ -5,14 +5,16 @@ import { isEventId } from '../../../shared/validation/identifiers';
 import type { ActiveEvent, EventSettings } from '../../../shared/types/event';
 import { storeEventLogoPath } from './event-assets';
 import { isValidRetakeLimit } from '../../capture/domain/retake-rules';
-import { validateEventSettings } from './event-validation';
+import { validateEventSettings, validateGalleryPassword } from './event-validation';
+import { hashSecret } from '../../../shared/crypto/secret-hash';
 
 const EVENT_COLUMNS = `id, name, shots, expiry_days AS expiryDays, event_date AS eventDate, logo_path AS logoPath,
   primary_color AS primaryColor, accent_color AS accentColor, welcome_text AS welcomeText, thank_you_text AS thankYouText,
   default_layout_id AS defaultLayoutId, offered_layout_ids AS offeredLayoutIds,
-  consent_text AS consentText, contact_text AS contactText`;
+  consent_text AS consentText, contact_text AS contactText,
+  gallery_token AS galleryToken, gallery_password_hash AS galleryPasswordHash`;
 
-type EventListRow = EventSettings & { offeredLayoutIds: string };
+type EventListRow = Omit<EventSettings, 'galleryToken' | 'galleryPasswordSet'> & { offeredLayoutIds: string; galleryToken: string | null; galleryPasswordHash: string | null };
 
 /** The column is JSON; a corrupt value must not break the booth screen, so fall back to the default layout. */
 function parseOfferedLayoutIds(raw: string, defaultLayoutId: string): string[] {
@@ -34,6 +36,7 @@ function toEventSettings(row: EventListRow): EventSettings {
     welcomeText: row.welcomeText, thankYouText: row.thankYouText, defaultLayoutId: row.defaultLayoutId,
     offeredLayoutIds: parseOfferedLayoutIds(row.offeredLayoutIds, row.defaultLayoutId),
     consentText: row.consentText, contactText: row.contactText,
+    galleryToken: row.galleryToken, galleryPasswordSet: row.galleryPasswordHash !== null,
   };
 }
 
@@ -74,6 +77,10 @@ export function saveEventSettings(userDataPath: string, input: unknown): EventSe
       welcome_text, thank_you_text, default_layout_id, offered_layout_ids, consent_text, contact_text) VALUES (?, ?, ?, 3, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, fields.name,
       fields.shots, fields.expiryDays, fields.eventDate, fields.primaryColor, fields.accentColor, fields.welcomeText, fields.thankYouText, fields.defaultLayoutId,
       offeredJson, fields.consentText, fields.contactText);
+    const galleryPassword = validateGalleryPassword(item.galleryPassword);
+    if (galleryPassword !== undefined) {
+      database.prepare('UPDATE events SET gallery_password_hash = ? WHERE id = ?').run(galleryPassword === null ? null : hashSecret(galleryPassword), id);
+    }
     return toEventSettings(database.prepare(`SELECT ${EVENT_COLUMNS} FROM events WHERE id = ?`).get(id) as EventListRow);
   } finally { database.close(); }
 }
@@ -97,7 +104,11 @@ export function duplicateEvent(userDataPath: string, eventId: unknown): EventSet
     source = row ? toEventSettings(row) : undefined;
   } finally { database.close(); }
   if (!source) throw new Error('Event not found');
-  const copy = saveEventSettings(userDataPath, { ...source, id: undefined, name: `${source.name} Copy` });
+  // A duplicate is a fresh event: it must not share the original's gallery link or password.
+  const duplicateInput: Record<string, unknown> = { ...source, id: undefined, name: `${source.name} Copy` };
+  delete duplicateInput.galleryToken;
+  delete duplicateInput.galleryPasswordSet;
+  const copy = saveEventSettings(userDataPath, duplicateInput);
   if (source.logoPath && fs.existsSync(source.logoPath)) {
     const copied = storeEventLogoPath(userDataPath, copy.id, source.logoPath);
     const update = openDatabase(userDataPath);

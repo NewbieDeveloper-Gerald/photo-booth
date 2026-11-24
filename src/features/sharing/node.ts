@@ -1,4 +1,5 @@
 export { createSessionShareLink } from './data/share-link-repository';
+export { createEventGalleryLink, findGalleryEvent, galleryPhotoPaths, listGallerySessions, setGalleryPassword, verifyGalleryPassword } from './gallery/gallery-repository';
 export { createDownloadServer, type DownloadServerOptions } from './download-server';
 export { generateSessionToken } from './share-token';
 export { enqueueSessionFiles, listUploadQueue, mockUploadAdapter, processDueUploads, recoverInterruptedUploads } from './upload-queue/repository';

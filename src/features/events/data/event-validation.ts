@@ -1,5 +1,6 @@
 import { MAX_CONSENT_LENGTH, MAX_EVENT_CONTACT_LENGTH, MAX_EVENT_NAME_LENGTH, MAX_EVENT_TEXT_LENGTH, MAX_OFFERED_LAYOUTS } from '../../../shared/constants/limits';
 import type { EventSettings } from '../../../shared/types/event';
+import { MAX_GALLERY_PASSWORD_LENGTH, MIN_GALLERY_PASSWORD_LENGTH } from '../../../shared/constants/limits';
 import { defaultLayoutIdForShots, isSupportedShotCount } from '../domain/default-layouts';
 
 const MAX_LAYOUT_ID_LENGTH = 64;
@@ -22,7 +23,24 @@ export function validateOfferedLayoutIds(value: unknown): string[] {
   return [...new Set(ids)];
 }
 
-export function validateEventSettings(value: unknown): Omit<EventSettings, 'id' | 'logoPath'> {
+/** Fields the operator may write; the gallery token and the stored hash are booth-owned. */
+export type ValidatedEventFields = Omit<EventSettings, 'id' | 'logoPath' | 'galleryToken' | 'galleryPasswordSet'>;
+
+/**
+ * Gallery password input: `undefined` leaves the current password alone, an empty string
+ * removes it, and anything else must be long enough to be worth asking for (F16).
+ */
+export function validateGalleryPassword(value: unknown): string | null | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'string') throw new Error('Invalid gallery password');
+  if (value === '') return null;
+  if (value.length < MIN_GALLERY_PASSWORD_LENGTH || value.length > MAX_GALLERY_PASSWORD_LENGTH) {
+    throw new Error(`Gallery password must be ${MIN_GALLERY_PASSWORD_LENGTH} to ${MAX_GALLERY_PASSWORD_LENGTH} characters`);
+  }
+  return value;
+}
+
+export function validateEventSettings(value: unknown): ValidatedEventFields {
   if (!value || typeof value !== 'object') throw new Error('Invalid event details');
   const item = value as Record<string, unknown>;
   if (typeof item.name !== 'string' || !item.name.trim() || item.name.trim().length > MAX_EVENT_NAME_LENGTH) throw new Error('Event name is required (80 characters maximum)');

@@ -8,5 +8,9 @@ export type ActiveEvent = {
   consentText: string;
   /** Shown on the expired-link page, e.g. how to reach the organiser. */
   contactText: string;
+  /** Gallery link token once the operator created one (F16); never edited through the form. */
+  galleryToken: string | null;
+  /** True when the guest gallery asks for a password. The password itself is never returned. */
+  galleryPasswordSet: boolean;
 };
 export type EventSettings = Omit<ActiveEvent, 'retakeLimit' | 'printEnabled'>;

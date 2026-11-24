@@ -24,6 +24,8 @@ contextBridge.exposeInMainWorld('photobooth', {
   selectActiveEvent: (eventId: string) => ipcRenderer.invoke('event:activate', eventId),
   chooseEventLogo: (eventId: string): Promise<string | null> => ipcRenderer.invoke('event:chooseLogo', eventId),
   getEventLogoDataUrl: (eventId: string): Promise<string | null> => ipcRenderer.invoke('event:logoData', eventId),
+  createGalleryLink: (eventId: string): Promise<{ url: string; token: string; passwordProtected: boolean }> => ipcRenderer.invoke('gallery:createLink', eventId),
+  setGalleryPassword: (eventId: string, password: string | null): Promise<boolean> => ipcRenderer.invoke('gallery:setPassword', eventId, password),
   createShareLink: (sessionId: string): Promise<{ url: string; expiresAt: string }> => ipcRenderer.invoke('download:createShareLink', sessionId),
   getUploadQueue: () => ipcRenderer.invoke('uploadQueue:list'),
   getRetentionStatus: () => ipcRenderer.invoke('retention:status'),

@@ -8,6 +8,7 @@ import { resolveInside } from '../../shared/fs/safe-paths';
 import { isShareToken } from '../../shared/validation/identifiers';
 import { DOWNLOAD_MAX_REQUESTS_PER_WINDOW, DOWNLOAD_RATE_WINDOW_MS, DOWNLOAD_SERVER_HOST, DOWNLOAD_SERVER_PORT } from '../../shared/constants/limits';
 import { renderGuestPage, renderUnavailablePage } from './guest-page-html';
+import { handleGalleryRequest, type GalleryGrants } from './gallery/gallery-http';
 import type { DownloadFile, SessionDownload } from './guest-page-html';
 
 /** Matches every route that carries a share token, so limits can be applied per guest link. */
@@ -96,11 +97,19 @@ export function createDownloadServer(userDataPath: string, photosRoot: string, o
     rateLimit = { windowMs: DOWNLOAD_RATE_WINDOW_MS, maxRequests: DOWNLOAD_MAX_REQUESTS_PER_WINDOW } } = options;
   const databasePath = path.join(userDataPath, 'photobooth.sqlite');
   const buckets = new Map<string, { started: number; count: number }>();
+  const galleryGrants: GalleryGrants = new Map();
   const server = http.createServer((request, response) => {
     noIndex(response);
-    if (request.method !== 'GET' && request.method !== 'HEAD') { response.writeHead(405).end(); return; }
+    if (request.method !== 'GET' && request.method !== 'HEAD' && request.method !== 'POST') { response.writeHead(405).end(); return; }
     const url = new URL(request.url ?? '/', 'http://localhost');
     if (isLimited(request, url.pathname, buckets, rateLimit.windowMs, rateLimit.maxRequests)) { response.writeHead(429, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Please wait before trying again.'); return; }
+    if (url.pathname.startsWith('/g/') || url.pathname.startsWith('/api/v1/gallery/')) {
+      void handleGalleryRequest({ request, response, url, userDataPath, photosRoot, grants: galleryGrants })
+        .then((handled) => { if (!handled) response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Not found'); })
+        .catch(() => { if (!response.headersSent) response.writeHead(500).end(); else response.destroy(); });
+      return;
+    }
+    if (request.method === 'POST') { response.writeHead(405).end(); return; }
     const page = /^\/d\/([A-Za-z0-9_-]{22})$/.exec(url.pathname);
     if (page) {
       const session = findSession(databasePath, photosRoot, page[1]!);

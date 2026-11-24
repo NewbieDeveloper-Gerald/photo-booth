@@ -28,6 +28,8 @@ declare global {
       chooseEventLogo(eventId: string): Promise<string | null>;
       getEventLogoDataUrl(eventId: string): Promise<string | null>;
       createShareLink(sessionId: string): Promise<{ url: string; expiresAt: string }>;
+      createGalleryLink(eventId: string): Promise<{ url: string; token: string; passwordProtected: boolean }>;
+      setGalleryPassword(eventId: string, password: string | null): Promise<boolean>;
       getUploadQueue(): Promise<UploadQueueSummary>;
       getRetentionStatus(): Promise<RetentionStatus>;
       deleteSession(sessionId: string): Promise<DeletionResult>;

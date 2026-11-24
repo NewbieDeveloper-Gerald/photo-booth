@@ -30,6 +30,9 @@ export const MAX_EVENT_NAME_LENGTH = 80;
 export const MAX_EVENT_TEXT_LENGTH = 160;
 export const MAX_OFFERED_LAYOUTS = 12;
 export const MAX_EVENT_CONTACT_LENGTH = 200;
+export const MIN_GALLERY_PASSWORD_LENGTH = 4;
+export const MAX_GALLERY_PASSWORD_LENGTH = 64;
+export const GALLERY_GRANT_TTL_MS = 30 * 60 * 1000;
 
 // Upload queue retry policy
 export const UPLOAD_INITIAL_RETRY_MS = 30_000;
