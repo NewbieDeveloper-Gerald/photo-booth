@@ -35,3 +35,5 @@ export const UPLOAD_INITIAL_RETRY_MS = 30_000;
 export const UPLOAD_MAX_RETRY_MS = 6 * 60 * 60 * 1000;
 export const UPLOAD_MAX_BACKOFF_EXPONENT = 10;
 export const MAX_UPLOAD_ERROR_LENGTH = 500;
+export const UPLOAD_SYNC_INTERVAL_MS = 60_000;
+export const UPLOAD_STATUS_POLL_MS = 15_000;

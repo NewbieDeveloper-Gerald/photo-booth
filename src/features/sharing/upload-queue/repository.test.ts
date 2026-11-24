@@ -32,7 +32,7 @@ describe('persistent upload queue', () => {
     const db = new Database(path.join(dir, 'photobooth.sqlite'));
     expect(db.prepare('SELECT file_path FROM upload_queue').all()).toEqual([{ file_path: outputPath }]);
     db.close();
-    expect(listUploadQueue(dir)).toMatchObject({ pending: 1, uploading: 0, uploaded: 0, failed: 0, providerConfigured: false });
+    expect(listUploadQueue(dir)).toMatchObject({ waitingFiles: 1, failedFiles: 0, uploadedFiles: 0, waitingSessions: 1, failedSessions: 0, lastSyncedAt: null, providerConfigured: false });
   });
 
   it('records mock failures, schedules exponential retry, then marks success', async () => {
@@ -40,17 +40,40 @@ describe('persistent upload queue', () => {
     enqueueSessionFiles(dir, sessionId);
     const now = Date.now();
     const bad = { async upload() { throw new Error('Temporary mock failure'); } };
-    expect(await processDueUploads(dir, bad, now)).toBe(1);
-    expect(listUploadQueue(dir)).toMatchObject({ pending: 1, lastError: 'Temporary mock failure' });
+    expect(await processDueUploads(dir, bad, now)).toEqual({ processed: 1, uploaded: 0, failed: 1 });
+    expect(listUploadQueue(dir)).toMatchObject({ waitingFiles: 1, lastError: 'Temporary mock failure', lastSyncedAt: null });
+    expect(listUploadQueue(dir).nextRetryAt).not.toBeNull();
+    expect(Date.parse(listUploadQueue(dir).nextRetryAt!)).toBe(now + 30_000);
     const db = new Database(path.join(dir, 'photobooth.sqlite'));
     const retryAt = db.prepare('SELECT next_retry_at AS retryAt, attempts FROM upload_queue').get() as { retryAt: string; attempts: number };
     db.close();
     expect(retryAt.attempts).toBe(1);
     expect(Date.parse(retryAt.retryAt)).toBe(now + 30_000);
     const uploaded: UploadQueueItem[] = [];
-    expect(await processDueUploads(dir, { async upload(item) { uploaded.push(item); } }, now + 30_001)).toBe(1);
+    expect(await processDueUploads(dir, { async upload(item) { uploaded.push(item); } }, now + 30_001)).toEqual({ processed: 1, uploaded: 1, failed: 0 });
     expect(uploaded).toHaveLength(1);
-    expect(listUploadQueue(dir)).toMatchObject({ pending: 0, uploaded: 1, lastError: null });
+    expect(listUploadQueue(dir)).toMatchObject({ waitingFiles: 0, waitingSessions: 0, uploadedFiles: 1, lastError: null, lastSyncedAt: new Date(now + 30_001).toISOString(), nextRetryAt: null });
+  });
+
+  it('counts a session once no matter how many of its files are queued', () => {
+    const { dir, sessionId, outputPath } = setup();
+    const second = `${outputPath}-2`;
+    fs.writeFileSync(second, Buffer.from([4, 5, 6]));
+    const db = new Database(path.join(dir, 'photobooth.sqlite'));
+    db.prepare("INSERT INTO outputs (id, session_id, output_path, kind) VALUES (?, ?, ?, 'finished-test')").run('output-2', sessionId, second);
+    db.close();
+    expect(enqueueSessionFiles(dir, sessionId)).toBe(2);
+    expect(listUploadQueue(dir)).toMatchObject({ waitingFiles: 2, waitingSessions: 1 });
+  });
+
+  it('only records a sync time after a successful upload', async () => {
+    const { dir, sessionId } = setup();
+    enqueueSessionFiles(dir, sessionId);
+    const now = Date.now();
+    await processDueUploads(dir, { async upload() { throw new Error('offline'); } }, now);
+    expect(listUploadQueue(dir).lastSyncedAt).toBeNull();
+    await processDueUploads(dir, { async upload() { /* mock success */ } }, now + 60_000);
+    expect(listUploadQueue(dir).lastSyncedAt).toBe(new Date(now + 60_000).toISOString());
   });
 
   it('recovers an interrupted in-flight item after app restart', () => {
@@ -60,6 +83,6 @@ describe('persistent upload queue', () => {
     db.prepare("UPDATE upload_queue SET status = 'uploading'").run();
     db.close();
     expect(recoverInterruptedUploads(dir)).toBe(1);
-    expect(listUploadQueue(dir)).toMatchObject({ pending: 1, uploading: 0 });
+    expect(listUploadQueue(dir)).toMatchObject({ waitingFiles: 1, waitingSessions: 1 });
   });
 });

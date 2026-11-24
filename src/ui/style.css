@@ -84,3 +84,10 @@
 .guest-layout-option { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border: 1px solid #ffffff14; border-radius: 8px; color: #dfdbea; font-size: 12px; }
 .guest-layout-option.default { border-color: #c9b4ff55; }
 .guest-layout-option small { color: #8d94a7; font-size: 10px; }
+
+/* F14 · sync status panel: waiting sessions, last error, last successful sync. */
+.upload-queue-card { align-items: flex-start; }
+.upload-queue-card > div:first-child { gap: 5px; }
+.upload-queue-card .queue-error { color: #f0b6b9; }
+.upload-queue-card .queue-note { color: #7c8397; font-size: 10px; line-height: 1.45; max-width: 62ch; }
+.queue-failed { flex: none; padding: 6px 10px; border: 1px solid #ffffff1c; border-radius: 8px; color: #b9c0d2; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; }

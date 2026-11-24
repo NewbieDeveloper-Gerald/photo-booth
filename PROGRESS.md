@@ -1,6 +1,6 @@
 # Progress
 
-Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 merged as `4833af7`, F12 merged as `42158f2`; F13 implemented on `arena/991f6df6-photo-booth`.
+Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`; F14 implemented on `arena/9b46b6e8-photo-booth`.
 
 ## Current status
 
@@ -13,11 +13,13 @@ Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 merged as `4833af7`, F12 m
   page size (checklist below).
 - **F12 (drag-and-drop template editor): merged** (`42158f2`), awaiting the manual
   build-a-strip test below.
-- **F13 (template picker for guests): implemented**, awaiting the manual two-layout
-  session test below.
-- **F14–F29: not started.**
+- **F13 (template picker for guests): merged** (`f3ad680`), awaiting the manual
+  two-layout session test below.
+- **F14 (offline queue and sync status): implemented**, awaiting a real upload provider
+  before the offline/online manual test can run.
+- **F15–F29: not started.**
 - Automated verification today: `npm run typecheck`, `npm run lint`, `npm test`
-  (**227 tests in 39 files**), `npm run build` (Vite production build) all pass.
+  (**240 tests in 41 files**), `npm run build` (Vite production build) all pass.
   `npm run test:e2e` exists but cannot run in this environment (no browser runtime).
 
 ## Verification gaps (unrecorded or impossible here)
@@ -142,8 +144,44 @@ straight from the welcome screen with no picker.
 ### F13 out of scope (later features)
 
 Photo previews from a *previous* session inside the picker cards, per-layout pricing, and
-per-layout consent wording are not implemented. Online upload resilience is F14; the
-watermark is F17.
+per-layout consent wording are not implemented. The watermark is F17.
+
+## F14. Offline queue and sync status (implemented)
+
+- **Background sync** (`features/sharing/upload-queue/scheduler.ts`, started in
+  `electron/main.ts`): the queue is drained at startup — so anything queued before the app
+  was closed resumes immediately — and then every `UPLOAD_SYNC_INTERVAL_MS` (60 s). Ticks
+  never overlap, errors are reported instead of thrown, and the timer is unref'd so a
+  pending sync cannot hold the booth open. Interrupted `uploading` rows are reset to pending
+  on startup (`recoverInterruptedUploads`, from F8).
+- **Backoff** (from F8, now actually driven): each failed attempt doubles the delay from
+  30 s up to a 6-hour cap, and `nextRetryAt` is exposed so the panel can say when the next
+  try is due. Successful uploads clear the error and stamp the sync time.
+- **Status** (`listUploadQueue`): waiting files, failed files, synced files, waiting
+  *sessions*, failed sessions, last error, last successful sync time and the next retry.
+  The last sync time lives in the `settings` table (`uploadLastSyncedAt`) so it survives a
+  restart.
+- **Panel** (`renderer/components/UploadQueueCard.tsx`): shows the waiting session count,
+  the last error, how long ago the last sync succeeded, when the next retry is due, and
+  states plainly that the provider is a mock and nothing is sent online. The start screen
+  refreshes it every 15 s.
+- **A session never waits for the queue**: queueing is fire-and-forget after the finished
+  layout is saved; if queueing fails, the guest still sees the finish screen and the panel
+  warns that the session could not be queued.
+
+### F14 manual check
+
+Needs a real upload adapter first (the mock only verifies that queued files are readable on
+the booth). With one configured: turn Wi-Fi off, run three sessions, confirm each finishes
+without waiting and the panel lists three waiting sessions with a growing retry delay, then
+turn Wi-Fi on and confirm all three reach the provider, the waiting count drops to zero and
+the last successful sync time updates.
+
+### F14 out of scope (later features)
+
+The cloud provider itself, per-file progress, bandwidth throttling and a manual "sync now"
+button are not implemented; the daily cleanup job and cloud deletion are F15. Ticking
+through the queue is verified by automated tests, not by a live upload.
 
 ## Feature log
 
