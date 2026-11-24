@@ -8,6 +8,7 @@ import type { PagePresetId, TemplateDocument, TemplateSummary } from '../feature
 import type { PrintJob, PrintQueueSummary } from '../features/printing/domain/print-queue-types';
 import type { AttractMedia } from '../shared/types/attract';
 import type { PhotoFilterId } from '../shared/types/photo-filter';
+import type { AdminPinAttempt, AdminPinLockout } from '../shared/types/admin-pin';
 
 import type { BoothSettingKey } from '../shared/constants/settings-keys';
 
@@ -19,9 +20,10 @@ declare global {
       getSetting(key: BoothSettingKey): Promise<string | null>;
       setSetting(key: BoothSettingKey, value: string): Promise<void>;
       hasAdminPin(): Promise<boolean>;
-      verifyAdminPin(pin: string): Promise<boolean>;
-      setAdminPin(pin: string, currentPin: string): Promise<void>;
-      exitKioskWithPin(pin: string): Promise<boolean>;
+      verifyAdminPin(pin: string): Promise<AdminPinAttempt>;
+      getAdminPinLockout(): Promise<AdminPinLockout>;
+      setAdminPin(pin: string, currentPin: string): Promise<AdminPinLockout>;
+      exitKioskWithPin(pin: string): Promise<AdminPinAttempt>;
       onExitRequested(callback: () => void): () => void;
       getActiveEvent(): Promise<ActiveEvent>;
       listEvents(): Promise<EventSettings[]>;
@@ -42,6 +44,7 @@ declare global {
       deleteSession(sessionId: string): Promise<DeletionResult>;
       deleteEvent(eventId: string): Promise<DeletionResult>;
       enqueueSessionUploads(sessionId: string): Promise<number>;
+      skipPendingUploads(sessionId?: string): Promise<number>;
       listPrinters(): Promise<Array<{ name: string; displayName: string; isDefault?: boolean; status?: number }>>;
       enqueuePrintJob(sessionId: string, printerName: string): Promise<PrintJob>;
       reprintJob(jobId: string): Promise<PrintJob>;

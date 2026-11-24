@@ -1,6 +1,6 @@
 # Progress
 
-Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`, F20 as `de322a2`.
+Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`, F20 as `de322a2`, F21 as `PENDING-F21`.
 
 ## Current status
 
@@ -26,9 +26,11 @@ Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `4215
   pause/resume print test below.
 - **F19 (attract screen): merged** (`3425d9d`), awaiting the two-minute idle check below.
 - **F20 (photo filters): merged** (`de322a2`), awaiting the per-look print check below.
-- **F21–F29: not started.**
+- **F21 (operator hotkeys, PIN lockout): merged** (`PENDING-F21`), awaiting the manual
+  guest/keyboard and wrong-PIN checks below.
+- **F22–F29: not started.**
 - Automated verification today: `npm run typecheck`, `npm run lint`, `npm test`
-  (**365 tests in 64 files**), `npm run build` (Vite production build) all pass.
+  (**384 tests in 68 files**), `npm run build` (Vite production build) all pass.
   `npm run test:e2e` exists but cannot run in this environment (no browser runtime).
 
 ## Verification gaps (unrecorded or impossible here)
@@ -416,6 +418,52 @@ the real printer and check the skin tones and that no halo bleeds outside the ph
 
 A per-photo look, a live filtered preview of the camera, LUT files, filter strength sliders and
 applying a look to the event logo or the brand bands are not implemented.
+
+## F21. Operator hotkeys and admin PIN hardening (merged)
+
+- **Four operator keys** (`renderer/lib/hotkeys.ts`, pure): restart session, reprint, skip
+  upload and open admin, all on Ctrl+Shift plus a letter, so a guest leaning on the keyboard
+  cannot trigger one and the kiosk's blocked keys never collide with them. A held key fires
+  once, Alt combinations are ignored (AltGr on some layouts), and nothing fires while the
+  guest is typing in an input, a textarea, a select or a contenteditable — the PIN prompt
+  included. Cmd works as well as Ctrl, so a Mac booth can use them.
+- **The help screen** (`HotkeyHelp.tsx`, reachable from the operator panel) renders the same
+  list the handler dispatches, with a one-line explanation per key and the lockout rule, so
+  the documented keys cannot drift from the working ones.
+- **What each key does**: restart abandons the session on screen through the same path as the
+  idle restart (photos are backed up, the booth returns to the start screen) and is refused
+  with the unlock prompt unless settings are already unlocked; reprint only acts on the
+  finished screen, so it cannot print a half-made strip; skip upload marks the waiting rows
+  `skipped` (a new queue status, still listed in SQLite and counted in the panel, never
+  deleted); open admin shows the PIN prompt when the booth is locked.
+- **PIN lockout** (`features/security/domain/pin-lockout.ts`, pure, plus storage in
+  `admin-pin.ts`): five wrong tries lock the check for 60 seconds, the correct PIN is refused
+  during the lock, an expired lock starts a fresh five tries, and a correct PIN or a newly
+  saved PIN clears the count. It lives in the node layer behind `attemptAdminPin`, so
+  `admin:verifyPin`, `admin:setPin` and `kiosk:exitWithPin` all honour it; the attempt result
+  carries the tries left and the wait, which every prompt now shows. A malformed PIN costs a
+  try but never reaches scrypt.
+- **Kiosk hardening** (`electron/windows/booth-window.ts`, key list in
+  `features/security/domain/kiosk-keys.ts`): in the packaged app DevTools are off, Ctrl+R/F5,
+  F12, Ctrl+Shift+I/J/C and the right-click menu are swallowed, `will-navigate` and
+  `will-attach-webview` are cancelled and `setWindowOpenHandler` denies every new window.
+  `npm run dev` keeps DevTools and reload so development stays possible.
+
+### F21 manual check
+
+With the booth locked, press Ctrl+Shift+A and try five wrong PINs: the fifth must report the
+lockout and even the correct PIN must be refused until the minute passes. Then unlock, press
+Ctrl+Shift+R mid-session (photos must be backed up and the booth return to the start screen),
+Ctrl+Shift+P on the finished screen (one more sheet), Ctrl+Shift+U with a waiting sync, and
+open the help screen. In a packaged build try to leave the app as a guest: F11, Ctrl+R, F12,
+Ctrl+Shift+I, right-click and clicking a link must all do nothing, and only the exit prompt
+with the PIN may close it.
+
+### F21 out of scope (later features)
+
+Rebindable shortcuts, shortcuts shown as on-screen buttons, a per-IP attempt limit for the
+guest gallery password (it has its own throttle), and blocking Windows system shortcuts — the
+last one needs Windows Assigned Access, which the app cannot replace.
 
 ## Feature log
 

@@ -41,7 +41,7 @@ export function UploadQueueCard({ summary }: UploadQueueCardProps): React.JSX.El
       <div>
         <p className="eyebrow">SYNC STATUS · MOCK PROVIDER</p>
         <strong>{isWaiting ? `${summary.waitingSessions} ${summary.waitingSessions === 1 ? 'session' : 'sessions'} waiting · ${summary.waitingFiles} ${summary.waitingFiles === 1 ? 'file' : 'files'}` : 'All queued files synced'}</strong>
-        <span>Last successful sync: {summary.lastSyncedAt ? relativeTime(summary.lastSyncedAt, now) : 'never'} · Synced files: {summary.uploadedFiles}{summary.failedFiles > 0 ? ` · ${summary.failedFiles} failed in ${summary.failedSessions} ${summary.failedSessions === 1 ? 'session' : 'sessions'}` : ''}</span>
+        <span>Last successful sync: {summary.lastSyncedAt ? relativeTime(summary.lastSyncedAt, now) : 'never'} · Synced files: {summary.uploadedFiles}{summary.failedFiles > 0 ? ` · ${summary.failedFiles} failed in ${summary.failedSessions} ${summary.failedSessions === 1 ? 'session' : 'sessions'}` : ''}{summary.skippedFiles > 0 ? ` · ${summary.skippedFiles} skipped by the operator` : ''}</span>
         {summary.lastError && <span className="queue-error">Last error: {summary.lastError}</span>}
         {summary.nextRetryAt && <span>Next retry: {untilTime(summary.nextRetryAt, now)}</span>}
         <span className="queue-note">Sessions never wait for a sync: files are queued the moment the layout is saved and retried in the background with growing delays, even after a restart. No cloud provider is configured yet — the mock provider only checks that each queued file is still on this booth, so nothing is sent online.</span>

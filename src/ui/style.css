@@ -182,3 +182,16 @@
 
 .filter-field { grid-column: 1 / -1; display: grid; gap: 8px; padding: 12px 14px; border: 1px solid #ffffff1c; border-radius: 10px; }
 .filter-field .eyebrow { margin: 0; }
+
+/* F21 · the operator help screen with the hotkeys and the PIN lockout rule. */
+.dialog-backdrop { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 24px; background: #080a10cc; backdrop-filter: blur(3px); }
+.hotkey-help { width: min(720px, 100%); max-height: 88vh; overflow: auto; display: grid; gap: 12px; padding: 26px 28px; border: 1px solid #ffffff26; border-radius: 14px; background: #171c28; color: #e8e5f1; }
+.hotkey-help h2 { margin: 0; font-size: 22px; letter-spacing: -0.02em; }
+.hotkey-help .eyebrow { margin: 0; }
+.hotkey-hint { margin: 0; color: #969caf; font-size: 12px; }
+.hotkey-list { display: grid; gap: 10px; margin: 4px 0; padding: 0; list-style: none; }
+.hotkey-list li { display: grid; grid-template-columns: 170px 1fr; gap: 4px 14px; padding: 10px 12px; border: 1px solid #ffffff14; border-radius: 9px; background: #141a27; }
+.hotkey-list kbd { justify-self: start; padding: 4px 9px; border: 1px solid #ffffff26; border-bottom-width: 2px; border-radius: 6px; background: #232a3b; color: #f1edff; font: inherit; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; }
+.hotkey-label { color: #f0ecfa; font-size: 13px; font-weight: 650; }
+.hotkey-description { grid-column: 2; color: #9aa1b4; font-size: 12px; }
+.hotkey-help .start-button { justify-self: start; }

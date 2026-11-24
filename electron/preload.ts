@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { AdminPinAttempt, AdminPinLockout } from '../src/shared/types/admin-pin';
 
 import type { BoothSettingKey } from '../src/shared/constants/settings-keys.js';
 
@@ -9,9 +10,10 @@ contextBridge.exposeInMainWorld('photobooth', {
   getSetting: (key: SettingKey): Promise<string | null> => ipcRenderer.invoke('settings:get', key),
   setSetting: (key: SettingKey, value: string): Promise<void> => ipcRenderer.invoke('settings:set', key, value),
   hasAdminPin: (): Promise<boolean> => ipcRenderer.invoke('admin:hasPin'),
-  verifyAdminPin: (pin: string): Promise<boolean> => ipcRenderer.invoke('admin:verifyPin', pin),
-  setAdminPin: (pin: string, currentPin: string): Promise<void> => ipcRenderer.invoke('admin:setPin', pin, currentPin),
-  exitKioskWithPin: (pin: string): Promise<boolean> => ipcRenderer.invoke('kiosk:exitWithPin', pin),
+  verifyAdminPin: (pin: string): Promise<AdminPinAttempt> => ipcRenderer.invoke('admin:verifyPin', pin),
+  getAdminPinLockout: (): Promise<AdminPinLockout> => ipcRenderer.invoke('admin:lockout'),
+  setAdminPin: (pin: string, currentPin: string): Promise<AdminPinLockout> => ipcRenderer.invoke('admin:setPin', pin, currentPin),
+  exitKioskWithPin: (pin: string): Promise<AdminPinAttempt> => ipcRenderer.invoke('kiosk:exitWithPin', pin),
   onExitRequested: (callback: () => void): (() => void) => {
     const listener = (): void => callback();
     ipcRenderer.on('kiosk:exitRequested', listener);
@@ -36,6 +38,7 @@ contextBridge.exposeInMainWorld('photobooth', {
   deleteSession: (sessionId: string) => ipcRenderer.invoke('retention:deleteSession', sessionId),
   deleteEvent: (eventId: string) => ipcRenderer.invoke('retention:deleteEvent', eventId),
   enqueueSessionUploads: (sessionId: string): Promise<number> => ipcRenderer.invoke('uploadQueue:enqueueSession', sessionId),
+  skipPendingUploads: (sessionId?: string): Promise<number> => ipcRenderer.invoke('uploadQueue:skipPending', sessionId),
   listPrinters: () => ipcRenderer.invoke('printer:list'),
   enqueuePrintJob: (sessionId: string, printerName: string) => ipcRenderer.invoke('print:enqueue', sessionId, printerName),
   reprintJob: (jobId: string) => ipcRenderer.invoke('print:reprint', jobId),
