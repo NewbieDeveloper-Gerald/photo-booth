@@ -44,6 +44,12 @@ Event setup holds **Prints per session** (1 to 20, default 2, reprints included)
 
 Manual check for each page size: set the event to that template, run one session, **Continue**, and confirm the print fills the sheet with no clipped photos, text or QR, that the 2 × 6 strip really is half the width, and that all four edges are borderless.
 
+## Attract screen (F19)
+
+When the booth is idle it invites guests in: after an event-set wait (default 60 seconds, 5 to 600) the operator screen is covered by a full-bleed loop of the event's photos or clips, with the event logo, name, welcome text and a pulsing **Touch to start**. Tapping anywhere returns to the booth screen, where the guest picks a layout (when the event offers more than one) and presses Start. The loop also comes back straight after a session ends. It stays out of the way while a session is unfinished, while the operator has unlocked settings, and while a dialog is open.
+
+Event setup has an **Attract screen** block: the toggle, the wait, and **Add photos or video** (PNG/JPEG/WebP, MP4/M4V/WebM, up to eight files of 25 MB each). The files are copied into the event's own folder under the booth's data directory, so the memory card can go home with the operator; **Remove** deletes that copy. With no media, the loop cycles the layouts the event offers, so a brand-new event still has an invite screen. **Preview attract screen** shows the loop immediately instead of waiting.
+
 ## Events and branding (F10)
 
 The operator event panel creates, edits, duplicates, and selects events. Event fields include name, optional date, photo count (1 to 6), the layouts guests may pick (up to 12, with the default layout always offered first), local PNG/JPEG logo (up to 5 MB), primary/accent hex colors, welcome and thank-you text, and QR-link expiry from 1 to 365 days. The photo count chooses the event's default layout automatically. Logo files are copied into the app's local `event-assets/<event-id>/` folder. Event branding appears on the booth screen, saved finished layout, and token-protected guest download page. Sessions keep the event ID active when they are created.

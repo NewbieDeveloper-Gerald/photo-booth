@@ -40,6 +40,13 @@ export const MAX_WATERMARK_SCALE_PERCENT = 50;
 export const MIN_PRINT_LIMIT_PER_SESSION = 1;
 export const MAX_PRINT_LIMIT_PER_SESSION = 20;
 export const MAX_EVENT_PAPER_COUNT = 5000;
+/** Attract screen (F19): how long the booth waits before inviting guests in, and its media. */
+export const MIN_ATTRACT_IDLE_SECONDS = 5;
+export const MAX_ATTRACT_IDLE_SECONDS = 600;
+export const MAX_ATTRACT_MEDIA_FILES = 8;
+export const MAX_ATTRACT_MEDIA_BYTES = 25 * 1024 * 1024;
+/** How long one attract slide or video clip stays on screen. */
+export const ATTRACT_SLIDE_MS = 5500;
 /** How often the main process looks for a queued print (F18). */
 export const PRINT_QUEUE_INTERVAL_MS = 3000;
 /** The operator panel refreshes faster than the worker so a queued job visibly moves. */

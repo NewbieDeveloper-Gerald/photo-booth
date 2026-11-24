@@ -19,6 +19,9 @@ import { ConfirmAction } from '../renderer/components/ConfirmAction';
 import { RetentionNote } from '../renderer/components/RetentionNote';
 import { GuestLayoutField } from '../renderer/components/GuestLayoutField';
 import { PrintQueueCard } from '../renderer/components/PrintQueueCard';
+import { AttractScreen } from '../renderer/components/AttractScreen';
+import { AttractMediaField } from '../renderer/components/AttractMediaField';
+import { loadAttractSlides, type AttractSlide } from '../renderer/lib/attract-slides';
 import { composeStripCutSheet } from '../renderer/lib/print-sheet';
 import { LayoutPicker } from '../renderer/components/LayoutPicker';
 import { boothLayoutChoices } from '../renderer/lib/offered-layouts';
@@ -27,9 +30,9 @@ import { wait } from '../renderer/lib/timing';
 import { DEFAULT_ACCENT_COLOR, DEFAULT_CONSENT_TEXT, DEFAULT_PRIMARY_COLOR, DEFAULT_THANK_YOU_TEXT, DEFAULT_WELCOME_TEXT } from '../shared/constants/branding-defaults';
 import { toErrorMessage } from '../shared/errors';
 import {
-  CAPTURE_REVIEW_PAUSE_MS, MAX_DISK_WARNING_GB, MAX_EVENT_PAPER_COUNT, MAX_PRINT_LIMIT_PER_SESSION, MAX_WATERMARK_OPACITY,
-  MAX_WATERMARK_SCALE_PERCENT, MIN_PRINT_LIMIT_PER_SESSION, MIN_WATERMARK_OPACITY, MIN_WATERMARK_SCALE_PERCENT,
-  PRINT_QUEUE_POLL_MS, SESSION_IDLE_TIMEOUT_MS, UPLOAD_STATUS_POLL_MS,
+  CAPTURE_REVIEW_PAUSE_MS, MAX_ATTRACT_IDLE_SECONDS, MAX_DISK_WARNING_GB, MAX_EVENT_PAPER_COUNT, MAX_PRINT_LIMIT_PER_SESSION,
+  MAX_WATERMARK_OPACITY, MAX_WATERMARK_SCALE_PERCENT, MIN_ATTRACT_IDLE_SECONDS, MIN_PRINT_LIMIT_PER_SESSION,
+  MIN_WATERMARK_OPACITY, MIN_WATERMARK_SCALE_PERCENT, PRINT_QUEUE_POLL_MS, SESSION_IDLE_TIMEOUT_MS, UPLOAD_STATUS_POLL_MS,
 } from '../shared/constants/limits';
 import { renderTemplateLayout, templateFromCatalogPreset, getLayoutPreset, layoutPresets, type TemplateDocument, type TemplateSummary } from '../features/layouts';
 import { decideAutoPrint, type PrintJob, type PrintQueueSummary } from '../features/printing';
@@ -37,6 +40,7 @@ import type { ActiveEvent, EventSettings } from '../shared/types/event';
 import type { SessionRecord, SessionSlot, UnfinishedSession } from '../shared/types/session';
 import type { UploadQueueSummary } from '../features/sharing';
 import type { RetentionStatus } from '../features/retention';
+import type { AttractMedia } from '../shared/types/attract';
 import './style.css';
 
 const resolutionOptions: Array<{ value: CameraResolution; label: string }> = [
@@ -79,6 +83,10 @@ function App(): React.JSX.Element {
   const [printJobId, setPrintJobId] = useState('');
   const [printJobs, setPrintJobs] = useState<PrintJob[]>([]);
   const [printSummary, setPrintSummary] = useState<PrintQueueSummary | null>(null);
+  /** F19: the idle loop that invites guests in, and the media it cycles through. */
+  const [attractVisible, setAttractVisible] = useState(false);
+  const [attractMedia, setAttractMedia] = useState<AttractMedia[]>([]);
+  const [attractSlides, setAttractSlides] = useState<AttractSlide[]>([]);
   const [downloadBaseUrl, setDownloadBaseUrl] = useState('');
   const [shareUrl, setShareUrl] = useState('');
   const [shareStatus, setShareStatus] = useState('');
@@ -204,6 +212,27 @@ function App(): React.JSX.Element {
     else if (job.status === 'failed') setPrintStatus(`Failed · ${job.error ?? 'printer error'}`);
     else setPrintStatus('Print cancelled.');
   }, [printJobId, printJobs]);
+
+  /**
+   * Attract media is read once per event: the files are copied into the event's own folder, and
+   * the slides keep blob URLs so the loop does not re-read a clip every time it comes round.
+   */
+  const releaseSlides = useRef<(() => void) | null>(null);
+  const refreshAttractMedia = useCallback(async (eventId?: string): Promise<void> => {
+    const bridge = window.photobooth;
+    if (!bridge || !eventId) { setAttractMedia([]); setAttractSlides([]); return; }
+    const listed = await bridge.listAttractMedia(eventId).catch(() => [] as AttractMedia[]);
+    setAttractMedia(listed);
+    const loaded = await loadAttractSlides(bridge, eventId, listed).catch(() => null);
+    releaseSlides.current?.();
+    releaseSlides.current = loaded?.release ?? null;
+    setAttractSlides(loaded?.slides ?? []);
+  }, []);
+
+  useEffect(() => {
+    void refreshAttractMedia(event?.id);
+    return () => { releaseSlides.current?.(); releaseSlides.current = null; };
+  }, [event?.id, refreshAttractMedia]);
 
   useEffect(() => {
     if (!window.photobooth || screen !== 'ready') return;
@@ -351,7 +380,7 @@ function App(): React.JSX.Element {
         setTemplates(layoutPresets.map((preset) => ({ id: preset.id, name: preset.name, shots: preset.shots, copies: preset.copies, pagePreset: '4x6' as const, pageLabel: '4 × 6 in', builtIn: true })));
         // The browser preview has no event storage, so it offers three catalog layouts and
         // makes the guest picker visible while developing the UI.
-        setEvent({ id: 'preview-event', name: 'Default Event', shots: 3, retakeLimit: 3, printEnabled: true, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: 'double-strip-3', offeredLayoutIds: ['double-strip-3', 'double-strip-4', 'grid-4-portrait'], consentText: '', contactText: '', galleryToken: null, galleryPasswordSet: false, watermarkEnabled: false, watermarkPosition: 'bottom-right', watermarkScalePercent: 18, watermarkOpacity: 0.6, printLimitPerSession: 2, paperCount: 0 });
+        setEvent({ id: 'preview-event', name: 'Default Event', shots: 3, retakeLimit: 3, printEnabled: true, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: 'double-strip-3', offeredLayoutIds: ['double-strip-3', 'double-strip-4', 'grid-4-portrait'], consentText: '', contactText: '', galleryToken: null, galleryPasswordSet: false, watermarkEnabled: false, watermarkPosition: 'bottom-right', watermarkScalePercent: 18, watermarkOpacity: 0.6, printLimitPerSession: 2, paperCount: 0, attractEnabled: true, attractIdleSeconds: 60 });
         setRetakeLimitDraft('3');
       }
       if (!camera) { setStatus('Camera access is not available.'); return; }
@@ -409,6 +438,19 @@ function App(): React.JSX.Element {
     timeoutMs: SESSION_IDLE_TIMEOUT_MS,
     enabled: (screen === 'capturing' || screen === 'review') && Boolean(sessionId) && retakeBusySlot === null,
     onIdle: () => { void abandonForIdle(sessionId); },
+  });
+
+  /**
+   * The booth goes back to inviting guests in after a few idle minutes (F19). It stays out of
+   * the way while the operator is working: an open session, an unlocked settings panel, the
+   * layout editor or a dialog all mean someone is doing something.
+   */
+  const attractAllowed = screen === 'ready' && Boolean(event?.attractEnabled) && !attractVisible
+    && !adminLocked && unfinishedSessions.length === 0 && !editorOpen && !consentOpen && !exitPrompt;
+  useIdleTimeout({
+    timeoutMs: (event?.attractIdleSeconds ?? 60) * 1000,
+    enabled: attractAllowed,
+    onIdle: () => setAttractVisible(true),
   });
 
   const setPreviewImage = (blob: Blob): void => {
@@ -526,7 +568,7 @@ function App(): React.JSX.Element {
   };
 
   const handleNewEvent = (): void => {
-    setEventDraft({ id: '', name: '', shots: 3, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: defaultLayoutIdForShots(3), offeredLayoutIds: [defaultLayoutIdForShots(3)], consentText: '', contactText: '', galleryToken: null, galleryPasswordSet: false, watermarkEnabled: false, watermarkPosition: 'bottom-right', watermarkScalePercent: 18, watermarkOpacity: 0.6, printLimitPerSession: 2, paperCount: 0 });
+    setEventDraft({ id: '', name: '', shots: 3, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: defaultLayoutIdForShots(3), offeredLayoutIds: [defaultLayoutIdForShots(3)], consentText: '', contactText: '', galleryToken: null, galleryPasswordSet: false, watermarkEnabled: false, watermarkPosition: 'bottom-right', watermarkScalePercent: 18, watermarkOpacity: 0.6, printLimitPerSession: 2, paperCount: 0, attractEnabled: true, attractIdleSeconds: 60 });
     setEventLogoDataUrl(null); setEventMessage('New event details are not saved yet.');
   };
 
@@ -820,7 +862,33 @@ function App(): React.JSX.Element {
     setPhotoPreviewUrl((current) => { if (current) URL.revokeObjectURL(current); return ''; });
     setErrorMessage('');
     setStatus('Camera is ready');
+    // The loop comes back after every session, so the next guest sees the invite (F19). In
+    // operator mode the settings stay put; the next idle minute brings the loop back.
+    setAttractVisible(Boolean(event?.attractEnabled) && (pinConfigured || adminLocked));
     void refreshUnfinishedSessions();
+  };
+
+  const handleAddAttractMedia = async (): Promise<void> => {
+    const bridge = window.photobooth;
+    if (!bridge || !event) return;
+    setBusy(true);
+    try {
+      await bridge.addAttractMedia(event.id);
+      await refreshAttractMedia(event.id);
+      setEventMessage('Attract screen media updated. The loop is available on the idle screen.');
+    } catch (error) { setEventMessage(toErrorMessage(error, 'Could not add that attract screen file.')); }
+    finally { setBusy(false); }
+  };
+
+  const handleRemoveAttractMedia = async (mediaId: string): Promise<void> => {
+    const bridge = window.photobooth;
+    if (!bridge || !event) return;
+    setBusy(true);
+    try {
+      await bridge.removeAttractMedia(event.id, mediaId);
+      await refreshAttractMedia(event.id);
+    } catch (error) { setEventMessage(toErrorMessage(error, 'Could not remove that attract screen file.')); }
+    finally { setBusy(false); }
   };
 
   const handleDiskWarningChange = (value: string): void => setDiskWarningGB(value);
@@ -994,6 +1062,14 @@ function App(): React.JSX.Element {
               </div>
               {galleryLink && <input aria-label="Gallery link" readOnly value={galleryLink} onFocus={(e) => e.currentTarget.select()} />}
             </div>
+            <div className="attract-field">
+              <div className="attract-field-heading">
+                <label className="attract-toggle"><input type="checkbox" aria-label="Show attract screen when idle" checked={eventDraft.attractEnabled} onChange={(e) => setEventDraft({ ...eventDraft, attractEnabled: e.target.checked })} /> <span>Invite guests in on an idle attract screen</span></label>
+                <button type="button" className="secondary-button" onClick={() => setAttractVisible(true)} disabled={!event || busy || unfinishedSessions.length > 0}>Preview attract screen</button>
+              </div>
+              <label>Wait before showing it (seconds)<input aria-label="Attract screen idle seconds" type="number" min={MIN_ATTRACT_IDLE_SECONDS} max={MAX_ATTRACT_IDLE_SECONDS} value={eventDraft.attractIdleSeconds} disabled={!eventDraft.attractEnabled} onChange={(e) => setEventDraft({ ...eventDraft, attractIdleSeconds: Number(e.target.value) })} /></label>
+              <AttractMediaField media={attractMedia} busy={busy} disabled={unfinishedSessions.length > 0 || !event} onAdd={() => void handleAddAttractMedia()} onRemove={(mediaId) => void handleRemoveAttractMedia(mediaId)} />
+            </div>
             <GuestLayoutField templates={templates} defaultLayoutId={eventDraft.defaultLayoutId} offeredLayoutIds={eventDraft.offeredLayoutIds} onChange={(offeredLayoutIds) => setEventDraft({ ...eventDraft, offeredLayoutIds })} />
             <div className="event-logo-field">{eventLogoDataUrl ? <img src={eventLogoDataUrl} alt="Selected event logo preview" /> : <span>No logo selected</span>}<button type="button" className="secondary-button" onClick={() => void handleChooseEventLogo()} disabled={unfinishedSessions.length > 0}>Choose PNG/JPEG logo</button><small>Files are copied locally; limit 5 MB.</small></div>
             <button type="button" className="start-button" onClick={() => void handleSaveEvent()} disabled={unfinishedSessions.length > 0}>Save and use this event</button>
@@ -1023,6 +1099,16 @@ function App(): React.JSX.Element {
         {!errorMessage && <p className="helper-note">Originals stay on this booth. No photos are uploaded in this feature.</p>}
       </section>
       <footer className="app-footer"><span>OFFLINE-READY · PRIVATE BY DESIGN</span><span>{event?.name.toUpperCase() ?? 'CAMERA SETUP'}</span></footer>
+      {attractVisible && event && <AttractScreen
+        event={event}
+        logoDataUrl={eventLogoDataUrl}
+        slides={attractSlides}
+        layouts={layoutChoices.flatMap((choice) => {
+          const document = layoutDocuments[choice.id];
+          return document ? [{ id: choice.id, label: choice.name, document }] : [];
+        })}
+        onStart={() => setAttractVisible(false)}
+      />}
     </main>
   );
 }

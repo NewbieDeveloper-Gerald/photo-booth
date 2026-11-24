@@ -1,6 +1,7 @@
 import {
-  MAX_CONSENT_LENGTH, MAX_EVENT_CONTACT_LENGTH, MAX_EVENT_NAME_LENGTH, MAX_EVENT_PAPER_COUNT, MAX_EVENT_TEXT_LENGTH,
-  MAX_OFFERED_LAYOUTS, MAX_PRINT_LIMIT_PER_SESSION, MIN_PRINT_LIMIT_PER_SESSION,
+  MAX_ATTRACT_IDLE_SECONDS, MAX_CONSENT_LENGTH, MAX_EVENT_CONTACT_LENGTH, MAX_EVENT_NAME_LENGTH, MAX_EVENT_PAPER_COUNT,
+  MAX_EVENT_TEXT_LENGTH,
+  MAX_OFFERED_LAYOUTS, MAX_PRINT_LIMIT_PER_SESSION, MIN_ATTRACT_IDLE_SECONDS, MIN_PRINT_LIMIT_PER_SESSION,
   MAX_WATERMARK_OPACITY, MAX_WATERMARK_SCALE_PERCENT, MIN_WATERMARK_OPACITY, MIN_WATERMARK_SCALE_PERCENT,
 } from '../../../shared/constants/limits';
 import type { WatermarkPosition } from '../../../shared/types/watermark';
@@ -82,6 +83,20 @@ function validatePrintRules(item: Record<string, unknown>): { printLimitPerSessi
   return { printLimitPerSession: limit, paperCount };
 }
 
+/**
+ * Attract screen (F19): on by default, because an idle booth that keeps its controls on screen
+ * looks broken. The wait is clamped to something a guest can sit through.
+ */
+function validateAttract(item: Record<string, unknown>): { attractEnabled: boolean; attractIdleSeconds: number } {
+  const enabled = item.attractEnabled ?? true;
+  if (typeof enabled !== 'boolean') throw new Error('Invalid attract screen setting');
+  const idle = item.attractIdleSeconds ?? 60;
+  if (typeof idle !== 'number' || !Number.isInteger(idle) || idle < MIN_ATTRACT_IDLE_SECONDS || idle > MAX_ATTRACT_IDLE_SECONDS) {
+    throw new Error(`Attract screen wait must be ${MIN_ATTRACT_IDLE_SECONDS} to ${MAX_ATTRACT_IDLE_SECONDS} seconds`);
+  }
+  return { attractEnabled: enabled, attractIdleSeconds: idle };
+}
+
 export function validateEventSettings(value: unknown): ValidatedEventFields {
   if (!value || typeof value !== 'object') throw new Error('Invalid event details');
   const item = value as Record<string, unknown>;
@@ -99,5 +114,5 @@ export function validateEventSettings(value: unknown): ValidatedEventFields {
   const contactText = optionalText(item.contactText, MAX_EVENT_CONTACT_LENGTH, `Contact details must be ${MAX_EVENT_CONTACT_LENGTH} characters or fewer`);
   return { name: item.name.trim(), shots, expiryDays, eventDate: eventDate as string | null, primaryColor: item.primaryColor as string, accentColor: item.accentColor as string,
     welcomeText: (item.welcomeText as string).trim(), thankYouText: (item.thankYouText as string).trim(),
-    defaultLayoutId: defaultLayoutIdForShots(shots), offeredLayoutIds: offered, consentText, contactText, ...validateWatermark(item), ...validatePrintRules(item) };
+    defaultLayoutId: defaultLayoutIdForShots(shots), offeredLayoutIds: offered, consentText, contactText, ...validateWatermark(item), ...validatePrintRules(item), ...validateAttract(item) };
 }

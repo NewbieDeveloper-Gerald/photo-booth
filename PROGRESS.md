@@ -1,6 +1,6 @@
 # Progress
 
-Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`.
+Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`; F19 implemented on `arena/7de5fca9-photo-booth`.
 
 ## Current status
 
@@ -24,9 +24,10 @@ Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `4215
 - **F17 (watermark on downloads): merged** (`484354e`), awaiting the manual compare test below.
 - **F18 (print queue, counts and limits): merged** (`6a0abb9`), awaiting the manual
   pause/resume print test below.
-- **F19–F29: not started.**
+- **F19 (attract screen): implemented**, awaiting the two-minute idle check below.
+- **F20–F29: not started.**
 - Automated verification today: `npm run typecheck`, `npm run lint`, `npm test`
-  (**319 tests in 55 files**), `npm run build` (Vite production build) all pass.
+  (**344 tests in 60 files**), `npm run build` (Vite production build) all pass.
   `npm run test:e2e` exists but cannot run in this environment (no browser runtime).
 
 ## Verification gaps (unrecorded or impossible here)
@@ -341,6 +342,45 @@ its error so it can be reprinted after the limit is raised.
 Two printers at once (jobs keep a printer name but there is one worker), per-job priority,
 automatic paper reload detection and cut lines drawn on the sheet are not implemented.
 
+## F19. Attract screen (implemented)
+
+- **The idle loop replaces the operator screen, not the session flow**: when the booth sits
+  unused, a full-bleed overlay shows the event's photos or clips, its logo, name and welcome
+  text, and a pulsing *Touch to start*. Tapping anywhere (or Enter) returns to the booth
+  screen, where the guest picks a layout and presses Start — the picker from F13 is why the
+  touch does not start a session directly.
+- **Per-event settings** (migration `015_attract_screen`): `attract_enabled` (default on, so an
+  existing event gains the loop) and `attract_idle_seconds` (5–600, default 60). Validation
+  rejects anything else; a duplicated event carries both.
+- **Media is files, not rows**: the operator adds up to eight photos or clips from event setup
+  and they are *copied* into `event-assets/<event>/attract/`, so taking the memory card home
+  does not break the loop. PNG/JPEG/WebP and MP4/M4V/WebM only, 25 MB per file, and the first
+  bytes are checked so a renamed file is refused. Removing one deletes that copy.
+- **No media yet? It still works**: the loop cycles this event's offered layouts, drawn with
+  the same SVG preview the guest picker uses, so a fresh event has a working invite screen.
+- **Slides**: one timer (5.5 s) switches between slides; a video plays with `muted`, `loop`
+  and `playsInline`, so it loops under the copy instead of blocking the rotation. Blob URLs
+  are created once per event and revoked when the event changes.
+- **When it shows**: after `attract_idle_seconds` without pointer or key input on the booth
+  screen, and immediately after *Back to start* from the finished screen. It stays out of the
+  way while an unfinished session is waiting, the operator has unlocked settings, the layout
+  editor is open, or a dialog (consent, exit) is up.
+- **Operator help**: event setup gained *Preview attract screen*, so the loop can be checked
+  without waiting for the timer.
+- **IPC**: `attract:list`, `attract:add` (multi-select dialog), `attract:remove`, `attract:read`.
+
+### F19 manual check
+
+Leave the booth idle for two minutes with the default 60-second wait: the loop appears with the
+event's photos or clips and *Touch to start*, a touch returns to the booth screen, and a session
+run end-to-end brings the loop back. Add a clip per event and confirm it plays muted and loops.
+
+### F19 out of scope (later features)
+
+Per-slide timing, sound, a video background behind the live camera preview, and showing
+previous guests' photos as the loop are not implemented; the loop uses the operator's files
+(or this event's layouts) only.
+
 ## Feature log
 
 ### F0. Project setup
@@ -410,6 +450,9 @@ automatic paper reload detection and cut lines drawn on the sheet are not implem
 - Node.js 22 LTS recommended, 20 supported; 26 is not, because of the native rebuild toolchain.
 - Originals never leave the booth; the guest link serves the download copies.
 - Code is feature-first with a renderer-safe `index.ts` and a main-process `node.ts` per feature.
+- Attract media is stored as files under the event's asset folder rather than as rows or data
+  URLs: the loop streams blob URLs once per event, and deleting an event already removes that
+  folder.
 - The print queue lives in SQLite, not in memory, and a job is claimed (`queued` → `printing`,
   `attempts + 1`) before the printer is called, so a restart or a second tick cannot print a
   sheet twice. The per-session limit counts queued/printing/done/failed, never cancelled.
@@ -423,6 +466,8 @@ automatic paper reload detection and cut lines drawn on the sheet are not implem
 - `events.print_enabled` is stored but not enforced; the operator picks the printer instead.
 - The print worker is one in-process loop: one printer at a time, no job priority, and a failed
   job is retried only by an explicit reprint (a loose cable should not burn paper).
+- The attract loop keeps the camera stream alive behind it, so the first photo after a touch
+  does not wait for a camera restart; the stream is hidden, never sent anywhere.
 - `src/ui/main.tsx` still holds the session flow and the event/PIN forms (~1200 lines).
 - The canvas painter itself is untested (jsdom has no canvas); its geometry is pinned by
   `template-paint-plan.test.ts` and by the manual print checklist.

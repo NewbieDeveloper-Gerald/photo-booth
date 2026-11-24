@@ -15,10 +15,12 @@ const EVENT_COLUMNS = `id, name, shots, expiry_days AS expiryDays, event_date AS
   gallery_token AS galleryToken, gallery_password_hash AS galleryPasswordHash,
   watermark_enabled AS watermarkEnabled, watermark_position AS watermarkPosition,
   watermark_scale_percent AS watermarkScalePercent, watermark_opacity AS watermarkOpacity,
-  print_limit_per_session AS printLimitPerSession, paper_count AS paperCount`;
+  print_limit_per_session AS printLimitPerSession, paper_count AS paperCount,
+  attract_enabled AS attractEnabled, attract_idle_seconds AS attractIdleSeconds`;
 
-type EventListRow = Omit<EventSettings, 'galleryToken' | 'galleryPasswordSet' | 'watermarkEnabled'> & {
+type EventListRow = Omit<EventSettings, 'galleryToken' | 'galleryPasswordSet' | 'watermarkEnabled' | 'attractEnabled'> & {
   offeredLayoutIds: string; galleryToken: string | null; galleryPasswordHash: string | null; watermarkEnabled: number;
+  attractEnabled: number;
 };
 
 /** The column is JSON; a corrupt value must not break the booth screen, so fall back to the default layout. */
@@ -45,6 +47,7 @@ function toEventSettings(row: EventListRow): EventSettings {
     watermarkEnabled: Boolean(row.watermarkEnabled), watermarkPosition: row.watermarkPosition,
     watermarkScalePercent: row.watermarkScalePercent, watermarkOpacity: row.watermarkOpacity,
     printLimitPerSession: row.printLimitPerSession, paperCount: row.paperCount,
+    attractEnabled: Boolean(row.attractEnabled), attractIdleSeconds: row.attractIdleSeconds,
   };
 }
 
@@ -80,17 +83,17 @@ export function saveEventSettings(userDataPath: string, input: unknown): EventSe
     if (exists) database.prepare(`UPDATE events SET name = ?, shots = ?, expiry_days = ?, event_date = ?, primary_color = ?, accent_color = ?,
       welcome_text = ?, thank_you_text = ?, default_layout_id = ?, offered_layout_ids = ?, consent_text = ?, contact_text = ?,
       watermark_enabled = ?, watermark_position = ?, watermark_scale_percent = ?, watermark_opacity = ?,
-      print_limit_per_session = ?, paper_count = ? WHERE id = ?`).run(fields.name, fields.shots,
+      print_limit_per_session = ?, paper_count = ?, attract_enabled = ?, attract_idle_seconds = ? WHERE id = ?`).run(fields.name, fields.shots,
       fields.expiryDays, fields.eventDate, fields.primaryColor, fields.accentColor, fields.welcomeText, fields.thankYouText, fields.defaultLayoutId, offeredJson,
       fields.consentText, fields.contactText, Number(fields.watermarkEnabled), fields.watermarkPosition, fields.watermarkScalePercent, fields.watermarkOpacity,
-      fields.printLimitPerSession, fields.paperCount, id);
+      fields.printLimitPerSession, fields.paperCount, Number(fields.attractEnabled), fields.attractIdleSeconds, id);
     else database.prepare(`INSERT INTO events (id, name, shots, retake_limit, print_enabled, expiry_days, event_date, primary_color, accent_color,
       welcome_text, thank_you_text, default_layout_id, offered_layout_ids, consent_text, contact_text,
       watermark_enabled, watermark_position, watermark_scale_percent, watermark_opacity,
-      print_limit_per_session, paper_count) VALUES (?, ?, ?, 3, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, fields.name,
+      print_limit_per_session, paper_count, attract_enabled, attract_idle_seconds) VALUES (?, ?, ?, 3, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, fields.name,
       fields.shots, fields.expiryDays, fields.eventDate, fields.primaryColor, fields.accentColor, fields.welcomeText, fields.thankYouText, fields.defaultLayoutId,
       offeredJson, fields.consentText, fields.contactText, Number(fields.watermarkEnabled), fields.watermarkPosition, fields.watermarkScalePercent, fields.watermarkOpacity,
-      fields.printLimitPerSession, fields.paperCount);
+      fields.printLimitPerSession, fields.paperCount, Number(fields.attractEnabled), fields.attractIdleSeconds);
     const galleryPassword = validateGalleryPassword(item.galleryPassword);
     if (galleryPassword !== undefined) {
       database.prepare('UPDATE events SET gallery_password_hash = ? WHERE id = ?').run(galleryPassword === null ? null : hashSecret(galleryPassword), id);
