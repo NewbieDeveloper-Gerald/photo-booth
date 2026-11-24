@@ -205,3 +205,7 @@
 /* F23 · the animated extra on the finished screen: small, next to the layout it came from. */
 .animation-extra { display: grid; gap: 8px; justify-items: center; margin-top: 10px; }
 .animation-extra img { width: min(240px, 60vw); border-radius: 10px; border: 1px solid #ffffff1f; image-rendering: auto; }
+
+/* F24 · the dashboard card: an address, a link and nothing else to think about. */
+.analytics-card { align-items: start; }
+.analytics-card .secondary-button { text-decoration: none; }

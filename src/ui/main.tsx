@@ -24,6 +24,7 @@ import { AttractMediaField } from '../renderer/components/AttractMediaField';
 import { FilterPicker } from '../renderer/components/FilterPicker';
 import { HotkeyHelp } from '../renderer/components/HotkeyHelp';
 import { RemoteGuestCard } from '../renderer/components/RemoteGuestCard';
+import { AnalyticsCard } from '../renderer/components/AnalyticsCard';
 import { isTypingTarget, matchHotkey } from '../renderer/lib/hotkeys';
 import { buildRemoteView, isRemoteCommandAllowed, remoteViewSignature } from '../features/remote-guest';
 import { wantsBoomerang, wantsSlideshow, type AnimatedOutput } from '../features/animation';
@@ -1379,6 +1380,7 @@ function App(): React.JSX.Element {
         {screen === 'review' && reviewRecord && <ReviewSection record={reviewRecord} images={reviewImages} isBusy={isBusy} cameraReady={cameraReady} onRetake={(slot) => void handleRetake(slot)} onRevert={(slot) => void handleRevert(slot)} />}
         {unfinishedSessions.length > 0 && screen === 'ready' && !adminLocked && <RecoveryCard session={unfinishedSessions[0]!} busy={busy} cameraReady={cameraReady} onResume={() => void handleResumeSession(unfinishedSessions[0]!)} onDiscard={() => void handleDiscardSession(unfinishedSessions[0]!)} />}
         {screen === 'ready' && !adminLocked && uploadQueue && <UploadQueueCard summary={uploadQueue} />}
+        {screen === 'ready' && !adminLocked && <AnalyticsCard downloadBaseUrl={downloadBaseUrl} />}
         {screen === 'ready' && !adminLocked && <RemoteGuestCard info={remoteInfo} busy={busy} error={remoteError}
           onToggle={(enabled) => void handleRemoteToggle(enabled)} onRotate={() => void handleRemoteRotateLink()} />}
         {screen === 'ready' && !adminLocked && printSummary && <PrintQueueCard summary={printSummary} jobs={printJobs} busy={busy} onSetPaused={(paused) => void handleSetPrintPaused(paused)} onCancel={(jobId) => void handleCancelPrintJob(jobId)} />}

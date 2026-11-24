@@ -9,6 +9,8 @@ import { isShareToken } from '../../shared/validation/identifiers';
 import { DOWNLOAD_MAX_REQUESTS_PER_WINDOW, DOWNLOAD_RATE_WINDOW_MS, DOWNLOAD_SERVER_HOST, DOWNLOAD_SERVER_PORT } from '../../shared/constants/limits';
 import { renderGuestPage, renderUnavailablePage } from './guest-page-html';
 import { handleGalleryRequest, type GalleryGrants } from './gallery/gallery-http';
+import { handleAdminRequest, type DashboardSessions } from '../analytics/admin/admin-http';
+import { recordDownloadEvent } from '../analytics/data/stats-repository';
 import type { DownloadFile, SessionDownload } from './guest-page-html';
 
 /** Matches every route that carries a share token, so limits can be applied per guest link. */
@@ -83,7 +85,7 @@ function findSession(databasePath: string, photosRoot: string, token: string): S
       if (!filePath || !fs.existsSync(filePath)) continue;
       files.push({ id: animation.id, name: animation.kind === 'gif' ? 'Animated loop.gif' : 'Boomerang.gif', filePath, kind: animation.kind });
     }
-    return { eventName: session.eventName, logoPath: session.logoPath, primaryColor: session.primaryColor, accentColor: session.accentColor, welcomeText: session.welcomeText, thankYouText: session.thankYouText, files };
+    return { eventName: session.eventName, logoPath: session.logoPath, primaryColor: session.primaryColor, accentColor: session.accentColor, welcomeText: session.welcomeText, thankYouText: session.thankYouText, files, id: session.id };
   } finally { database.close(); }
 }
 
@@ -106,10 +108,19 @@ export function createDownloadServer(userDataPath: string, photosRoot: string, o
   const databasePath = path.join(userDataPath, 'photobooth.sqlite');
   const buckets = new Map<string, { started: number; count: number }>();
   const galleryGrants: GalleryGrants = new Map();
+  const dashboardSessions: DashboardSessions = new Map();
   const server = http.createServer((request, response) => {
     noIndex(response);
     if (request.method !== 'GET' && request.method !== 'HEAD' && request.method !== 'POST') { response.writeHead(405).end(); return; }
     const url = new URL(request.url ?? '/', 'http://localhost');
+    // The operator dashboard (F24) shares this port, so it is reachable over the same tunnel
+    // the guest links use. It is handled before any token route and asks for the admin PIN.
+    if (url.pathname === '/admin' || url.pathname.startsWith('/admin/')) {
+      void handleAdminRequest({ request, response, url, userDataPath, sessions: dashboardSessions })
+        .then((handled) => { if (!handled) response.writeHead(404).end(); })
+        .catch(() => { if (!response.headersSent) response.writeHead(500).end(); else response.destroy(); });
+      return;
+    }
     if (isLimited(request, url.pathname, buckets, rateLimit.windowMs, rateLimit.maxRequests)) { response.writeHead(429, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Please wait before trying again.'); return; }
     if (url.pathname.startsWith('/g/') || url.pathname.startsWith('/api/v1/gallery/')) {
       void handleGalleryRequest({ request, response, url, userDataPath, photosRoot, grants: galleryGrants })
@@ -158,6 +169,7 @@ export function createDownloadServer(userDataPath: string, photosRoot: string, o
       if (!session) { response.writeHead(404).end(); return; }
       const zip = new ZipFile();
       zip.on('error', () => response.destroy());
+      if (request.method === 'GET') recordDownloadEvent(databasePath, session.id, 'zip');
       response.writeHead(200, { 'Content-Type': 'application/zip', 'Content-Disposition': 'attachment; filename="photobooth-photos.zip"' });
       zip.outputStream.pipe(response);
       for (const file of session.files) zip.addFile(file.filePath, file.name, { compress: false });
@@ -168,11 +180,12 @@ export function createDownloadServer(userDataPath: string, photosRoot: string, o
     if (fileRoute) {
       const session = findSession(databasePath, photosRoot, fileRoute[1]!);
       const file = session?.files.find((candidate) => candidate.id === fileRoute[2]);
-      if (!file) { response.writeHead(404).end(); return; }
+      if (!session || !file) { response.writeHead(404).end(); return; }
       const isGif = file.filePath.toLowerCase().endsWith('.gif');
       // The guest page shows a loop inline, so it asks for an inline copy; a download link
       // (the same route without the flag) keeps the attachment header.
       const disposition = url.searchParams.get('inline') === '1' ? 'inline' : `attachment; filename="${file.name}"`;
+      if (request.method === 'GET') recordDownloadEvent(databasePath, session.id, file.kind);
       response.writeHead(200, { 'Content-Type': isGif ? 'image/gif' : 'image/jpeg', 'Content-Disposition': disposition, 'Content-Length': fs.statSync(file.filePath).size });
       if (request.method === 'HEAD') { response.end(); return; }
       const stream = fs.createReadStream(file.filePath);

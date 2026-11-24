@@ -4,6 +4,8 @@ export type DownloadFile = { id: string; name: string; filePath: string; kind: '
 export type SessionDownload = {
   eventName: string; logoPath: string | null; primaryColor: string; accentColor: string;
   welcomeText: string; thankYouText: string; files: DownloadFile[];
+  /** F24: the session these files belong to, so a download can be counted. */
+  id: string;
 };
 
 /** The mobile-first guest page; branding values are validated before they reach the markup. */

@@ -54,6 +54,15 @@ When the booth is idle it invites guests in: after an event-set wait (default 60
 
 Event setup has an **Attract screen** block: the toggle, the wait, and **Add photos or video** (PNG/JPEG/WebP, MP4/M4V/WebM, up to eight files of 25 MB each). The files are copied into the event's own folder under the booth's data directory, so the memory card can go home with the operator; **Remove** deletes that copy. With no media, the loop cycles the layouts the event offers, so a brand-new event still has an invite screen. **Preview attract screen** shows the loop immediately instead of waiting.
 
+## Booth numbers dashboard (F24)
+
+The booth serves a small operator dashboard at `/admin` on the same web server as the guest links — so on the booth computer it is `http://127.0.0.1:47625/admin`, and with a tunnel configured it is the same public HTTPS host plus `/admin`, readable from a phone. The operator panel's **Booth numbers** card hands over the address and copies it.
+
+- **Sign-in is the booth's admin PIN** (the one from F9), checked with the same scrypt hash and the same five-tries-then-a-minute lockout from F21 — so the dashboard cannot be guessed at harder than the booth itself. A correct PIN sets an HttpOnly, SameSite=Strict cookie scoped to `/admin` for two hours; **Sign out** clears it, and restarting the booth signs every screen out.
+- **Per event:** finished sessions, photos taken (retaken shots included), retakes, sheets the printer reported done, guest downloads and the average session time (start to finished layout), with an **All events** totals row whose average is weighted by sessions.
+- **CSV:** `Download CSV` on the same page gives the same numbers, one row per event plus totals, with the average in seconds *and* in words, quoted the way spreadsheets expect (`"Wedding, night two"`), and a dated filename.
+- **Where the numbers come from:** this booth's own records — `sessions`, `photos`, `print_jobs` and a new `download_events` table. Guest file and ZIP hits are counted with an id, a kind and a time only: no address, no browser, nothing that identifies a person. Because the booth is offline-first, these are its records, not numbers merged from other booths.
+
 ## Animated extras: GIF and boomerang (F23)
 
 Each event chooses an **Animated extra**: none, a **GIF loop** of the session's photos, a **boomerang** made from a short burst of frames, or both. Both are built on the booth right after the finished layout is saved, so a slow loop never delays the print, and both are listed — and shown inline — on the guest download page next to the photos, inside **Download all** as well.

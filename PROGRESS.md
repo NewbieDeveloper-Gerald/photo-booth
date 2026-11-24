@@ -1,6 +1,6 @@
 # Progress
 
-Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`, F20 as `de322a2`, F21 as `e9564c1`, F22 as `1b3d92c`, F23 as `48fab71`.
+Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`, F20 as `de322a2`, F21 as `e9564c1`, F22 as `1b3d92c`, F23 as `48fab71`, F24 as `PENDING-F24`.
 
 ## Current status
 
@@ -31,9 +31,10 @@ Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `4215
 - **F22 (tablet guest screen): merged** (`1b3d92c`), awaiting the full session from a
   tablet below.
 - **F23 (GIF and boomerang): merged** (`48fab71`), awaiting the two-phone check below.
-- **F24–F29: not started.**
+- **F24 (admin dashboard): merged** (`PENDING-F24`), awaiting the hand-count check below.
+- **F25–F29: not started.**
 - Automated verification today: `npm run typecheck`, `npm run lint`, `npm test`
-  (**448 tests in 80 files**), `npm run build` (Vite production build) all pass.
+  (**466 tests in 83 files**), `npm run build` (Vite production build) all pass.
   `npm run test:e2e` exists but cannot run in this environment (no browser runtime).
 
 ## Verification gaps (unrecorded or impossible here)
@@ -552,6 +553,42 @@ produces an animation from the photos.
 Video (MP4/WebM) output, audio, a per-photo dithering/quantiser beyond 3-3-2, choosing the
 animated extra per session by the guest, and editing the loop (frame order, speed) from the UI.
 
+## F24. Admin dashboard (merged)
+
+- **A login-protected dashboard on the booth's own web server**: `/admin` on the share port, so
+  it is `http://127.0.0.1:47625/admin` on the booth and `<public HTTPS host>/admin` over the
+  tunnel the guest links already use. The operator panel gained a **Booth numbers** card with
+  the address, a copy button and a link.
+- **Sign-in is the admin PIN**, checked by the same `attemptAdminPin` as the booth, which means
+  the F21 lockout (five tries, then a minute) protects the page with no second password to keep.
+  A session is a random 24-byte token in memory for two hours, in an HttpOnly, SameSite=Strict
+  cookie scoped to `/admin`; sign-out clears it and a restart signs everyone out.
+- **Per event**: finished sessions, photos taken (retakes included), retakes, printed sheets
+  (`print_jobs` done), guest downloads and the average session time; an **All events** row with a
+  weighted average. One SQL query with sub-selects, so the page cannot drift from the records.
+- **Downloads are counted** now: migration `018_download_events` records a row per guest file and
+  ZIP GET with the session, event, kind and time — no address, no browser, nothing personal —
+  written by the share server and never allowed to break a download.
+- **CSV export** (`/admin/numbers.csv`, behind the same login) writes RFC 4180 quoting, the
+  average in seconds and in words, a totals row and a dated filename. Pure and tested, including
+  commas, quotes and newlines in event names.
+- **Bugs the tests caught**: a counter that opened the database folder as if it were the file
+  (silently failing on every download), and a fixture whose session timing was reset by a later
+  write — the fixture now expresses a session's start from its finish.
+
+### F24 manual check
+
+Run a small test event: six sessions, two retakes, three prints, a few guest downloads (open one
+photo and **Download all** twice). Hand-count the same things, then open `/admin` and compare —
+numbers must match, the totals row must add up and the CSV must open in a spreadsheet with the
+same figures. Also try five wrong PINs: the page must report the lockout, and the booth's own
+unlock prompt must be locked out too.
+
+### F24 out of scope (later features)
+
+Numbers merged from several booths, a date-range or per-day view, revenue and payments (F27),
+charts, and long-term analytics storage — the dashboard reports the booth's records as they are.
+
 ## Feature log
 
 ### F0. Project setup
@@ -643,6 +680,10 @@ animated extra per session by the guest, and editing the loop (frame order, spee
   does not wait for a camera restart; the stream is hidden, never sent anywhere.
 - `src/ui/main.tsx` still holds the session flow and the event/PIN forms (~1400 lines), now
   including the tablet view mapping and frame sender.
+- The dashboard is reachable from a phone only over the configured tunnel, because the share
+  server listens on 127.0.0.1; locally it is the booth computer's browser.
+- Dashboard numbers are this booth's records: a guest who downloads a file twice is counted
+  twice, and a copy saved elsewhere afterwards cannot be counted at all.
 - The tablet screen is plain HTTP on the LAN: the token keeps strangers out, but anyone who
   can read the tablet's URL bar or history while it is on the same network can drive the booth.
   It is off by default and the link rotates; TLS would need a certificate the booth does not
