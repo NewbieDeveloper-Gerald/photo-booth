@@ -12,9 +12,13 @@ const EVENT_COLUMNS = `id, name, shots, expiry_days AS expiryDays, event_date AS
   primary_color AS primaryColor, accent_color AS accentColor, welcome_text AS welcomeText, thank_you_text AS thankYouText,
   default_layout_id AS defaultLayoutId, offered_layout_ids AS offeredLayoutIds,
   consent_text AS consentText, contact_text AS contactText,
-  gallery_token AS galleryToken, gallery_password_hash AS galleryPasswordHash`;
+  gallery_token AS galleryToken, gallery_password_hash AS galleryPasswordHash,
+  watermark_enabled AS watermarkEnabled, watermark_position AS watermarkPosition,
+  watermark_scale_percent AS watermarkScalePercent, watermark_opacity AS watermarkOpacity`;
 
-type EventListRow = Omit<EventSettings, 'galleryToken' | 'galleryPasswordSet'> & { offeredLayoutIds: string; galleryToken: string | null; galleryPasswordHash: string | null };
+type EventListRow = Omit<EventSettings, 'galleryToken' | 'galleryPasswordSet' | 'watermarkEnabled'> & {
+  offeredLayoutIds: string; galleryToken: string | null; galleryPasswordHash: string | null; watermarkEnabled: number;
+};
 
 /** The column is JSON; a corrupt value must not break the booth screen, so fall back to the default layout. */
 function parseOfferedLayoutIds(raw: string, defaultLayoutId: string): string[] {
@@ -37,6 +41,8 @@ function toEventSettings(row: EventListRow): EventSettings {
     offeredLayoutIds: parseOfferedLayoutIds(row.offeredLayoutIds, row.defaultLayoutId),
     consentText: row.consentText, contactText: row.contactText,
     galleryToken: row.galleryToken, galleryPasswordSet: row.galleryPasswordHash !== null,
+    watermarkEnabled: Boolean(row.watermarkEnabled), watermarkPosition: row.watermarkPosition,
+    watermarkScalePercent: row.watermarkScalePercent, watermarkOpacity: row.watermarkOpacity,
   };
 }
 
@@ -70,13 +76,15 @@ export function saveEventSettings(userDataPath: string, input: unknown): EventSe
     const offeredLayoutIds = resolveOfferedLayoutIds(database, fields.offeredLayoutIds, fields.defaultLayoutId);
     const offeredJson = JSON.stringify(offeredLayoutIds);
     if (exists) database.prepare(`UPDATE events SET name = ?, shots = ?, expiry_days = ?, event_date = ?, primary_color = ?, accent_color = ?,
-      welcome_text = ?, thank_you_text = ?, default_layout_id = ?, offered_layout_ids = ?, consent_text = ?, contact_text = ? WHERE id = ?`).run(fields.name, fields.shots,
+      welcome_text = ?, thank_you_text = ?, default_layout_id = ?, offered_layout_ids = ?, consent_text = ?, contact_text = ?,
+      watermark_enabled = ?, watermark_position = ?, watermark_scale_percent = ?, watermark_opacity = ? WHERE id = ?`).run(fields.name, fields.shots,
       fields.expiryDays, fields.eventDate, fields.primaryColor, fields.accentColor, fields.welcomeText, fields.thankYouText, fields.defaultLayoutId, offeredJson,
-      fields.consentText, fields.contactText, id);
+      fields.consentText, fields.contactText, Number(fields.watermarkEnabled), fields.watermarkPosition, fields.watermarkScalePercent, fields.watermarkOpacity, id);
     else database.prepare(`INSERT INTO events (id, name, shots, retake_limit, print_enabled, expiry_days, event_date, primary_color, accent_color,
-      welcome_text, thank_you_text, default_layout_id, offered_layout_ids, consent_text, contact_text) VALUES (?, ?, ?, 3, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, fields.name,
+      welcome_text, thank_you_text, default_layout_id, offered_layout_ids, consent_text, contact_text,
+      watermark_enabled, watermark_position, watermark_scale_percent, watermark_opacity) VALUES (?, ?, ?, 3, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, fields.name,
       fields.shots, fields.expiryDays, fields.eventDate, fields.primaryColor, fields.accentColor, fields.welcomeText, fields.thankYouText, fields.defaultLayoutId,
-      offeredJson, fields.consentText, fields.contactText);
+      offeredJson, fields.consentText, fields.contactText, Number(fields.watermarkEnabled), fields.watermarkPosition, fields.watermarkScalePercent, fields.watermarkOpacity);
     const galleryPassword = validateGalleryPassword(item.galleryPassword);
     if (galleryPassword !== undefined) {
       database.prepare('UPDATE events SET gallery_password_hash = ? WHERE id = ?').run(galleryPassword === null ? null : hashSecret(galleryPassword), id);

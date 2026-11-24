@@ -1,3 +1,5 @@
+import type { WatermarkPosition } from './watermark';
+
 export type ActiveEvent = {
   id: string; name: string; shots: number; retakeLimit: number; printEnabled: boolean; expiryDays: number;
   eventDate: string | null; logoPath: string | null; primaryColor: string; accentColor: string;
@@ -12,5 +14,11 @@ export type ActiveEvent = {
   galleryToken: string | null;
   /** True when the guest gallery asks for a password. The password itself is never returned. */
   galleryPasswordSet: boolean;
+  /** F17: brand the guest download copies (never the originals or the print). */
+  watermarkEnabled: boolean;
+  watermarkPosition: WatermarkPosition;
+  /** Logo width as a percentage of the photo width. */
+  watermarkScalePercent: number;
+  watermarkOpacity: number;
 };
 export type EventSettings = Omit<ActiveEvent, 'retakeLimit' | 'printEnabled'>;

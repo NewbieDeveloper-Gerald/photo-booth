@@ -105,3 +105,10 @@
 .gallery-hint { margin: 4px 0 0; color: #8d94a7; font-size: 12px; }
 .gallery-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .gallery-field input[readonly] { font-size: 12px; color: #c8c1d7; }
+
+/* F17 · watermark controls in event setup. */
+.watermark-field { grid-column: 1 / -1; display: grid; gap: 8px; padding: 12px 14px; border: 1px solid #ffffff1c; border-radius: 10px; }
+.watermark-toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #e4dff1; }
+.watermark-toggle input { width: 18px; height: 18px; }
+.watermark-field output { color: #b39be9; font-size: 12px; }
+.watermark-field input[type="range"] { width: 100%; accent-color: #c9b4ff; }

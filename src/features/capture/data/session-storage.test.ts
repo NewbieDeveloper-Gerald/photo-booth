@@ -26,9 +26,24 @@ describe('session storage', () => {
   it('creates the default event once with required settings and creates three slots', () => {
     const directory = setup();
     initializeStorage(directory);
-    expect(getActiveEvent(directory)).toEqual({ id: 'default-event', name: 'Default Event', shots: 3, retakeLimit: 3, printEnabled: true, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: '#c90000', accentColor: '#f4f0ec', welcomeText: 'Ready for your event. Check the preview, then start a session.', thankYouText: 'Your layout is ready.', defaultLayoutId: 'double-strip-3', offeredLayoutIds: ['double-strip-3'], consentText: '', contactText: '', galleryToken: null, galleryPasswordSet: false });
+    expect(getActiveEvent(directory)).toEqual({ id: 'default-event', name: 'Default Event', shots: 3, retakeLimit: 3, printEnabled: true, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: '#c90000', accentColor: '#f4f0ec', welcomeText: 'Ready for your event. Check the preview, then start a session.', thankYouText: 'Your layout is ready.', defaultLayoutId: 'double-strip-3', offeredLayoutIds: ['double-strip-3'], consentText: '', contactText: '', galleryToken: null, galleryPasswordSet: false, watermarkEnabled: false, watermarkPosition: 'bottom-right', watermarkScalePercent: 18, watermarkOpacity: 0.6 });
     const { sessionId } = createSession(directory);
     expect(loadSession(directory, sessionId).slots.map((slot) => slot.slotNumber)).toEqual([1, 2, 3]);
+  });
+
+  it('leaves the original untouched when a watermarked guest copy is stored (F17)', async () => {
+    const directory = setup();
+    const { sessionId } = createSession(directory);
+    const saved = await saveOriginalPhoto(directory, sessionId, 1, tinyJpeg, 2048, 1536);
+    // The renderer bakes the watermark into these bytes; the backup keeps the camera frame.
+    const watermarked = new Uint8Array([0xff, 0xd8, 0xaa, 0xbb, 0xd9]);
+    await saveDownloadCopy(directory, saved.photoId, watermarked);
+    const database = new Database(path.join(directory, 'photobooth.sqlite'));
+    const file = database.prepare('SELECT original_path, download_path FROM photos WHERE id = ?').get(saved.photoId) as { original_path: string; download_path: string };
+    database.close();
+    expect(new Uint8Array(fs.readFileSync(file.original_path))).toEqual(tinyJpeg);
+    expect(new Uint8Array(fs.readFileSync(file.download_path))).toEqual(watermarked);
+    expect(await readOriginalPhoto(directory, saved.photoId)).toEqual(tinyJpeg);
   });
 
   it('keeps full-resolution originals and links a separate guest download copy', async () => {

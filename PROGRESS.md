@@ -1,6 +1,6 @@
 # Progress
 
-Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`; F16 implemented on `arena/8a405925-photo-booth`.
+Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`; F17 implemented on `arena/ff2f7425-photo-booth`.
 
 ## Current status
 
@@ -19,10 +19,12 @@ Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `4215
   provider before the offline/online manual test can run.
 - **F15 (expiry, deletion and cleanup): merged** (`bcb73f7`), awaiting the manual
   1-day-expiry test below.
-- **F16 (guest gallery per event): implemented**, awaiting the manual phone test below.
-- **F17–F29: not started.**
+- **F16 (guest gallery per event): merged** (`0d1debd`), awaiting the manual phone test
+  below.
+- **F17 (watermark on downloads): implemented**, awaiting the manual compare test below.
+- **F18–F29: not started.**
 - Automated verification today: `npm run typecheck`, `npm run lint`, `npm test`
-  (**277 tests in 47 files**), `npm run build` (Vite production build) all pass.
+  (**291 tests in 49 files**), `npm run build` (Vite production build) all pass.
   `npm run test:e2e` exists but cannot run in this environment (no browser runtime).
 
 ## Verification gaps (unrecorded or impossible here)
@@ -260,6 +262,36 @@ photos after the right one. Confirm the page refuses to be indexed.
 
 Thumbnails are the 2048 px guest copies (no separate thumbnail pipeline), there is no
 gallery ZIP download, no per-guest links and no moderation. The watermark is F17.
+
+## F17. Watermark on guest downloads (implemented)
+
+- **Per-event settings** (migration `013_event_watermark`): `watermark_enabled`,
+  `watermark_position` (`top-left`, `top-right`, `bottom-left`, `bottom-right`, `center`),
+  `watermark_scale_percent` (5–50 % of the photo width) and `watermark_opacity` (0.1–1).
+  Validation rejects anything the renderer cannot draw, and older payloads keep working
+  because every field is optional with the migration's defaults.
+- **Placement rule** (`features/capture/domain/watermark.ts`, pure): the mark is sized from
+  the photo width, keeps the logo's aspect ratio, is shrunk (never squashed) when a tall logo
+  would not fit, and is pulled inside the page with a 4 % margin of the shorter side.
+- **Where it is applied**: only when the 2048 px/q80 guest copy is created
+  (`createDownloadCopy` draws the photo, then the logo at the event opacity). The
+  full-resolution original is written straight from the camera and never passes through the
+  painter, the finished layout/print is untouched, and the share page, the gallery
+  thumbnails and gallery photo endpoints all serve that same watermarked copy.
+- **UI**: event setup gained a *Watermark guest downloads* block — the toggle is disabled
+  until the event has a logo (the mark is that logo), plus corner, size and opacity. The
+  decoded logo is cached per event so a capture sequence does not re-decode it per shot.
+
+### F17 manual check
+
+Enable the watermark on an event with a logo, run a session, then download the guest copy
+from the QR page and open the backup original next to it: the copy carries the logo in the
+chosen corner at the chosen opacity, the original and the printed layout do not.
+
+### F17 out of scope (later features)
+
+Text watermarks, per-photo marks, animated/video covers and a different mark for the
+finished layout are not implemented. Print counting and limits are F18.
 
 ## Feature log
 

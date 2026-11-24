@@ -48,7 +48,7 @@ The operator event panel creates, edits, duplicates, and selects events. Event f
 
 ## Security and image handling
 
-Session tokens use 16 cryptographically secure random bytes encoded as unpadded base64url (22 characters). Do not log photo contents or personal data. Image pipeline: local-only full-resolution JPEG originals; guest download copies max 2048px on the long edge, JPEG quality 80, no source metadata (canvas re-encoding drops EXIF/GPS); print files at the selected layout's dimensions (1200×1800 px for 4×6).
+Session tokens use 16 cryptographically secure random bytes encoded as unpadded base64url (22 characters). Do not log photo contents or personal data. Image pipeline: local-only full-resolution JPEG originals (kept clean, even when a watermark is on); guest download copies max 2048px on the long edge, JPEG quality 80, no source metadata (canvas re-encoding drops EXIF/GPS); print files at the selected layout's dimensions (1200×1800 px for 4×6).
 
 ## Project structure
 

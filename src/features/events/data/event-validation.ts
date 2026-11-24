@@ -1,4 +1,9 @@
-import { MAX_CONSENT_LENGTH, MAX_EVENT_CONTACT_LENGTH, MAX_EVENT_NAME_LENGTH, MAX_EVENT_TEXT_LENGTH, MAX_OFFERED_LAYOUTS } from '../../../shared/constants/limits';
+import {
+  MAX_CONSENT_LENGTH, MAX_EVENT_CONTACT_LENGTH, MAX_EVENT_NAME_LENGTH, MAX_EVENT_TEXT_LENGTH, MAX_OFFERED_LAYOUTS,
+  MAX_WATERMARK_OPACITY, MAX_WATERMARK_SCALE_PERCENT, MIN_WATERMARK_OPACITY, MIN_WATERMARK_SCALE_PERCENT,
+} from '../../../shared/constants/limits';
+import type { WatermarkPosition } from '../../../shared/types/watermark';
+import { isWatermarkPosition } from '../../capture/domain/watermark';
 import type { EventSettings } from '../../../shared/types/event';
 import { MAX_GALLERY_PASSWORD_LENGTH, MIN_GALLERY_PASSWORD_LENGTH } from '../../../shared/constants/limits';
 import { defaultLayoutIdForShots, isSupportedShotCount } from '../domain/default-layouts';
@@ -40,6 +45,26 @@ export function validateGalleryPassword(value: unknown): string | null | undefin
   return value;
 }
 
+/**
+ * Watermark input (F17): every part is optional so older payloads keep working, and the
+ * defaults match the migration so a missing field cannot change what the booth does.
+ */
+function validateWatermark(item: Record<string, unknown>): { watermarkEnabled: boolean; watermarkPosition: WatermarkPosition; watermarkScalePercent: number; watermarkOpacity: number } {
+  const enabled = item.watermarkEnabled;
+  if (enabled !== undefined && typeof enabled !== 'boolean') throw new Error('Invalid watermark setting');
+  const position = item.watermarkPosition ?? 'bottom-right';
+  if (!isWatermarkPosition(position)) throw new Error('Choose where the watermark sits on guest copies');
+  const scale = item.watermarkScalePercent ?? 18;
+  if (typeof scale !== 'number' || !Number.isInteger(scale) || scale < MIN_WATERMARK_SCALE_PERCENT || scale > MAX_WATERMARK_SCALE_PERCENT) {
+    throw new Error(`Watermark size must be ${MIN_WATERMARK_SCALE_PERCENT}–${MAX_WATERMARK_SCALE_PERCENT}% of the photo width`);
+  }
+  const opacity = item.watermarkOpacity ?? 0.6;
+  if (typeof opacity !== 'number' || !Number.isFinite(opacity) || opacity < MIN_WATERMARK_OPACITY || opacity > MAX_WATERMARK_OPACITY) {
+    throw new Error(`Watermark opacity must be from ${MIN_WATERMARK_OPACITY} to ${MAX_WATERMARK_OPACITY}`);
+  }
+  return { watermarkEnabled: enabled === true, watermarkPosition: position, watermarkScalePercent: scale, watermarkOpacity: Math.round(opacity * 100) / 100 };
+}
+
 export function validateEventSettings(value: unknown): ValidatedEventFields {
   if (!value || typeof value !== 'object') throw new Error('Invalid event details');
   const item = value as Record<string, unknown>;
@@ -57,5 +82,5 @@ export function validateEventSettings(value: unknown): ValidatedEventFields {
   const contactText = optionalText(item.contactText, MAX_EVENT_CONTACT_LENGTH, `Contact details must be ${MAX_EVENT_CONTACT_LENGTH} characters or fewer`);
   return { name: item.name.trim(), shots, expiryDays, eventDate: eventDate as string | null, primaryColor: item.primaryColor as string, accentColor: item.accentColor as string,
     welcomeText: (item.welcomeText as string).trim(), thankYouText: (item.thankYouText as string).trim(),
-    defaultLayoutId: defaultLayoutIdForShots(shots), offeredLayoutIds: offered, consentText, contactText };
+    defaultLayoutId: defaultLayoutIdForShots(shots), offeredLayoutIds: offered, consentText, contactText, ...validateWatermark(item) };
 }
