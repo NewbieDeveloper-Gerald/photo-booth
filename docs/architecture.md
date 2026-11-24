@@ -19,7 +19,7 @@ renderer (src/ui, src/renderer)  →  window.photobooth  →  main process (elec
 | `src/shared/` | Types, constants, validation, error handling, safe-path helpers, browser-only DOM helpers (`shared/dom/`) | Both |
 | `src/features/<name>/domain/` | Pure rules: retake limits, countdown, cover-crop maths, auto-print decision, disk-space threshold, template model and paint plan | Both |
 | `src/features/<name>/devices/` | Swappable hardware seams: camera, printer | Renderer (camera), main (printer) |
-| `src/features/<name>/data/` | SQLite and file-system persistence | Main only |
+| `src/features/<name>/data/` | SQLite and file-system persistence (including per-event attract media files) | Main only |
 | `src/features/<name>/index.ts` | Renderer-safe barrel (the only import surface for UI code) | Renderer |
 | `src/features/<name>/node.ts` | Main-process barrel (data layer + node-only helpers) | Main only |
 | `src/renderer/` | Renderer-only building blocks: components, hooks, lib | Renderer |
@@ -29,6 +29,11 @@ renderer (src/ui, src/renderer)  →  window.photobooth  →  main process (elec
 | `electron/devices/` | `PrinterDevice` implemented with Electron printing | Main |
 
 Features: `capture`, `events`, `layouts`, `printing`, `retention`, `sharing`, `storage`, `security`.
+
+The attract screen (F19) is a renderer overlay (`renderer/components/AttractScreen.tsx`) fed by
+`features/events/data/attract-media.ts`, which keeps the loop's files under
+`event-assets/<event>/attract/`. The renderer reads them once per event through `attract:read`
+and keeps blob URLs for the lifetime of that event, so a 25 MB clip is not re-read per slide.
 
 ## Dependency rules
 

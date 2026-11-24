@@ -6,6 +6,7 @@ import type { UploadQueueSummary } from '../features/sharing/upload-queue/types'
 import type { DeletionResult, RetentionStatus } from '../features/retention';
 import type { PagePresetId, TemplateDocument, TemplateSummary } from '../features/layouts/domain/template-document';
 import type { PrintJob, PrintQueueSummary } from '../features/printing/domain/print-queue-types';
+import type { AttractMedia } from '../shared/types/attract';
 
 import type { BoothSettingKey } from '../shared/constants/settings-keys';
 
@@ -29,6 +30,10 @@ declare global {
       chooseEventLogo(eventId: string): Promise<string | null>;
       getEventLogoDataUrl(eventId: string): Promise<string | null>;
       createShareLink(sessionId: string): Promise<{ url: string; expiresAt: string }>;
+      listAttractMedia(eventId: string): Promise<AttractMedia[]>;
+      addAttractMedia(eventId: string): Promise<AttractMedia[]>;
+      removeAttractMedia(eventId: string, mediaId: string): Promise<AttractMedia[]>;
+      readAttractMedia(eventId: string, mediaId: string): Promise<{ kind: 'image' | 'video'; mimeType: string; bytes: Uint8Array }>;
       createGalleryLink(eventId: string): Promise<{ url: string; token: string; passwordProtected: boolean }>;
       setGalleryPassword(eventId: string, password: string | null): Promise<boolean>;
       getUploadQueue(): Promise<UploadQueueSummary>;

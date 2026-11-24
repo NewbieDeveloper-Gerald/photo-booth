@@ -24,5 +24,8 @@ export type ActiveEvent = {
   printLimitPerSession: number;
   /** F18: sheets loaded for this event; 0 means the operator did not count them. */
   paperCount: number;
+  /** F19: the idle loop that invites guests in, and how long the booth waits to show it. */
+  attractEnabled: boolean;
+  attractIdleSeconds: number;
 };
 export type EventSettings = Omit<ActiveEvent, 'retakeLimit' | 'printEnabled'>;

@@ -6,6 +6,13 @@ export function blobToBytes(blob: Blob): Promise<Uint8Array> {
   return blob.arrayBuffer().then((buffer) => new Uint8Array(buffer));
 }
 
+/** Any stored bytes to a Blob of the given type: photos, logos, attract clips. */
+export function bytesToBlob(bytes: Uint8Array, type: string): Blob {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return new Blob([copy.buffer], { type });
+}
+
 export function bytesToJpegBlob(bytes: Uint8Array): Blob {
   const copy = new Uint8Array(bytes.byteLength);
   copy.set(bytes);

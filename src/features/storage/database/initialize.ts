@@ -222,6 +222,14 @@ const migrations: Array<{ name: string; sql: string }> = [
       ALTER TABLE outputs ADD COLUMN height INTEGER;
     `,
   },
+  {
+    // F19: the idle attract loop. Media itself lives as files under event-assets/<event>/attract.
+    name: '015_attract_screen',
+    sql: `
+      ALTER TABLE events ADD COLUMN attract_enabled INTEGER NOT NULL DEFAULT 1;
+      ALTER TABLE events ADD COLUMN attract_idle_seconds INTEGER NOT NULL DEFAULT 60;
+    `,
+  },
 ];
 
 export function initializeStorage(userDataPath: string): void {
