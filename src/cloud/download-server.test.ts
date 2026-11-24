@@ -5,7 +5,7 @@ import type { Server } from 'node:http';
 import { afterEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { initializeStorage } from '../storage/database';
-import { createSession, createSessionShareLink, saveOriginalPhoto, saveSessionOutput, setEventLogo } from '../storage/sessions';
+import { createSession, createSessionShareLink, saveDownloadCopy, saveOriginalPhoto, saveSessionOutput, setEventLogo } from '../storage/sessions';
 import { createDownloadServer } from './download-server';
 
 const directories: string[] = [];
@@ -51,6 +51,23 @@ describe('private QR download server', () => {
     expect(photo.headers.get('content-type')).toBe('image/jpeg');
     expect(new Uint8Array(await photo.arrayBuffer())).toEqual(tinyJpeg);
     expect((await fetch(`${origin}/api/v1/session/AAAAAAAAAAAAAAAAAAAAAA`)).status).toBe(404);
+  });
+
+  it('serves the optimized guest copy instead of the full-resolution original', async () => {
+    const { directory, sessionId, token, origin } = await fixture();
+    const database = new Database(path.join(directory, 'photobooth.sqlite'));
+    const photo = database.prepare(`SELECT p.id AS id FROM photos p JOIN slots sl ON sl.id = p.slot_id
+      WHERE sl.session_id = ? AND sl.slot_number = 1`).get(sessionId) as { id: string };
+    database.close();
+    const guestCopy = new Uint8Array([0xff, 0xd8, 0x21, 0x22, 0x23, 0xd9]);
+    await saveDownloadCopy(directory, photo.id, guestCopy);
+
+    const listing = await (await fetch(`${origin}/api/v1/session/${token}`)).json() as { files: Array<{ id: string; name: string }> };
+    const firstPhoto = listing.files.find((file) => file.name === 'Photo 01.jpg');
+    expect(firstPhoto).toBeDefined();
+    const response = await fetch(`${origin}/api/v1/file/${token}/${firstPhoto!.id}`);
+    expect(response.status).toBe(200);
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(guestCopy);
   });
 
   it('uses event branding safely on the guest page and serves its logo only through the private token', async () => {

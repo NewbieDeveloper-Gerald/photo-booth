@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import QRCode from 'qrcode';
 import { createRoot } from 'react-dom/client';
 import { canRetake, isValidRetakeLimit, retakesRemaining } from '../core/retakes';
-import { captureOriginalJpeg } from '../core/photo-pipeline';
+import { captureOriginalJpeg, createDownloadCopy } from '../core/photo-pipeline';
 import { coverCrop } from '../core/layout';
 import { getLayoutPreset, layoutPresets } from '../core/layouts';
 import { BrowserCameraDevice, type CameraInfo, type CameraResolution } from '../hardware/camera';
@@ -44,6 +44,17 @@ function bytesBlob(bytes: Uint8Array): Blob {
   return new Blob([copy.buffer], { type: 'image/jpeg' });
 }
 function wait(milliseconds: number): Promise<void> { return new Promise((resolve) => window.setTimeout(resolve, milliseconds)); }
+
+/** Persists the 2048px/q80 guest copy. The original is already on disk, so a failure here must not interrupt the session. */
+async function saveGuestDownloadCopy(bridge: NonNullable<Window['photobooth']>, photoId: string, original: Blob): Promise<boolean> {
+  try {
+    const copy = await createDownloadCopy(original);
+    await bridge.saveDownloadCopy(photoId, await blobBytes(copy.blob));
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 async function renderFinishedLayout(record: SessionRecord, eventName: string, layout: ReturnType<typeof getLayoutPreset>, qrDataUrl?: string, branding?: { primaryColor: string; accentColor: string; thankYouText: string; logoDataUrl: string | null }): Promise<Blob> {
   const bridge = window.photobooth;
@@ -393,10 +404,11 @@ function App(): React.JSX.Element {
     const video = videoRef.current;
     if (!bridge || !video || !currentStream.current) throw new Error('The camera is not ready for capture.');
     const original = await captureOriginalJpeg(video);
-    await bridge.saveOriginalPhoto(activeSessionId, slotNumber, await blobBytes(original.blob), original.width, original.height);
+    const saved = await bridge.saveOriginalPhoto(activeSessionId, slotNumber, await blobBytes(original.blob), original.width, original.height);
     setCapturedSlots((current) => new Set(current).add(slotNumber));
     setPreviewImage(original.blob);
     setStatus(`Photo ${slotNumber} saved.`);
+    await saveGuestDownloadCopy(bridge, saved.photoId, original.blob);
   };
 
   const captureSlots = async (activeSessionId: string, slots: number[], totalSlots: number): Promise<void> => {
@@ -634,6 +646,7 @@ function App(): React.JSX.Element {
       if (!video || !currentStream.current) throw new Error('The camera is not ready for capture.');
       const original = await captureOriginalJpeg(video);
       const pending = await bridge.saveRetakeOriginalPhoto(sessionId, slot.slotNumber, await blobBytes(original.blob), original.width, original.height);
+      await saveGuestDownloadCopy(bridge, pending.photoId, original.blob);
       setPreviewImage(original.blob);
       setStatus('Retake photo saved.');
       await bridge.commitRetake(sessionId, slot.slotNumber, pending.photoId);

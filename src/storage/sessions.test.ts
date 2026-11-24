@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { initializeStorage } from './database';
-import { abandonSession, commitRetake, createSession, exportEventFolder, getActiveEvent, getLatestSessionPrintInfo, listUnfinishedSessions, loadSession, readOriginalPhoto, revertRetake, saveOriginalPhoto, saveRetakeOriginalPhoto, saveSessionOutput, setActiveEventRetakeLimit, saveEventSettings } from './sessions';
+import { abandonSession, commitRetake, createSession, exportEventFolder, getActiveEvent, getLatestSessionPrintInfo, listUnfinishedSessions, loadSession, readOriginalPhoto, revertRetake, saveDownloadCopy, saveOriginalPhoto, saveRetakeOriginalPhoto, saveSessionOutput, setActiveEventRetakeLimit, saveEventSettings } from './sessions';
 
 const directories: string[] = [];
 function setup(): string {
@@ -28,13 +28,16 @@ describe('session storage', () => {
     expect(loadSession(directory, sessionId).slots.map((slot) => slot.slotNumber)).toEqual([1, 2, 3]);
   });
 
-  it('saves only full-resolution originals and completes after all slots are captured', async () => {
+  it('keeps full-resolution originals and links a separate guest download copy', async () => {
     const directory = setup();
     const { sessionId } = createSession(directory);
+    const guestCopy = new Uint8Array([0xff, 0xd8, 0x11, 0x12, 0xd9]);
     for (const slot of [1, 2, 3]) {
       const saved = await saveOriginalPhoto(directory, sessionId, slot, tinyJpeg, 4000, 3000);
-      const session = loadSession(directory, sessionId);
-      expect(session.slots[slot - 1]?.photoId).toBe(saved.photoId);
+      expect(loadSession(directory, sessionId).slots[slot - 1]?.photoId).toBe(saved.photoId);
+      expect(loadSession(directory, sessionId).slots[slot - 1]?.downloadReady).toBe(false);
+      await saveDownloadCopy(directory, saved.photoId, guestCopy);
+      expect(loadSession(directory, sessionId).slots[slot - 1]?.downloadReady).toBe(true);
     }
     const session = loadSession(directory, sessionId);
     expect(session.status).toBe('completed');
@@ -42,10 +45,10 @@ describe('session storage', () => {
     const file = database.prepare('SELECT original_path, download_path, width, height FROM photos LIMIT 1').get() as {
       original_path: string; download_path: string; width: number; height: number;
     };
-    expect(fs.existsSync(file.original_path)).toBe(true);
-    expect(file.download_path).toBeNull();
-    expect(fs.readdirSync(path.dirname(file.original_path)).some((name) => name.endsWith('-download.jpg'))).toBe(false);
     expect(file).toMatchObject({ width: 4000, height: 3000 });
+    expect(file.download_path).toMatch(/slot-01-original-download\.jpg$/);
+    expect(new Uint8Array(fs.readFileSync(file.original_path))).toEqual(tinyJpeg);
+    expect(new Uint8Array(fs.readFileSync(file.download_path))).toEqual(guestCopy);
     database.close();
   });
 
@@ -74,6 +77,8 @@ describe('session storage', () => {
     const untouched = [1, 3].map((slot) => before.slots[slot - 1]!.photoId);
     const newBytes = new Uint8Array([0xff, 0xd8, 0x77, 0x78, 0xd9]);
     const retake = await saveRetakeOriginalPhoto(directory, sessionId, 2, newBytes, 1920, 1080);
+    const retakeCopy = new Uint8Array([0xff, 0xd8, 0x09, 0x0a, 0xd9]);
+    await saveDownloadCopy(directory, retake.photoId, retakeCopy);
     await commitRetake(directory, sessionId, 2, retake.photoId);
     const secondRetakeBytes = new Uint8Array([0xff, 0xd8, 0x88, 0x89, 0xd9]);
     const secondRetake = await saveRetakeOriginalPhoto(directory, sessionId, 2, secondRetakeBytes, 1920, 1080);
@@ -100,6 +105,7 @@ describe('session storage', () => {
     expect(fs.readdirSync(sessionFolder).sort()).toEqual(expect.arrayContaining([
       'slot-01-original.jpg', 'slot-02-original.jpg', 'slot-02-retake-01.jpg', 'slot-02-retake-02.jpg', 'slot-03-original.jpg',
     ]));
+    expect(new Uint8Array(fs.readFileSync(path.join(sessionFolder, 'slot-02-retake-01-download.jpg')))).toEqual(retakeCopy);
     const backupFolder = path.join(directory, 'backup', 'default-event', sessionId);
     expect(fs.readdirSync(backupFolder).sort()).toEqual(['slot-01-original.jpg', 'slot-02-original.jpg', 'slot-02-retake-01.jpg', 'slot-02-retake-02.jpg', 'slot-03-original.jpg']);
     expect(new Uint8Array(fs.readFileSync(path.join(backupFolder, 'slot-02-original.jpg')))).toEqual(originals.get(2));

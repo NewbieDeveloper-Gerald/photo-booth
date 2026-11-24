@@ -45,15 +45,18 @@ function findSession(databasePath: string, photosRoot: string, token: string): S
       WHERE s.public_token = ? AND s.status = 'completed' AND s.token_expires_at IS NOT NULL
         AND julianday(s.token_expires_at) > julianday('now')`).get(token) as { id: string; eventName: string; logoPath: string | null; primaryColor: string; accentColor: string; welcomeText: string; thankYouText: string } | undefined;
     if (!session) return null;
-    const photos = database.prepare(`SELECT p.id, p.original_path AS filePath, sl.slot_number AS slotNumber
+    const photos = database.prepare(`SELECT p.id, p.original_path AS originalPath, p.download_path AS downloadPath, sl.slot_number AS slotNumber
       FROM sessions s JOIN slots sl ON sl.session_id = s.id JOIN photos p ON p.id = sl.current_photo_id
-      WHERE s.id = ? ORDER BY sl.slot_number`).all(session.id) as Array<{ id: string; filePath: string; slotNumber: number }>;
+      WHERE s.id = ? ORDER BY sl.slot_number`).all(session.id) as Array<{ id: string; originalPath: string; downloadPath: string | null; slotNumber: number }>;
     const output = database.prepare(`SELECT id, output_path AS filePath FROM outputs WHERE session_id = ? AND kind LIKE 'finished-%'
       ORDER BY created_at DESC, rowid DESC LIMIT 1`).get(session.id) as { id: string; filePath: string } | undefined;
     const files: DownloadFile[] = [];
     for (const photo of photos) {
-      const filePath = safePhotosPath(photosRoot, photo.filePath);
-      if (filePath && fs.existsSync(filePath)) files.push({ id: photo.id, name: `Photo ${String(photo.slotNumber).padStart(2, '0')}.jpg`, filePath, kind: 'photo' });
+      // Guests get the 2048px/q80 copy; sessions captured before download copies existed fall back to the original.
+      const filePath = [photo.downloadPath, photo.originalPath]
+        .map((candidate) => (candidate ? safePhotosPath(photosRoot, candidate) : null))
+        .find((candidate) => candidate && fs.existsSync(candidate)) ?? null;
+      if (filePath) files.push({ id: photo.id, name: `Photo ${String(photo.slotNumber).padStart(2, '0')}.jpg`, filePath, kind: 'photo' });
     }
     if (output) {
       const filePath = safePhotosPath(photosRoot, output.filePath);
