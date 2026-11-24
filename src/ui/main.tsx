@@ -14,6 +14,8 @@ import { ReviewSection } from '../renderer/components/ReviewSection';
 import { SlotProgress } from '../renderer/components/SlotProgress';
 import { TemplateEditor } from '../renderer/components/TemplateEditor';
 import { UploadQueueCard } from '../renderer/components/UploadQueueCard';
+import { ConfirmAction } from '../renderer/components/ConfirmAction';
+import { RetentionNote } from '../renderer/components/RetentionNote';
 import { GuestLayoutField } from '../renderer/components/GuestLayoutField';
 import { LayoutPicker } from '../renderer/components/LayoutPicker';
 import { boothLayoutChoices } from '../renderer/lib/offered-layouts';
@@ -27,6 +29,7 @@ import { decideAutoPrint } from '../features/printing';
 import type { ActiveEvent, EventSettings } from '../shared/types/event';
 import type { SessionRecord, SessionSlot, UnfinishedSession } from '../shared/types/session';
 import type { UploadQueueSummary } from '../features/sharing';
+import type { RetentionStatus } from '../features/retention';
 import './style.css';
 
 const resolutionOptions: Array<{ value: CameraResolution; label: string }> = [
@@ -82,6 +85,7 @@ function App(): React.JSX.Element {
   const [unfinishedSessions, setUnfinishedSessions] = useState<UnfinishedSession[]>([]);
   const [uploadQueue, setUploadQueue] = useState<UploadQueueSummary | null>(null);
   const [queueWarning, setQueueWarning] = useState('');
+  const [retention, setRetention] = useState<RetentionStatus | null>(null);
   const [pinConfigured, setPinConfigured] = useState(false);
   const [adminLocked, setAdminLocked] = useState(false);
   const [showUnlock, setShowUnlock] = useState(false);
@@ -147,8 +151,11 @@ function App(): React.JSX.Element {
 
   useEffect(() => {
     if (!window.photobooth || screen !== 'ready') return;
-    void refreshUploadQueue();
-    const timer = setInterval(() => void refreshUploadQueue(), UPLOAD_STATUS_POLL_MS);
+    const refreshBackgroundStatus = async (): Promise<void> => {
+      await Promise.all([refreshUploadQueue(), window.photobooth?.getRetentionStatus().then(setRetention).catch(() => setRetention(null))]);
+    };
+    void refreshBackgroundStatus();
+    const timer = setInterval(() => void refreshBackgroundStatus(), UPLOAD_STATUS_POLL_MS);
     return () => clearInterval(timer);
   }, [screen, refreshUploadQueue]);
 
@@ -288,7 +295,7 @@ function App(): React.JSX.Element {
         setTemplates(layoutPresets.map((preset) => ({ id: preset.id, name: preset.name, shots: preset.shots, copies: preset.copies, pagePreset: '4x6' as const, pageLabel: '4 × 6 in', builtIn: true })));
         // The browser preview has no event storage, so it offers three catalog layouts and
         // makes the guest picker visible while developing the UI.
-        setEvent({ id: 'preview-event', name: 'Default Event', shots: 3, retakeLimit: 3, printEnabled: true, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: 'double-strip-3', offeredLayoutIds: ['double-strip-3', 'double-strip-4', 'grid-4-portrait'] });
+        setEvent({ id: 'preview-event', name: 'Default Event', shots: 3, retakeLimit: 3, printEnabled: true, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: 'double-strip-3', offeredLayoutIds: ['double-strip-3', 'double-strip-4', 'grid-4-portrait'], consentText: '', contactText: '' });
         setRetakeLimitDraft('3');
       }
       if (!camera) { setStatus('Camera access is not available.'); return; }
@@ -455,7 +462,7 @@ function App(): React.JSX.Element {
   };
 
   const handleNewEvent = (): void => {
-    setEventDraft({ id: '', name: '', shots: 3, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: defaultLayoutIdForShots(3), offeredLayoutIds: [defaultLayoutIdForShots(3)] });
+    setEventDraft({ id: '', name: '', shots: 3, expiryDays: 30, eventDate: null, logoPath: null, primaryColor: DEFAULT_PRIMARY_COLOR, accentColor: DEFAULT_ACCENT_COLOR, welcomeText: DEFAULT_WELCOME_TEXT, thankYouText: DEFAULT_THANK_YOU_TEXT, defaultLayoutId: defaultLayoutIdForShots(3), offeredLayoutIds: [defaultLayoutIdForShots(3)], consentText: '', contactText: '' });
     setEventLogoDataUrl(null); setEventMessage('New event details are not saved yet.');
   };
 
@@ -721,6 +728,29 @@ function App(): React.JSX.Element {
     setDiskWarningGB(String(threshold));
     void savePreference('lowDiskWarningGB', String(threshold)).catch(() => setErrorMessage('Could not save the disk warning threshold.'));
   };
+  const handleDeleteSession = async (): Promise<void> => {
+    if (!window.photobooth || !sessionId) return;
+    try {
+      const result = await window.photobooth.deleteSession(sessionId);
+      setQueueWarning('');
+      setStatus(`Session deleted · ${result.deletedFiles} files removed`);
+      returnToReady();
+      await refreshUnfinishedSessions();
+    } catch (error) { setErrorMessage(toErrorMessage(error, 'Could not delete the session. Its photos are still on the booth.')); }
+  };
+
+  const handleDeleteEvent = async (): Promise<void> => {
+    if (!window.photobooth || !event) return;
+    try {
+      const result = await window.photobooth.deleteEvent(event.id);
+      const remaining = await window.photobooth.listEvents();
+      setEvents(remaining);
+      setEventMessage(`Event deleted · ${result.deletedSessions} sessions and ${result.deletedFiles} files removed`);
+      const active = await window.photobooth.getActiveEvent().catch(() => null);
+      if (active) await loadEventBrand(active);
+    } catch (error) { setEventMessage(toErrorMessage(error, 'Could not delete the event.')); }
+  };
+
   const handleExportEvent = async (): Promise<void> => {
     if (!window.photobooth || !event) return;
     setBusy(true);
@@ -806,11 +836,11 @@ function App(): React.JSX.Element {
           {screen === 'ready' && <label className="control-field"><span>LOW-DISK WARNING (GB)</span><input aria-label="Low-disk warning threshold in gigabytes" type="number" min="0" max="1000" step="0.1" value={diskWarningGB} onChange={(e) => handleDiskWarningChange(e.target.value)} onBlur={saveDiskWarning} disabled={busy || !window.photobooth} /></label>}
           {screen === 'ready' && <label className="control-field"><span>RETAKES PER SESSION</span><div className="retake-limit-control"><input aria-label="Retakes per session" type="number" min="0" step="1" value={retakeLimitDraft} placeholder="0+" onChange={(e) => handleRetakeLimitInput(e.target.value)} onBlur={saveRetakeLimitDraft} disabled={busy || !window.photobooth || event?.retakeLimit === -1} /><button type="button" className="unlimited-button" onClick={() => void handleRetakeLimitChange(event?.retakeLimit === -1 ? 3 : -1)} disabled={busy || !window.photobooth}>{event?.retakeLimit === -1 ? 'Use a limit' : 'Unlimited'}</button></div></label>}
           {screen === 'review' ? <button className="start-button" type="button" onClick={() => void handleContinue()} disabled={isBusy}>Continue <span aria-hidden="true">→</span></button>
-            : screen === 'finished' ? <><button className="secondary-button" type="button" onClick={() => void handleReprint()} disabled={busy || !selectedPrinterName}>Reprint</button><button className="start-button" type="button" onClick={returnToReady} disabled={busy}>Back to start</button></>
+            : screen === 'finished' ? <>{!adminLocked && <ConfirmAction className="secondary-button" label="Delete session" question="Delete this session and its photos?" confirmLabel="Yes, delete session" onConfirm={() => void handleDeleteSession()} disabled={busy} />}<button className="secondary-button" type="button" onClick={() => void handleReprint()} disabled={busy || !selectedPrinterName}>Reprint</button><button className="start-button" type="button" onClick={returnToReady} disabled={busy}>Back to start</button></>
               : <><button className="secondary-button" type="button" onClick={() => void handleExportEvent()} disabled={busy || !event || !window.photobooth}>Export event</button><button className="start-button" type="button" onClick={() => void handleStartSession()} disabled={!cameraReady || !event || !pinConfigured || isBusy || unfinishedSessions.length > 0}>Start session <span aria-hidden="true">→</span></button></>}
         </div>
         {screen === 'ready' && !adminLocked && <section className="event-manager-card" aria-label="Event setup and branding">
-          <div className="event-manager-heading"><div><p className="eyebrow">EVENT SETUP</p><h2>Event details & branding</h2></div><div className="event-manager-actions"><select aria-label="Active event" disabled={unfinishedSessions.length > 0} value={event?.id ?? ''} onChange={(e) => void handleSelectEvent(e.target.value)}>{events.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><button type="button" className="secondary-button" onClick={handleNewEvent} disabled={unfinishedSessions.length > 0}>New event</button><button type="button" className="secondary-button" onClick={() => void handleDuplicateEvent()} disabled={!event || unfinishedSessions.length > 0}>Duplicate active</button><button type="button" className="secondary-button" onClick={() => setEditorOpen(true)} disabled={!window.photobooth}>Layouts…</button></div></div>
+          <div className="event-manager-heading"><div><p className="eyebrow">EVENT SETUP</p><h2>Event details & branding</h2></div><div className="event-manager-actions"><select aria-label="Active event" disabled={unfinishedSessions.length > 0} value={event?.id ?? ''} onChange={(e) => void handleSelectEvent(e.target.value)}>{events.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><button type="button" className="secondary-button" onClick={handleNewEvent} disabled={unfinishedSessions.length > 0}>New event</button><button type="button" className="secondary-button" onClick={() => void handleDuplicateEvent()} disabled={!event || unfinishedSessions.length > 0}>Duplicate active</button><button type="button" className="secondary-button" onClick={() => setEditorOpen(true)} disabled={!window.photobooth}>Layouts…</button><ConfirmAction className="secondary-button" label="Delete event" question="Delete this event, its sessions and their photos?" confirmLabel="Yes, delete event" onConfirm={() => void handleDeleteEvent()} disabled={!event || events.length < 2 || unfinishedSessions.length > 0} /></div></div>
           {eventDraft && <div className="event-form-grid">
             <label>Event name<input aria-label="Event name" maxLength={80} value={eventDraft.name} onChange={(e) => setEventDraft({ ...eventDraft, name: e.target.value })} /></label>
             <label>Event date<input aria-label="Event date" type="date" value={eventDraft.eventDate ?? ''} onChange={(e) => setEventDraft({ ...eventDraft, eventDate: e.target.value || null })} /></label>
@@ -820,6 +850,8 @@ function App(): React.JSX.Element {
             <label>Accent color (hex)<input aria-label="Accent color hex" value={eventDraft.accentColor} maxLength={7} onChange={(e) => setEventDraft({ ...eventDraft, accentColor: e.target.value })} /></label>
             <label>Welcome text<input aria-label="Event welcome text" maxLength={160} value={eventDraft.welcomeText} onChange={(e) => setEventDraft({ ...eventDraft, welcomeText: e.target.value })} /></label>
             <label>Thank-you text<input aria-label="Event thank-you text" maxLength={160} value={eventDraft.thankYouText} onChange={(e) => setEventDraft({ ...eventDraft, thankYouText: e.target.value })} /></label>
+            <label>Contact details on expired links<input aria-label="Event contact details" maxLength={200} placeholder="e.g. Message @partybooth or hello@example.com" value={eventDraft.contactText} onChange={(e) => setEventDraft({ ...eventDraft, contactText: e.target.value })} /></label>
+            <label>Consent notice for this event<textarea aria-label="Event consent notice" maxLength={1200} rows={3} placeholder="Leave blank to use the booth-wide notice" value={eventDraft.consentText} onChange={(e) => setEventDraft({ ...eventDraft, consentText: e.target.value })} /></label>
             <GuestLayoutField templates={templates} defaultLayoutId={eventDraft.defaultLayoutId} offeredLayoutIds={eventDraft.offeredLayoutIds} onChange={(offeredLayoutIds) => setEventDraft({ ...eventDraft, offeredLayoutIds })} />
             <div className="event-logo-field">{eventLogoDataUrl ? <img src={eventLogoDataUrl} alt="Selected event logo preview" /> : <span>No logo selected</span>}<button type="button" className="secondary-button" onClick={() => void handleChooseEventLogo()} disabled={unfinishedSessions.length > 0}>Choose PNG/JPEG logo</button><small>Files are copied locally; limit 5 MB.</small></div>
             <button type="button" className="start-button" onClick={() => void handleSaveEvent()} disabled={unfinishedSessions.length > 0}>Save and use this event</button>
@@ -829,11 +861,11 @@ function App(): React.JSX.Element {
         {screen === 'ready' && <section className="admin-security-card" aria-label="Operator security">
           {!pinConfigured ? <><p className="eyebrow">FIRST-TIME SETUP</p><h2>Create admin PIN</h2><p>Set a PIN before starting guest sessions. Use 6 to 12 digits and keep it private.</p><label>New PIN<input aria-label="New admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinDraft} onChange={(e) => setPinDraft(e.target.value.replace(/\D/g, ''))} /></label><label>Confirm PIN<input aria-label="Confirm admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinConfirm} onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, ''))} /></label><button type="button" onClick={() => void savePin()}>Save admin PIN</button></>
             : adminLocked ? <><p className="eyebrow">GUEST MODE</p><h2>Booth locked</h2><p>Operator settings are hidden. Enter the admin PIN to unlock them.</p>{showUnlock ? <><label>Admin PIN<input aria-label="Admin PIN to unlock settings" type="password" inputMode="numeric" maxLength={12} autoComplete="current-password" value={currentPinDraft} onChange={(e) => setCurrentPinDraft(e.target.value.replace(/\D/g, ''))} onKeyDown={(e) => { if (e.key === 'Enter') void unlockAdmin(); }} /></label><button type="button" onClick={() => void unlockAdmin()}>Unlock settings</button><button type="button" className="secondary-button" onClick={() => { setShowUnlock(false); setCurrentPinDraft(''); setPinError(''); }}>Cancel</button></> : <button type="button" onClick={() => { setShowUnlock(true); setPinError(''); }}>Operator unlock</button>}</>
-              : <><p className="eyebrow">OPERATOR SETTINGS</p><h2>Admin access</h2><label>Current PIN<input aria-label="Current admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="current-password" value={currentPinDraft} onChange={(e) => setCurrentPinDraft(e.target.value.replace(/\D/g, ''))} /></label><label>New PIN<input aria-label="Replacement admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinDraft} onChange={(e) => setPinDraft(e.target.value.replace(/\D/g, ''))} /></label><label>Confirm new PIN<input aria-label="Confirm replacement PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinConfirm} onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, ''))} /></label><button type="button" onClick={() => void savePin()}>Change admin PIN</button><label>Consent notice shown before every session<textarea aria-label="Consent notice wording" maxLength={1200} value={consentText} onChange={(e) => setConsentText(e.target.value)} onBlur={() => void savePreference('consentText', consentText).catch((error: unknown) => setPinError(toErrorMessage(error, 'Could not save consent text.')))} /></label><p className="consent-retention-note">Current default explains local retention and 30-day QR-link expiry; it does not claim automatic photo deletion.</p><button type="button" onClick={() => { setAdminLocked(true); setShowUnlock(false); setPinError(''); setPinDraft(''); setPinConfirm(''); setCurrentPinDraft(''); }}>Lock guest mode</button><button type="button" className="secondary-button" onClick={() => { setExitPrompt(true); setExitPin(''); setPinError(''); }}>Exit booth…</button></>}
+              : <><p className="eyebrow">OPERATOR SETTINGS</p><h2>Admin access</h2><label>Current PIN<input aria-label="Current admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="current-password" value={currentPinDraft} onChange={(e) => setCurrentPinDraft(e.target.value.replace(/\D/g, ''))} /></label><label>New PIN<input aria-label="Replacement admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinDraft} onChange={(e) => setPinDraft(e.target.value.replace(/\D/g, ''))} /></label><label>Confirm new PIN<input aria-label="Confirm replacement PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinConfirm} onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, ''))} /></label><button type="button" onClick={() => void savePin()}>Change admin PIN</button><label>Consent notice shown before every session<textarea aria-label="Consent notice wording" maxLength={1200} value={consentText} onChange={(e) => setConsentText(e.target.value)} onBlur={() => void savePreference('consentText', consentText).catch((error: unknown) => setPinError(toErrorMessage(error, 'Could not save consent text.')))} /></label><p className="consent-retention-note">This is the booth-wide notice. An event with its own consent wording uses that instead.</p><button type="button" onClick={() => { setAdminLocked(true); setShowUnlock(false); setPinError(''); setPinDraft(''); setPinConfirm(''); setCurrentPinDraft(''); }}>Lock guest mode</button><button type="button" className="secondary-button" onClick={() => { setExitPrompt(true); setExitPin(''); setPinError(''); }}>Exit booth…</button></>}
           {pinError && <p className="pin-error" role="alert">{pinError}</p>}
         </section>}
         {editorOpen && window.photobooth && <TemplateEditor bridge={window.photobooth} logoDataUrl={eventLogoDataUrl} onClose={() => setEditorOpen(false)} onTemplatesChanged={(listing) => { setTemplates(listing); setSelectedLayoutId((current) => listing.some((item) => item.id === current) ? current : listing[0]?.id ?? current); }} />}
-        {consentOpen && <ConsentDialog text={consentText} onDecline={() => setConsentOpen(false)} onAccept={() => void confirmConsentAndStart()} />}
+        {consentOpen && <ConsentDialog text={event?.consentText.trim() ? event.consentText : consentText} onDecline={() => setConsentOpen(false)} onAccept={() => void confirmConsentAndStart()} />}
         {exitPrompt && <ExitDialog pin={exitPin} error={pinError} onPinChange={setExitPin} onCancel={() => { setExitPrompt(false); setExitPin(''); setPinError(''); }} onSubmit={() => void submitExit()} />}
         {screen === 'finished' && <p className="share-status" role="status">{shareUrl ? <>Scan to download: <a href={shareUrl} target="_blank" rel="noreferrer">{shareUrl}</a> · {shareStatus}</> : shareStatus}</p>}
         {screen === 'finished' && <p className={`print-status ${printStatus.startsWith('Failed') ? 'failed' : printStatus.startsWith('Done') ? 'done' : ''}`} role="status">{printStatus}</p>}
@@ -841,6 +873,7 @@ function App(): React.JSX.Element {
         {screen === 'review' && reviewRecord && <ReviewSection record={reviewRecord} images={reviewImages} isBusy={isBusy} cameraReady={cameraReady} onRetake={(slot) => void handleRetake(slot)} onRevert={(slot) => void handleRevert(slot)} />}
         {unfinishedSessions.length > 0 && screen === 'ready' && !adminLocked && <RecoveryCard session={unfinishedSessions[0]!} busy={busy} cameraReady={cameraReady} onResume={() => void handleResumeSession(unfinishedSessions[0]!)} onDiscard={() => void handleDiscardSession(unfinishedSessions[0]!)} />}
         {screen === 'ready' && !adminLocked && uploadQueue && <UploadQueueCard summary={uploadQueue} />}
+        {screen === 'ready' && !adminLocked && retention && <RetentionNote status={retention} />}
         {screen === 'ready' && !adminLocked && queueWarning && <p className="pin-error" role="alert">{queueWarning}</p>}
         {errorMessage && <p className="camera-error" role="alert">{errorMessage}<button type="button" onClick={() => void refreshCameras()}>Retry</button></p>}
         {!errorMessage && <p className="helper-note">Originals stay on this booth. No photos are uploaded in this feature.</p>}

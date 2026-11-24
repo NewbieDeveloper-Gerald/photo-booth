@@ -28,7 +28,7 @@ renderer (src/ui, src/renderer)  →  window.photobooth  →  main process (elec
 | `electron/windows/` | Window creation: kiosk window + close guard, hidden print window | Main |
 | `electron/devices/` | `PrinterDevice` implemented with Electron printing | Main |
 
-Features: `capture`, `events`, `layouts`, `printing`, `sharing`, `storage`, `security`.
+Features: `capture`, `events`, `layouts`, `printing`, `retention`, `sharing`, `storage`, `security`.
 
 ## Dependency rules
 
@@ -72,6 +72,7 @@ Features: `capture`, `events`, `layouts`, `printing`, `sharing`, `storage`, `sec
 | A new window | `electron/windows/` |
 | A new setting | `src/shared/constants/settings-keys.ts`, then read it in the handler |
 | A new print size | `pagePresets` in `features/layouts/domain/template-document.ts`, then add it to the seeding list in `features/layouts/data/template-repository.ts` |
+| A new background job | `src/shared/scheduling/interval-job.ts` (no overlap, unref'd timer), started from the feature scheduler and `electron/main.ts` |
 | A new hardware device | `src/features/<feature>/devices/` behind an interface, with a mock |
 
 ## Testing

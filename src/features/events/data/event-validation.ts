@@ -1,8 +1,15 @@
-import { MAX_EVENT_NAME_LENGTH, MAX_EVENT_TEXT_LENGTH, MAX_OFFERED_LAYOUTS } from '../../../shared/constants/limits';
+import { MAX_CONSENT_LENGTH, MAX_EVENT_CONTACT_LENGTH, MAX_EVENT_NAME_LENGTH, MAX_EVENT_TEXT_LENGTH, MAX_OFFERED_LAYOUTS } from '../../../shared/constants/limits';
 import type { EventSettings } from '../../../shared/types/event';
 import { defaultLayoutIdForShots, isSupportedShotCount } from '../domain/default-layouts';
 
 const MAX_LAYOUT_ID_LENGTH = 64;
+
+/** Optional per-event text: blank means "fall back to the booth-wide setting". */
+function optionalText(value: unknown, limit: number, message: string): string {
+  if (value === undefined || value === null) return '';
+  if (typeof value !== 'string' || value.trim().length > limit) throw new Error(message);
+  return value.trim();
+}
 
 /** Layout ids the guest may pick from; empty means "just the event's default". */
 export function validateOfferedLayoutIds(value: unknown): string[] {
@@ -28,7 +35,9 @@ export function validateEventSettings(value: unknown): Omit<EventSettings, 'id' 
   const expiryDays = item.expiryDays;
   if (typeof expiryDays !== 'number' || !Number.isInteger(expiryDays) || expiryDays < 1 || expiryDays > 365) throw new Error('QR link expiry must be from 1 to 365 days');
   const offered = validateOfferedLayoutIds(item.offeredLayoutIds);
+  const consentText = optionalText(item.consentText, MAX_CONSENT_LENGTH, `Consent notice must be ${MAX_CONSENT_LENGTH} characters or fewer`);
+  const contactText = optionalText(item.contactText, MAX_EVENT_CONTACT_LENGTH, `Contact details must be ${MAX_EVENT_CONTACT_LENGTH} characters or fewer`);
   return { name: item.name.trim(), shots, expiryDays, eventDate: eventDate as string | null, primaryColor: item.primaryColor as string, accentColor: item.accentColor as string,
     welcomeText: (item.welcomeText as string).trim(), thankYouText: (item.thankYouText as string).trim(),
-    defaultLayoutId: defaultLayoutIdForShots(shots), offeredLayoutIds: offered };
+    defaultLayoutId: defaultLayoutIdForShots(shots), offeredLayoutIds: offered, consentText, contactText };
 }

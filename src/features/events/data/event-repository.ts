@@ -9,7 +9,8 @@ import { validateEventSettings } from './event-validation';
 
 const EVENT_COLUMNS = `id, name, shots, expiry_days AS expiryDays, event_date AS eventDate, logo_path AS logoPath,
   primary_color AS primaryColor, accent_color AS accentColor, welcome_text AS welcomeText, thank_you_text AS thankYouText,
-  default_layout_id AS defaultLayoutId, offered_layout_ids AS offeredLayoutIds`;
+  default_layout_id AS defaultLayoutId, offered_layout_ids AS offeredLayoutIds,
+  consent_text AS consentText, contact_text AS contactText`;
 
 type EventListRow = EventSettings & { offeredLayoutIds: string };
 
@@ -32,6 +33,7 @@ function toEventSettings(row: EventListRow): EventSettings {
     logoPath: row.logoPath, primaryColor: row.primaryColor, accentColor: row.accentColor,
     welcomeText: row.welcomeText, thankYouText: row.thankYouText, defaultLayoutId: row.defaultLayoutId,
     offeredLayoutIds: parseOfferedLayoutIds(row.offeredLayoutIds, row.defaultLayoutId),
+    consentText: row.consentText, contactText: row.contactText,
   };
 }
 
@@ -65,11 +67,13 @@ export function saveEventSettings(userDataPath: string, input: unknown): EventSe
     const offeredLayoutIds = resolveOfferedLayoutIds(database, fields.offeredLayoutIds, fields.defaultLayoutId);
     const offeredJson = JSON.stringify(offeredLayoutIds);
     if (exists) database.prepare(`UPDATE events SET name = ?, shots = ?, expiry_days = ?, event_date = ?, primary_color = ?, accent_color = ?,
-      welcome_text = ?, thank_you_text = ?, default_layout_id = ?, offered_layout_ids = ? WHERE id = ?`).run(fields.name, fields.shots, fields.expiryDays, fields.eventDate,
-      fields.primaryColor, fields.accentColor, fields.welcomeText, fields.thankYouText, fields.defaultLayoutId, offeredJson, id);
+      welcome_text = ?, thank_you_text = ?, default_layout_id = ?, offered_layout_ids = ?, consent_text = ?, contact_text = ? WHERE id = ?`).run(fields.name, fields.shots,
+      fields.expiryDays, fields.eventDate, fields.primaryColor, fields.accentColor, fields.welcomeText, fields.thankYouText, fields.defaultLayoutId, offeredJson,
+      fields.consentText, fields.contactText, id);
     else database.prepare(`INSERT INTO events (id, name, shots, retake_limit, print_enabled, expiry_days, event_date, primary_color, accent_color,
-      welcome_text, thank_you_text, default_layout_id, offered_layout_ids) VALUES (?, ?, ?, 3, 1, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, fields.name, fields.shots, fields.expiryDays,
-      fields.eventDate, fields.primaryColor, fields.accentColor, fields.welcomeText, fields.thankYouText, fields.defaultLayoutId, offeredJson);
+      welcome_text, thank_you_text, default_layout_id, offered_layout_ids, consent_text, contact_text) VALUES (?, ?, ?, 3, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, fields.name,
+      fields.shots, fields.expiryDays, fields.eventDate, fields.primaryColor, fields.accentColor, fields.welcomeText, fields.thankYouText, fields.defaultLayoutId,
+      offeredJson, fields.consentText, fields.contactText);
     return toEventSettings(database.prepare(`SELECT ${EVENT_COLUMNS} FROM events WHERE id = ?`).get(id) as EventListRow);
   } finally { database.close(); }
 }

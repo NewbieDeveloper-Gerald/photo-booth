@@ -133,6 +133,47 @@ describe('private QR download server', () => {
     const database = new Database(path.join(directory, 'photobooth.sqlite'));
     database.prepare("UPDATE sessions SET token_expires_at = datetime('now', '-1 day') WHERE public_token = ?").run(token);
     database.close();
-    expect((await fetch(`${origin}/api/v1/session/${token}`)).status).toBe(404);
+    // 410 Gone, not 404: the link was real and the photos were removed on purpose (F15).
+    expect((await fetch(`${origin}/api/v1/session/${token}`)).status).toBe(410);
+  });
+});
+
+describe('expired and invalid guest links (F15)', () => {
+  it('shows a friendly expired page with the event contact details instead of a bare 404', async () => {
+    const { directory, token, origin } = await fixture();
+    const database = new Database(path.join(directory, 'photobooth.sqlite'));
+    database.prepare("UPDATE events SET contact_text = 'Message @partybooth or hello@example.com'").run();
+    database.prepare("UPDATE sessions SET token_expires_at = '2026-01-01T00:00:00Z'").run();
+    database.close();
+
+    const page = await fetch(`${origin}/d/${token}`);
+    expect(page.status).toBe(410);
+    expect(page.headers.get('x-robots-tag')).toContain('noindex');
+    const html = await page.text();
+    expect(html).toContain('This link has expired');
+    expect(html).toContain('Message @partybooth or hello@example.com');
+    expect(html).not.toContain('Download all');
+
+    expect((await fetch(`${origin}/api/v1/session/${token}`)).status).toBe(410);
+  });
+
+  it('explains an unknown link and escapes anything the operator typed', async () => {
+    const { origin } = await fixture();
+    const page = await fetch(`${origin}/d/AAAAAAAAAAAAAAAAAAAAAA`);
+    expect(page.status).toBe(404);
+    const html = await page.text();
+    expect(html).toContain('This link is not valid');
+    expect(html).toContain('Ask the organiser');
+  });
+
+  it('escapes operator text on the expired page', async () => {
+    const { directory, token, origin } = await fixture();
+    const database = new Database(path.join(directory, 'photobooth.sqlite'));
+    database.prepare("UPDATE events SET contact_text = '<script>alert(1)</script>'").run();
+    database.prepare("UPDATE sessions SET token_expires_at = '2026-01-01T00:00:00Z'").run();
+    database.close();
+    const html = await (await fetch(`${origin}/d/${token}`)).text();
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('&lt;script&gt;');
   });
 });

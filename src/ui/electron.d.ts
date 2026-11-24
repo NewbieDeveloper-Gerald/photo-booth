@@ -3,6 +3,7 @@ export {};
 import type { ActiveEvent, EventSettings } from '../shared/types/event';
 import type { SessionRecord, UnfinishedSession } from '../shared/types/session';
 import type { UploadQueueSummary } from '../features/sharing/upload-queue/types';
+import type { DeletionResult, RetentionStatus } from '../features/retention';
 import type { PagePresetId, TemplateDocument, TemplateSummary } from '../features/layouts/domain/template-document';
 
 import type { BoothSettingKey } from '../shared/constants/settings-keys';
@@ -28,6 +29,9 @@ declare global {
       getEventLogoDataUrl(eventId: string): Promise<string | null>;
       createShareLink(sessionId: string): Promise<{ url: string; expiresAt: string }>;
       getUploadQueue(): Promise<UploadQueueSummary>;
+      getRetentionStatus(): Promise<RetentionStatus>;
+      deleteSession(sessionId: string): Promise<DeletionResult>;
+      deleteEvent(eventId: string): Promise<DeletionResult>;
       enqueueSessionUploads(sessionId: string): Promise<number>;
       listPrinters(): Promise<Array<{ name: string; displayName: string; isDefault?: boolean; status?: number }>>;
       printSessionOutput(sessionId: string, printerName: string): Promise<{ success: boolean; error?: string }>;
