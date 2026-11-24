@@ -1,6 +1,6 @@
 # Progress
 
-Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 merged as `4833af7`; F12 implemented on `arena/61d39d04-photo-booth`.
+Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 merged as `4833af7`, F12 merged as `42158f2`; F13 implemented on `arena/991f6df6-photo-booth`.
 
 ## Current status
 
@@ -11,11 +11,13 @@ Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 merged as `4833af7`; F12 i
   but not formally accepted.
 - **F11 (templates as data, extra print sizes): merged**; awaiting a manual print check per
   page size (checklist below).
-- **F12 (drag-and-drop template editor): implemented**, awaiting the manual build-a-strip
-  test below.
-- **F13–F29: not started.**
+- **F12 (drag-and-drop template editor): merged** (`42158f2`), awaiting the manual
+  build-a-strip test below.
+- **F13 (template picker for guests): implemented**, awaiting the manual two-layout
+  session test below.
+- **F14–F29: not started.**
 - Automated verification today: `npm run typecheck`, `npm run lint`, `npm test`
-  (**198 tests in 34 files**), `npm run build` (Vite production build) all pass.
+  (**227 tests in 39 files**), `npm run build` (Vite production build) all pass.
   `npm run test:e2e` exists but cannot run in this environment (no browser runtime).
 
 ## Verification gaps (unrecorded or impossible here)
@@ -105,6 +107,43 @@ scans, and reopening the editor shows the saved result.
 
 In-place text editing on the canvas, zoom, multi-select and copy/paste are not implemented.
 Guest template picking is F13; watermarking is F17.
+
+## F13. Template picker for guests (implemented)
+
+- **Per-event offerings** (`features/events`): migration `010_event_layout_choices` adds
+  `events.offered_layout_ids` (JSON) and seeds it with each event's default layout.
+  `saveEventSettings` validates the list (strings only, de-duplicated, at most
+  `MAX_OFFERED_LAYOUTS` = 12, ids up to 64 characters), drops ids of layouts that do not
+  exist, and always puts the event's default layout first. A corrupt stored value falls
+  back to the default layout, so a bad row can never leave the booth without a layout.
+  The default layout is derived from the photo count in
+  `features/events/domain/default-layouts.ts`, shared by validation and the event form.
+- **Event setup** (`renderer/components/GuestLayoutField.tsx`): tick the layouts guests may
+  pick. The default layout's row is checked and locked (the booth needs one layout), and
+  ticking stops at 12. Unticking everything else skips the picker.
+- **Guest picker** (`renderer/components/LayoutPicker.tsx` + `LayoutPreview.tsx`, with
+  `renderer/lib/offered-layouts.ts` choosing what to show): on the ready screen the booth
+  shows the event's offered layouts as large cards with an SVG preview drawn from the same
+  elements the printer uses, the layout name, page size and photo count. One layout means
+  no picker at all. Choosing a card sets the session layout, and `createSession` takes the
+  shot count from that template.
+- Built-in templates are now seeded at app startup (`ensureBuiltinTemplates` in
+  `electron/main.ts`) rather than on the first layout list call, so an event can be saved
+  on a fresh profile before the editor has ever been opened.
+
+### F13 manual check
+
+Give one event two layouts (e.g. a 3-photo strip and a 4-photo grid), then run two
+sessions in a row, picking a different layout each time. Confirm each session takes the
+chosen layout's photo count, the review and finished screens show that layout, and the
+print matches. Then reduce the event to a single layout and confirm the booth starts
+straight from the welcome screen with no picker.
+
+### F13 out of scope (later features)
+
+Photo previews from a *previous* session inside the picker cards, per-layout pricing, and
+per-layout consent wording are not implemented. Online upload resilience is F14; the
+watermark is F17.
 
 ## Feature log
 

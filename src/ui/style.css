@@ -61,3 +61,26 @@
 .template-editor-canvas { width: 100%; max-height: 72vh; height: auto; border: 1px solid #cbd5e1; border-radius: 8px; touch-action: none; cursor: crosshair; box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12); }
 .template-editor-inspector section { border-top: 1px solid #e2e8f0; padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }
 .editor-hint { font-size: 12px; color: #64748b; margin: 0; }
+
+/* F13 · guest layout picker: the event's offered layouts as large, tappable previews. */
+.layout-picker { margin-top: 18px; padding: 18px 20px 20px; border: 1px solid #ffffff19; border-radius: 14px; background: #171c2a; }
+.layout-picker h2 { margin: 0 0 14px; color: #f4f2fb; font-size: 20px; letter-spacing: -0.02em; }
+.layout-picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; max-height: 44vh; overflow-y: auto; padding: 2px; }
+.layout-choice-card { display: flex; flex-direction: column; gap: 7px; padding: 10px; border: 1px solid #ffffff1c; border-radius: 12px; background: #10131c; color: #dfdbea; text-align: left; font: inherit; cursor: pointer; }
+.layout-choice-card:hover:not(:disabled) { border-color: #a88be580; }
+.layout-choice-card.selected { border-color: #c9b4ff; box-shadow: 0 0 0 2px #c9b4ff40; }
+.layout-choice-card:disabled { opacity: 0.55; cursor: not-allowed; }
+.layout-choice-art { display: grid; place-items: center; height: 180px; border-radius: 8px; background: #0b0e15; overflow: hidden; }
+.layout-choice-fallback { color: #8d94a7; font-size: 12px; }
+.layout-preview { width: 100%; height: 100%; }
+.layout-choice-name { font-size: 13px; font-weight: 650; }
+.layout-choice-meta { color: #8d94a7; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; }
+
+/* F13 · event setup: which layouts the picker offers. */
+.guest-layout-field { grid-column: 1 / -1; margin: 0; padding: 12px 14px; border: 1px solid #ffffff1c; border-radius: 10px; }
+.guest-layout-field legend { padding: 0 6px; color: #c8c1d7; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.guest-layout-hint { margin: 0 0 10px; color: #8d94a7; font-size: 12px; }
+.guest-layout-options { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; max-height: 220px; overflow-y: auto; }
+.guest-layout-option { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border: 1px solid #ffffff14; border-radius: 8px; color: #dfdbea; font-size: 12px; }
+.guest-layout-option.default { border-color: #c9b4ff55; }
+.guest-layout-option small { color: #8d94a7; font-size: 10px; }

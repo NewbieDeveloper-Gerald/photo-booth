@@ -1,6 +1,7 @@
 import { app, BrowserWindow, session } from 'electron';
 import type { Server } from 'node:http';
 import { initializeStorage } from '../src/features/storage/node.js';
+import { ensureBuiltinTemplates } from '../src/features/layouts/node.js';
 import { recoverInterruptedUploads } from '../src/features/sharing/node.js';
 import { registerIpcHandlers } from './ipc/registry.js';
 import { startDownloadServer } from './download-service.js';
@@ -13,6 +14,7 @@ let downloadServer: Server | null = null;
 app.whenReady().then(async () => {
   const userDataPath = app.getPath('userData');
   initializeStorage(userDataPath);
+  ensureBuiltinTemplates(userDataPath);
   recoverInterruptedUploads(userDataPath);
   downloadServer = await startDownloadServer(userDataPath);
 

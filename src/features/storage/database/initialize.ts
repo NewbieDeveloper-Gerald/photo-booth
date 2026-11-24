@@ -170,6 +170,13 @@ const migrations: Array<{ name: string; sql: string }> = [
     name: '009_template_assets',
     sql: `ALTER TABLE template_elements ADD COLUMN asset_name TEXT;`,
   },
+  {
+    name: '010_event_layout_choices',
+    sql: `
+      ALTER TABLE events ADD COLUMN offered_layout_ids TEXT NOT NULL DEFAULT '[]';
+      UPDATE events SET offered_layout_ids = '["' || default_layout_id || '"]';
+    `,
+  },
 ];
 
 export function initializeStorage(userDataPath: string): void {
