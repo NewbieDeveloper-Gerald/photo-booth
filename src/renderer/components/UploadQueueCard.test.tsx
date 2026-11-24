@@ -6,13 +6,18 @@ import { UploadQueueCard } from './UploadQueueCard';
 
 function summary(overrides: Partial<UploadQueueSummary> = {}): UploadQueueSummary {
   return {
-    waitingFiles: 0, failedFiles: 0, uploadedFiles: 0, waitingSessions: 0, failedSessions: 0,
+    waitingFiles: 0, failedFiles: 0, uploadedFiles: 0, skippedFiles: 0, waitingSessions: 0, failedSessions: 0,
     lastError: null, lastSyncedAt: null, nextRetryAt: null, providerConfigured: false,
     ...overrides,
   };
 }
 
 describe('UploadQueueCard (F14)', () => {
+  it('mentions uploads the operator skipped on purpose (F21)', () => {
+    render(<UploadQueueCard summary={summary({ skippedFiles: 2 })} />);
+    expect(screen.getByLabelText('Upload queue status').textContent).toContain('2 skipped by the operator');
+  });
+
   it('says how many sessions are still waiting to sync', () => {
     render(<UploadQueueCard summary={summary({ waitingSessions: 3, waitingFiles: 5 })} />);
     expect(screen.getByText('3 sessions waiting · 5 files')).toBeDefined();

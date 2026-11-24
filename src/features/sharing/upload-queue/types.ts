@@ -3,7 +3,7 @@ export type UploadQueueItem = {
   id: string;
   sessionId: string;
   filePath: string;
-  status: 'pending' | 'uploading' | 'uploaded' | 'failed';
+  status: 'pending' | 'uploading' | 'uploaded' | 'failed' | 'skipped';
   attempts: number;
   nextRetryAt: string | null;
   lastError: string | null;
@@ -20,6 +20,8 @@ export type UploadQueueSummary = {
   waitingFiles: number;
   failedFiles: number;
   uploadedFiles: number;
+  /** Files the operator skipped on purpose (F21), so they stop counting as waiting. */
+  skippedFiles: number;
   waitingSessions: number;
   failedSessions: number;
   lastError: string | null;

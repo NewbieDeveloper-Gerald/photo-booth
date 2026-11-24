@@ -44,6 +44,7 @@ export function listUploadQueue(userDataPath: string): UploadQueueSummary {
       waitingFiles: (counts.get('pending') ?? 0) + (counts.get('uploading') ?? 0),
       failedFiles: counts.get('failed') ?? 0,
       uploadedFiles: counts.get('uploaded') ?? 0,
+      skippedFiles: counts.get('skipped') ?? 0,
       waitingSessions: waiting.sessions,
       failedSessions: failed.sessions,
       lastError: lastError?.lastError ?? null,
@@ -51,6 +52,23 @@ export function listUploadQueue(userDataPath: string): UploadQueueSummary {
       nextRetryAt: nextRetry.nextRetryAt,
       providerConfigured: false,
     };
+  } finally { database.close(); }
+}
+
+/**
+ * Skips the waiting uploads on purpose (F21 operator key). Nothing is deleted: the files stay
+ * on disk with their status, so the panel can say how many were skipped and a future provider
+ * could still pick them up.
+ */
+export function skipPendingUploads(userDataPath: string, sessionId?: unknown): number {
+  if (sessionId !== undefined && !isSessionId(sessionId)) throw new Error('Invalid session id');
+  const database = openDatabase(userDataPath);
+  try {
+    const sql = `UPDATE upload_queue SET status = 'skipped', next_retry_at = NULL, last_error = 'Skipped by the operator'
+      WHERE status IN ('pending', 'failed')${sessionId === undefined ? '' : ' AND session_id = ?'}`;
+    return sessionId === undefined
+      ? database.prepare(sql).run().changes
+      : database.prepare(sql).run(sessionId).changes;
   } finally { database.close(); }
 }
 

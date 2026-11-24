@@ -22,6 +22,8 @@ import { PrintQueueCard } from '../renderer/components/PrintQueueCard';
 import { AttractScreen } from '../renderer/components/AttractScreen';
 import { AttractMediaField } from '../renderer/components/AttractMediaField';
 import { FilterPicker } from '../renderer/components/FilterPicker';
+import { HotkeyHelp } from '../renderer/components/HotkeyHelp';
+import { isTypingTarget, matchHotkey } from '../renderer/lib/hotkeys';
 import { loadAttractSlides, type AttractSlide } from '../renderer/lib/attract-slides';
 import { composeStripCutSheet } from '../renderer/lib/print-sheet';
 import { LayoutPicker } from '../renderer/components/LayoutPicker';
@@ -42,6 +44,7 @@ import type { SessionRecord, SessionSlot, UnfinishedSession } from '../shared/ty
 import type { UploadQueueSummary } from '../features/sharing';
 import type { RetentionStatus } from '../features/retention';
 import type { AttractMedia } from '../shared/types/attract';
+import type { AdminPinAttempt } from '../shared/types/admin-pin';
 import './style.css';
 
 const resolutionOptions: Array<{ value: CameraResolution; label: string }> = [
@@ -120,6 +123,8 @@ function App(): React.JSX.Element {
   const [pinError, setPinError] = useState('');
   const [consentText, setConsentText] = useState(DEFAULT_CONSENT_TEXT);
   const [consentOpen, setConsentOpen] = useState(false);
+  /** F21: the operator's help screen with the hotkeys and the PIN lockout rule. */
+  const [helpOpen, setHelpOpen] = useState(false);
   const [exitPrompt, setExitPrompt] = useState(false);
   const [exitPin, setExitPin] = useState('');
   const [capturedSlots, setCapturedSlots] = useState<Set<number>>(new Set());
@@ -453,10 +458,10 @@ function App(): React.JSX.Element {
   /**
    * The booth goes back to inviting guests in after a few idle minutes (F19). It stays out of
    * the way while the operator is working: an open session, an unlocked settings panel, the
-   * layout editor or a dialog all mean someone is doing something.
+   * layout editor, the help screen or a dialog all mean someone is doing something.
    */
   const attractAllowed = screen === 'ready' && Boolean(event?.attractEnabled) && !attractVisible
-    && !adminLocked && unfinishedSessions.length === 0 && !editorOpen && !consentOpen && !exitPrompt;
+    && !adminLocked && unfinishedSessions.length === 0 && !editorOpen && !consentOpen && !exitPrompt && !helpOpen;
   useIdleTimeout({
     timeoutMs: (event?.attractIdleSeconds ?? 60) * 1000,
     enabled: attractAllowed,
@@ -622,6 +627,11 @@ function App(): React.JSX.Element {
     } catch (error) { setEventMessage(toErrorMessage(error, 'Could not add logo.')); }
   };
 
+  /** One sentence for a refused PIN attempt, so every prompt says the same thing (F21). */
+  const pinRefusal = (attempt: Extract<AdminPinAttempt, { ok: false }>): string => attempt.reason === 'locked'
+    ? `Too many wrong PINs. Try again in ${Math.ceil(attempt.retryInMs / 1000)} s.`
+    : `Incorrect admin PIN. ${attempt.attemptsRemaining} ${attempt.attemptsRemaining === 1 ? 'try' : 'tries'} left.`;
+
   const savePin = async (): Promise<void> => {
     if (!window.photobooth) return;
     if (!/^\d{6,12}$/.test(pinDraft) || pinDraft !== pinConfirm) { setPinError('Enter matching PINs of 6 to 12 digits.'); return; }
@@ -636,15 +646,17 @@ function App(): React.JSX.Element {
 
   const unlockAdmin = async (): Promise<void> => {
     if (!window.photobooth) return;
-    const valid = await window.photobooth.verifyAdminPin(currentPinDraft).catch(() => false);
-    if (!valid) { setPinError('Incorrect admin PIN.'); return; }
+    const attempt = await window.photobooth.verifyAdminPin(currentPinDraft)
+      .catch((): AdminPinAttempt => ({ ok: false, reason: 'wrong-pin', attemptsRemaining: 0, lockedUntil: null, retryInMs: 0 }));
+    if (!attempt.ok) { setPinError(pinRefusal(attempt)); return; }
     setAdminLocked(false); setShowUnlock(false); setCurrentPinDraft(''); setPinError('');
   };
 
   const submitExit = async (): Promise<void> => {
     if (!window.photobooth) return;
-    const exited = await window.photobooth.exitKioskWithPin(exitPin).catch(() => false);
-    if (!exited) { setPinError('Incorrect admin PIN; the booth remains locked.'); return; }
+    const attempt = await window.photobooth.exitKioskWithPin(exitPin)
+      .catch((): AdminPinAttempt => ({ ok: false, reason: 'wrong-pin', attemptsRemaining: 0, lockedUntil: null, retryInMs: 0 }));
+    if (!attempt.ok) { setPinError(`${pinRefusal(attempt)} The booth stays locked.`); return; }
     setExitPrompt(false);
   };
 
@@ -1004,6 +1016,49 @@ function App(): React.JSX.Element {
   const slotCount = sessionShotCount || event?.shots || 3;
   const isBusy = busy || screen === 'capturing' || retakeBusySlot !== null;
 
+  /**
+   * Operator hotkeys (F21). A held key, a typing guest or a dialog all leave the booth alone;
+   * the destructive one (restart) is refused unless the settings are already unlocked.
+   */
+  const runHotkey = (action: ReturnType<typeof matchHotkey>): void => {
+    if (!action) return;
+    if (action === 'restart-session') {
+      if (adminLocked) { setShowUnlock(true); setPinError('Unlock the settings before restarting a session.'); return; }
+      if (!sessionId || (screen !== 'capturing' && screen !== 'review')) { setStatus('No session to restart.'); return; }
+      void abandonForIdle(sessionId);
+      setStatus('Session restarted; saved photos were backed up.');
+      return;
+    }
+    if (action === 'reprint') {
+      if (screen !== 'finished') { setPrintStatus('Nothing to reprint yet.'); return; }
+      void handleReprint();
+      return;
+    }
+    if (action === 'skip-upload') {
+      const bridge = window.photobooth;
+      if (!bridge) { setQueueWarning('Skipping uploads needs the desktop app.'); return; }
+      void bridge.skipPendingUploads().then((skipped) => {
+        setQueueWarning(skipped === 0 ? 'No uploads were waiting.' : `Skipped ${skipped} waiting upload${skipped === 1 ? '' : 's'}.`);
+        return refreshUploadQueue();
+      }).catch((error: unknown) => setQueueWarning(toErrorMessage(error, 'Could not skip the uploads.')));
+      return;
+    }
+    if (adminLocked) { setShowUnlock(true); setPinError(''); }
+    else setStatus('Settings are already unlocked.');
+  };
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (isTypingTarget(document.activeElement as HTMLElement | null)) return;
+      const action = matchHotkey({ key: event.key, ctrlKey: event.ctrlKey, metaKey: event.metaKey, shiftKey: event.shiftKey, altKey: event.altKey, repeat: event.repeat });
+      if (!action) return;
+      event.preventDefault();
+      runHotkey(action);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  });
+
   return (
     <main className="booth-app" style={{ '--event-primary': event?.primaryColor ?? DEFAULT_PRIMARY_COLOR, '--event-accent': event?.accentColor ?? DEFAULT_ACCENT_COLOR } as React.CSSProperties}>
       <header className="topbar">
@@ -1099,11 +1154,12 @@ function App(): React.JSX.Element {
         {screen === 'ready' && <section className="admin-security-card" aria-label="Operator security">
           {!pinConfigured ? <><p className="eyebrow">FIRST-TIME SETUP</p><h2>Create admin PIN</h2><p>Set a PIN before starting guest sessions. Use 6 to 12 digits and keep it private.</p><label>New PIN<input aria-label="New admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinDraft} onChange={(e) => setPinDraft(e.target.value.replace(/\D/g, ''))} /></label><label>Confirm PIN<input aria-label="Confirm admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinConfirm} onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, ''))} /></label><button type="button" onClick={() => void savePin()}>Save admin PIN</button></>
             : adminLocked ? <><p className="eyebrow">GUEST MODE</p><h2>Booth locked</h2><p>Operator settings are hidden. Enter the admin PIN to unlock them.</p>{showUnlock ? <><label>Admin PIN<input aria-label="Admin PIN to unlock settings" type="password" inputMode="numeric" maxLength={12} autoComplete="current-password" value={currentPinDraft} onChange={(e) => setCurrentPinDraft(e.target.value.replace(/\D/g, ''))} onKeyDown={(e) => { if (e.key === 'Enter') void unlockAdmin(); }} /></label><button type="button" onClick={() => void unlockAdmin()}>Unlock settings</button><button type="button" className="secondary-button" onClick={() => { setShowUnlock(false); setCurrentPinDraft(''); setPinError(''); }}>Cancel</button></> : <button type="button" onClick={() => { setShowUnlock(true); setPinError(''); }}>Operator unlock</button>}</>
-              : <><p className="eyebrow">OPERATOR SETTINGS</p><h2>Admin access</h2><label>Current PIN<input aria-label="Current admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="current-password" value={currentPinDraft} onChange={(e) => setCurrentPinDraft(e.target.value.replace(/\D/g, ''))} /></label><label>New PIN<input aria-label="Replacement admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinDraft} onChange={(e) => setPinDraft(e.target.value.replace(/\D/g, ''))} /></label><label>Confirm new PIN<input aria-label="Confirm replacement PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinConfirm} onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, ''))} /></label><button type="button" onClick={() => void savePin()}>Change admin PIN</button><label>Consent notice shown before every session<textarea aria-label="Consent notice wording" maxLength={1200} value={consentText} onChange={(e) => setConsentText(e.target.value)} onBlur={() => void savePreference('consentText', consentText).catch((error: unknown) => setPinError(toErrorMessage(error, 'Could not save consent text.')))} /></label><p className="consent-retention-note">This is the booth-wide notice. An event with its own consent wording uses that instead.</p><button type="button" onClick={() => { setAdminLocked(true); setShowUnlock(false); setPinError(''); setPinDraft(''); setPinConfirm(''); setCurrentPinDraft(''); }}>Lock guest mode</button><button type="button" className="secondary-button" onClick={() => { setExitPrompt(true); setExitPin(''); setPinError(''); }}>Exit booth…</button></>}
+              : <><p className="eyebrow">OPERATOR SETTINGS</p><h2>Admin access</h2><label>Current PIN<input aria-label="Current admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="current-password" value={currentPinDraft} onChange={(e) => setCurrentPinDraft(e.target.value.replace(/\D/g, ''))} /></label><label>New PIN<input aria-label="Replacement admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinDraft} onChange={(e) => setPinDraft(e.target.value.replace(/\D/g, ''))} /></label><label>Confirm new PIN<input aria-label="Confirm replacement PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinConfirm} onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, ''))} /></label><button type="button" onClick={() => void savePin()}>Change admin PIN</button><label>Consent notice shown before every session<textarea aria-label="Consent notice wording" maxLength={1200} value={consentText} onChange={(e) => setConsentText(e.target.value)} onBlur={() => void savePreference('consentText', consentText).catch((error: unknown) => setPinError(toErrorMessage(error, 'Could not save consent text.')))} /></label><p className="consent-retention-note">This is the booth-wide notice. An event with its own consent wording uses that instead.</p><button type="button" onClick={() => { setAdminLocked(true); setShowUnlock(false); setPinError(''); setPinDraft(''); setPinConfirm(''); setCurrentPinDraft(''); }}>Lock guest mode</button><button type="button" className="secondary-button" onClick={() => setHelpOpen(true)}>Keyboard shortcuts</button><button type="button" className="secondary-button" onClick={() => { setExitPrompt(true); setExitPin(''); setPinError(''); }}>Exit booth…</button></>}
           {pinError && <p className="pin-error" role="alert">{pinError}</p>}
         </section>}
         {editorOpen && window.photobooth && <TemplateEditor bridge={window.photobooth} logoDataUrl={eventLogoDataUrl} onClose={() => setEditorOpen(false)} onTemplatesChanged={(listing) => { setTemplates(listing); setSelectedLayoutId((current) => listing.some((item) => item.id === current) ? current : listing[0]?.id ?? current); }} />}
         {consentOpen && <ConsentDialog text={event?.consentText.trim() ? event.consentText : consentText} onDecline={() => setConsentOpen(false)} onAccept={() => void confirmConsentAndStart()} />}
+        {helpOpen && <HotkeyHelp onClose={() => setHelpOpen(false)} />}
         {exitPrompt && <ExitDialog pin={exitPin} error={pinError} onPinChange={setExitPin} onCancel={() => { setExitPrompt(false); setExitPin(''); setPinError(''); }} onSubmit={() => void submitExit()} />}
         {screen === 'finished' && <p className="share-status" role="status">{shareUrl ? <>Scan to download: <a href={shareUrl} target="_blank" rel="noreferrer">{shareUrl}</a> · {shareStatus}</> : shareStatus}</p>}
         {screen === 'finished' && <p className={`print-status ${printStatus.startsWith('Failed') ? 'failed' : printStatus.startsWith('Done') ? 'done' : ''}`} role="status">{printStatus}</p>}

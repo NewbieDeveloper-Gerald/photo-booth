@@ -80,10 +80,28 @@ and keeps blob URLs for the lifetime of that event, so a 25 MB clip is not re-re
 | A table, query or file write | `src/features/<feature>/data/`, exported from `node.ts` |
 | A new IPC channel | `electron/ipc/<area>-handlers.ts`, registered in `electron/ipc/registry.ts`, typed in `src/ui/electron.d.ts` and `electron/preload.ts` |
 | A new window | `electron/windows/` |
+| An operator hotkey | a row in `src/renderer/lib/hotkeys.ts` (the key map the handler and the help screen both read), then handle the action in `src/ui/main.tsx` |
 | A new setting | `src/shared/constants/settings-keys.ts`, then read it in the handler |
 | A new print size | `pagePresets` in `features/layouts/domain/template-document.ts`, then add it to the seeding list in `features/layouts/data/template-repository.ts` |
 | A new background job | `src/shared/scheduling/interval-job.ts` (no overlap, unref'd timer), started from the feature scheduler and `electron/main.ts` |
 | A new hardware device | `src/features/<feature>/devices/` behind an interface, with a mock |
+| A rule that must hold for every caller (lockouts, limits) | `src/features/<feature>/domain/`, called from the node-layer data module so no IPC handler can bypass it |
+
+## Security layers (F9 + F21)
+
+- The PIN is a salted scrypt hash in `settings.adminPinHash`; the plaintext is never stored.
+- Guess protection is data, not UI: `attemptAdminPin` in `features/security/admin-pin.ts`
+  owns the failure counter (`settings.adminPinFailures`, `adminPinLockedUntil`), and the pure
+  rule (five tries, a 60 s lock, correct PIN clears the count) lives in
+  `features/security/domain/pin-lockout.ts`. Every IPC path that asks for the PIN — unlock,
+  save, exit — goes through it, so a new caller cannot opt out of the lockout.
+- The kiosk window (`electron/windows/booth-window.ts`) is the other half: DevTools off and
+  reload/DevTools/navigation keys swallowed in a packaged build (the list is a pure function in
+  `features/security/domain/kiosk-keys.ts`, tested against the hotkey map so the two can never
+  overlap), no new windows or webviews, no context menu. Operator shortcuts need Shift, which
+  is exactly what keeps them outside the blocked set.
+- What the app cannot do is block OS shortcuts (Win, Alt+Tab, Ctrl+Alt+Del); that needs
+  Windows Assigned Access on the booth PC.
 
 ## Testing
 

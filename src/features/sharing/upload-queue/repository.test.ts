@@ -5,7 +5,7 @@ import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 import { initializeStorage } from '../../storage/database/initialize';
 import { createSession } from '../../capture/node';
-import { enqueueSessionFiles, listUploadQueue, processDueUploads, recoverInterruptedUploads, type UploadQueueItem } from './repository';
+import { enqueueSessionFiles, listUploadQueue, processDueUploads, recoverInterruptedUploads, skipPendingUploads, type UploadQueueItem } from './repository';
 
 const dirs: string[] = [];
 function setup(): { dir: string; sessionId: string; outputPath: string } {
@@ -53,6 +53,24 @@ describe('persistent upload queue', () => {
     expect(await processDueUploads(dir, { async upload(item) { uploaded.push(item); } }, now + 30_001)).toEqual({ processed: 1, uploaded: 1, failed: 0 });
     expect(uploaded).toHaveLength(1);
     expect(listUploadQueue(dir)).toMatchObject({ waitingFiles: 0, waitingSessions: 0, uploadedFiles: 1, lastError: null, lastSyncedAt: new Date(now + 30_001).toISOString(), nextRetryAt: null });
+  });
+
+  it('skips waiting uploads on request without deleting anything (F21)', async () => {
+    const { dir, sessionId, outputPath } = setup();
+    enqueueSessionFiles(dir, sessionId);
+    const now = Date.now();
+    await processDueUploads(dir, { async upload() { throw new Error('offline'); } }, now);
+    // A failed mock upload goes back to pending with a backoff, so it still counts as waiting.
+    expect(listUploadQueue(dir)).toMatchObject({ waitingFiles: 1, failedFiles: 0 });
+    expect(skipPendingUploads(dir, sessionId)).toBe(1);
+    expect(listUploadQueue(dir)).toMatchObject({ waitingFiles: 0, failedFiles: 0, skippedFiles: 1, waitingSessions: 0 });
+    const db = new Database(path.join(dir, 'photobooth.sqlite'));
+    expect(db.prepare('SELECT status, file_path FROM upload_queue').all()).toEqual([{ status: 'skipped', file_path: outputPath }]);
+    db.close();
+    // Skipped files are never picked up again, and re-skipping finds nothing to do.
+    expect(await processDueUploads(dir, { async upload() {} }, now + 10 * 60_000)).toEqual({ processed: 0, uploaded: 0, failed: 0 });
+    expect(skipPendingUploads(dir)).toBe(0);
+    expect(() => skipPendingUploads(dir, 'not-a-session')).toThrow(/Invalid session id/);
   });
 
   it('counts a session once no matter how many of its files are queued', () => {
