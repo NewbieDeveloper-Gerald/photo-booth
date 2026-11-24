@@ -261,6 +261,33 @@ const migrations: Array<{ name: string; sql: string }> = [
       CREATE INDEX IF NOT EXISTS idx_download_events_event ON download_events(event_id, created_at);
     `,
   },
+  {
+    // F25: saved printer profiles — model, paper, cut and colour per printer — plus the profile a
+    // queued print used, kept on the job so history still reads after a profile is edited.
+    name: '019_printer_profiles',
+    sql: `
+      CREATE TABLE printer_profiles (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        model_id TEXT NOT NULL,
+        printer_name TEXT NOT NULL DEFAULT '',
+        paper_id TEXT NOT NULL,
+        cut_mode TEXT NOT NULL DEFAULT 'per-print',
+        color_mode TEXT NOT NULL DEFAULT 'color',
+        brightness INTEGER NOT NULL DEFAULT 0,
+        contrast INTEGER NOT NULL DEFAULT 0,
+        saturation INTEGER NOT NULL DEFAULT 0,
+        is_default INTEGER NOT NULL DEFAULT 0,
+        verified_at TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE UNIQUE INDEX idx_printer_profiles_printer ON printer_profiles(printer_name) WHERE printer_name <> '';
+      CREATE UNIQUE INDEX idx_printer_profiles_default ON printer_profiles(is_default) WHERE is_default = 1;
+      ALTER TABLE print_jobs ADD COLUMN profile_id TEXT;
+      ALTER TABLE print_jobs ADD COLUMN profile_label TEXT;
+    `,
+  },
 ];
 
 export function initializeStorage(userDataPath: string): void {

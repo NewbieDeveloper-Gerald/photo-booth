@@ -25,6 +25,7 @@ import { FilterPicker } from '../renderer/components/FilterPicker';
 import { HotkeyHelp } from '../renderer/components/HotkeyHelp';
 import { RemoteGuestCard } from '../renderer/components/RemoteGuestCard';
 import { AnalyticsCard } from '../renderer/components/AnalyticsCard';
+import { PrinterProfileCard } from '../renderer/components/PrinterProfileCard';
 import { isTypingTarget, matchHotkey } from '../renderer/lib/hotkeys';
 import { buildRemoteView, isRemoteCommandAllowed, remoteViewSignature } from '../features/remote-guest';
 import { wantsBoomerang, wantsSlideshow, type AnimatedOutput } from '../features/animation';
@@ -43,7 +44,7 @@ import {
   MIN_WATERMARK_OPACITY, MIN_WATERMARK_SCALE_PERCENT, PRINT_QUEUE_POLL_MS, SESSION_IDLE_TIMEOUT_MS, UPLOAD_STATUS_POLL_MS,
 } from '../shared/constants/limits';
 import { renderTemplateLayout, templateFromCatalogPreset, getLayoutPreset, layoutPresets, type TemplateDocument, type TemplateSummary } from '../features/layouts';
-import { decideAutoPrint, type PrintJob, type PrintQueueSummary } from '../features/printing';
+import { decideAutoPrint, type PrintJob, type PrintQueueSummary, type PrinterProfile, type PrinterProfileDraft } from '../features/printing';
 import type { ActiveEvent, EventSettings } from '../shared/types/event';
 import type { SessionRecord, SessionSlot, UnfinishedSession } from '../shared/types/session';
 import type { UploadQueueSummary } from '../features/sharing';
@@ -96,6 +97,8 @@ function App(): React.JSX.Element {
   const [printJobId, setPrintJobId] = useState('');
   const [printJobs, setPrintJobs] = useState<PrintJob[]>([]);
   const [printSummary, setPrintSummary] = useState<PrintQueueSummary | null>(null);
+  /** F25: the saved printer profiles the operator maintains on the panel. */
+  const [printerProfiles, setPrinterProfiles] = useState<PrinterProfile[]>([]);
   /** F19: the idle loop that invites guests in, and the media it cycles through. */
   const [attractVisible, setAttractVisible] = useState(false);
   const [attractMedia, setAttractMedia] = useState<AttractMedia[]>([]);
@@ -394,6 +397,8 @@ function App(): React.JSX.Element {
         const preferred = savedPrinter && availablePrinters.some((printer) => printer.name === savedPrinter) ? savedPrinter : availablePrinters.find((printer) => printer.isDefault)?.name ?? availablePrinters[0]?.name ?? '';
         setSelectedPrinterName(preferred);
         if (!savedPrinter && preferred) void savePreference('selectedPrinterName', preferred);
+        const savedProfiles = await window.photobooth.listPrinterProfiles().catch(() => []);
+        if (!cancelled) setPrinterProfiles(savedProfiles);
       }
       if (savedDiskWarning !== null && Number.isFinite(Number(savedDiskWarning)) && Number(savedDiskWarning) >= 0 && Number(savedDiskWarning) <= 1000) setDiskWarningGB(savedDiskWarning);
       if (cancelled) return;
@@ -909,6 +914,36 @@ function App(): React.JSX.Element {
     finally { setBusy(false); }
   };
 
+  const refreshPrinterProfiles = async (): Promise<void> => {
+    if (!window.photobooth) return;
+    setPrinterProfiles(await window.photobooth.listPrinterProfiles().catch(() => []));
+  };
+
+  const handleSavePrinterProfile = async (draft: PrinterProfileDraft): Promise<void> => {
+    if (!window.photobooth) throw new Error('Printer profiles need the desktop app.');
+    await window.photobooth.savePrinterProfile(draft);
+    await refreshPrinterProfiles();
+  };
+
+  const handleDeletePrinterProfile = async (profileId: string): Promise<void> => {
+    if (!window.photobooth) return;
+    await window.photobooth.deletePrinterProfile(profileId);
+    await refreshPrinterProfiles();
+  };
+
+  const handleCheckPrinterProfile = async (profileId: string, checked: boolean): Promise<void> => {
+    if (!window.photobooth) return;
+    await window.photobooth.markPrinterProfileChecked(profileId, checked);
+    await refreshPrinterProfiles();
+  };
+
+  /** The test sheet goes straight to the printer: it is a check of the profile, not a guest print. */
+  const handleTestPrintProfile = async (profile: PrinterProfile): Promise<string> => {
+    if (!window.photobooth) throw new Error('The test sheet needs the desktop app.');
+    const result = await window.photobooth.printProfileTestSheet(profile.id, selectedPrinterName);
+    return `Test sheet sent to the printer — ${result.description}. Check the frame and the hairline pairs, then tick it as checked.`;
+  };
+
   const handleSetPrintPaused = async (paused: boolean): Promise<void> => {
     if (!window.photobooth) return;
     try {
@@ -1384,6 +1419,14 @@ function App(): React.JSX.Element {
         {screen === 'ready' && !adminLocked && <RemoteGuestCard info={remoteInfo} busy={busy} error={remoteError}
           onToggle={(enabled) => void handleRemoteToggle(enabled)} onRotate={() => void handleRemoteRotateLink()} />}
         {screen === 'ready' && !adminLocked && printSummary && <PrintQueueCard summary={printSummary} jobs={printJobs} busy={busy} onSetPaused={(paused) => void handleSetPrintPaused(paused)} onCancel={(jobId) => void handleCancelPrintJob(jobId)} />}
+        {screen === 'ready' && !adminLocked && <PrinterProfileCard
+          profiles={printerProfiles}
+          printers={printers.map((printer) => ({ name: printer.name, displayName: printer.displayName }))}
+          busy={busy}
+          onSave={handleSavePrinterProfile}
+          onDelete={handleDeletePrinterProfile}
+          onChecked={handleCheckPrinterProfile}
+          onTestPrint={handleTestPrintProfile} />}
         {screen === 'ready' && !adminLocked && retention && <RetentionNote status={retention} />}
         {screen === 'ready' && !adminLocked && queueWarning && <p className="pin-error" role="alert">{queueWarning}</p>}
         {errorMessage && <p className="camera-error" role="alert">{errorMessage}<button type="button" onClick={() => void refreshCameras()}>Retry</button></p>}

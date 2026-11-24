@@ -6,6 +6,9 @@ export type PrintJob = {
   sessionId: string;
   eventId: string;
   printerName: string;
+  /** The saved profile the sheet was set up with (F25), and a readable copy of it. */
+  profileId: string | null;
+  profileLabel: string | null;
   status: PrintJobStatus;
   attempts: number;
   error: string | null;
@@ -31,7 +34,12 @@ export type PrintableSession = { imagePath: string; width: number; height: numbe
 
 /** The bit of a printer the queue needs; the Electron device and the mock both fit it. */
 export type PrintQueuePrinter = {
-  printImage(imagePath: string, options: { printerName: string; widthMicrons: number; heightMicrons: number }): Promise<{ success: boolean; error?: string }>;
+  printImage(imagePath: string, options: {
+    printerName: string; widthMicrons: number; heightMicrons: number;
+    /** From the profile: a CSS filter (mono and colour adjustments) and the cut mode it expects. */
+    filter?: string;
+    cutMode?: 'per-print' | 'per-job' | 'none';
+  }): Promise<{ success: boolean; error?: string }>;
 };
 
 export type PrintQueueScheduler = {

@@ -3,6 +3,8 @@ import { openDatabase } from '../../storage/database/connection';
 import { isSessionId } from '../../../shared/validation/identifiers';
 import { toErrorMessage } from '../../../shared/errors';
 import { getLatestSessionPrintInfo } from './print-job-repository';
+import { getPrinterProfile, profileLabelFor, resolvePrintProfile } from './printer-profile-repository';
+import { imageFilter, printSheet, resolveProfileDetails } from '../domain/printer-profile';
 import { pageSizeMicrons } from '../devices/printer';
 import type { PrintJob, PrintJobStatus, PrintQueuePrinter, PrintQueueSummary } from '../domain/print-queue-types';
 
@@ -15,6 +17,8 @@ const COUNTED_STATUSES = "('queued', 'printing', 'done', 'failed')";
 function mapJob(row: Record<string, unknown>): PrintJob {
   return {
     id: String(row.id), sessionId: String(row.session_id), eventId: String(row.event_id), printerName: String(row.printer_name),
+    profileId: row.profile_id === null || row.profile_id === undefined ? null : String(row.profile_id),
+    profileLabel: row.profile_label === null || row.profile_label === undefined ? null : String(row.profile_label),
     status: row.status as PrintJobStatus, attempts: Number(row.attempts),
     error: row.error === null ? null : String(row.error), createdAt: String(row.created_at),
   };
@@ -53,8 +57,12 @@ export function enqueuePrintJob(userDataPath: string, sessionIdValue: unknown, p
       throw new Error(`This session reached its print limit (${event.printLimitPerSession}). Raise the limit in event setup to print again.`);
     }
     const id = randomUUID();
-    database.prepare(`INSERT INTO print_jobs (id, session_id, event_id, printer_name, status) VALUES (?, ?, ?, ?, 'queued')`)
-      .run(id, sessionIdValue, event.id, printerName);
+    // The profile the sheet will print with is copied onto the job, so the queue keeps its promise
+    // even if the operator edits or deletes the profile while the sheet is waiting.
+    const profile = resolvePrintProfile(userDataPath, printerName);
+    database.prepare(`INSERT INTO print_jobs (id, session_id, event_id, printer_name, profile_id, profile_label, status)
+      VALUES (?, ?, ?, ?, ?, ?, 'queued')`)
+      .run(id, sessionIdValue, event.id, printerName, profile?.id ?? null, profileLabelFor(profile));
     return mapJob(database.prepare('SELECT * FROM print_jobs WHERE id = ?').get(id) as Record<string, unknown>);
   } finally { database.close(); }
 }
@@ -171,7 +179,16 @@ export async function processNextPrintJob(
 
   try {
     const info = getLatestSessionPrintInfo(userDataPath, job.sessionId);
-    const result = await printer.printImage(info.imagePath, { printerName: job.printerName, ...pageSizeMicrons(info.width, info.height) });
+    // The profile saved on the job wins; if it has been deleted since, the printer's current
+    // profile is used, and with none at all the sheet falls back to the layout's own size.
+    const profile = (job.profileId ? getPrinterProfile(userDataPath, job.profileId) : null)
+      ?? resolvePrintProfile(userDataPath, job.printerName);
+    const resolved = profile ? resolveProfileDetails(profile) : null;
+    const result = await printer.printImage(info.imagePath, {
+      printerName: job.printerName,
+      ...(resolved ? printSheet(resolved) : pageSizeMicrons(info.width, info.height)),
+      ...(profile ? { filter: imageFilter(profile) || undefined, cutMode: profile.cutMode } : {}),
+    });
     return finish(result.success ? 'done' : 'failed', result.success ? null : (result.error ?? 'Printer reported a failure').slice(0, MAX_PRINT_ERROR_LENGTH));
   } catch (error) {
     return finish('failed', toErrorMessage(error, 'Could not print').slice(0, MAX_PRINT_ERROR_LENGTH));

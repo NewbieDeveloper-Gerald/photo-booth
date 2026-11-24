@@ -90,6 +90,23 @@ and keeps blob URLs for the lifetime of that event, so a 25 MB clip is not re-re
 | A new hardware device | `src/features/<feature>/devices/` behind an interface, with a mock |
 | A rule that must hold for every caller (lockouts, limits) | `src/features/<feature>/domain/`, called from the node-layer data module so no IPC handler can bypass it |
 
+## Printer profiles (F25)
+
+- `features/printing/domain/` holds the print model: `printer-models.ts` (the catalogue of models,
+  their paper sizes in millimetres and the cut modes they can do), `printer-profile.ts` (validation
+  against the model, the colour filter, sheet size in microns, profile resolution) and
+  `print-document.ts` (the HTML that goes to the driver, plus the test sheet). All pure and tested.
+- A profile is validated against its model, so an impossible combination (Selphy cutting after every
+  print, a 6 × 8 sheet on a QW410) is refused with a sentence rather than failing at the printer.
+- Colour settings are applied by the booth as a CSS filter on the printed image — mono and the three
+  adjustments therefore behave the same on every driver. The cut mode is recorded with the job and
+  shown on the test sheet; the physical cut is the driver's.
+- The queue stores `profile_id` **and** a readable `profile_label` on the job, so history still reads
+  after a profile is edited, and a print keeps the settings it was queued with. With no profile at
+  all, the queue falls back to the layout's own pixel size, which is what pre-F25 booths did.
+- The test sheet bypasses the queue on purpose: it checks a profile, not a guest's photo, so it must
+  not spend a session's print allowance.
+
 ## Booth numbers (F24)
 
 - `features/analytics/` splits the same way as everything else: `domain/stats.ts` (weighted

@@ -54,6 +54,33 @@ When the booth is idle it invites guests in: after an event-set wait (default 60
 
 Event setup has an **Attract screen** block: the toggle, the wait, and **Add photos or video** (PNG/JPEG/WebP, MP4/M4V/WebM, up to eight files of 25 MB each). The files are copied into the event's own folder under the booth's data directory, so the memory card can go home with the operator; **Remove** deletes that copy. With no media, the loop cycles the layouts the event offers, so a brand-new event still has an invite screen. **Preview attract screen** shows the loop immediately instead of waiting.
 
+## Printer profiles (F25)
+
+A **printer profile** is one saved set of print settings, bound to a printer model and (optionally) to one Windows print queue:
+
+- **Paper size** — real millimetres per model: 4 × 6, 6 × 8, 2 × 6 strips, 5 × 7, or Canon card stock. The page box and the driver are both asked for exactly that sheet, and a 4 × 6 layout is *contained* in a 6 × 8 sheet rather than stretched.
+- **Cut mode** — cut after every print, cut once at the end of the job, or no cut (trim by hand). Only the modes the model can actually do are offered: a Canon Selphy cannot cut after every print.
+- **Colour settings** — colour or black and white, plus brightness, contrast and saturation from −20 % to +20 %. The booth applies these itself as a filter on the printed image, so they work on any driver.
+- **One profile per print queue, one booth default.** A print is set up with the profile bound to the queue it is going to; failing that, the default; failing that, the layout's own size.
+
+The card also settles the question a saved setting cannot answer: **was this really printed on that printer?** Each profile has a **Print test sheet** button and a tick. The test sheet carries the profile's name and settings, colour patches, an 11-step grey ramp, a 2 mm frame (to spot driver margins) and hairline pairs (to spot scaling). Tick *It printed correctly* after checking it, and the profile shows the date; editing paper, cut, model or colour clears the tick again, because the check no longer describes those settings.
+
+### Tested on real hardware
+
+The models below are supported in code. **A tick in the app is the only real proof**, and this table starts empty because no printer has been through that check yet — the booth was developed without hardware attached.
+
+| Model | Paper | Cut modes offered | Tested on hardware |
+| --- | --- | --- | --- |
+| DNP QW410 | 4 × 6 | per print, none | not yet |
+| DNP DS-RX1HS | 4 × 6, 6 × 8, 2 × 6 | per print, none | not yet |
+| DNP DS620 | 4 × 6, 6 × 8, 2 × 6 | per print, none | not yet |
+| Mitsubishi CP-M15E | 4 × 6, 6 × 8 | per print, none | not yet |
+| Mitsubishi CP-D70DW | 4 × 6, 6 × 8, 2 × 6 | per print, none | not yet |
+| Canon Selphy CP1500 | 4 × 6, card | per job, none | not yet |
+| Other printer, 4 × 6 | 4 × 6, 6 × 8, 5 × 7, 2 × 6 | all three | not yet |
+
+To mark one as tested: create its profile, load that paper, print the test sheet, check the frame and hairlines, tick it, then change *not yet* to the date in this table and note anything the driver needed. The cut itself is performed by the printer driver — the profile tells the booth and the operator which mode that driver is set to, and the job keeps that mode with it.
+
 ## Booth numbers dashboard (F24)
 
 The booth serves a small operator dashboard at `/admin` on the same web server as the guest links — so on the booth computer it is `http://127.0.0.1:47625/admin`, and with a tunnel configured it is the same public HTTPS host plus `/admin`, readable from a phone. The operator panel's **Booth numbers** card hands over the address and copies it.
@@ -95,7 +122,7 @@ The operator event panel creates, edits, duplicates, and selects events. Event f
 
 ## Security and image handling
 
-Session tokens use 16 cryptographically secure random bytes encoded as unpadded base64url (22 characters). Do not log photo contents or personal data. Image pipeline: local-only full-resolution JPEG originals (kept clean, even when a watermark is on); guest download copies max 2048px on the long edge, JPEG quality 80, no source metadata (canvas re-encoding drops EXIF/GPS); print files at the selected layout's dimensions (1200×1800 px for 4×6).
+Session tokens use 16 cryptographically secure random bytes encoded as unpadded base64url (22 characters). Do not log photo contents or personal data. Image pipeline: local-only full-resolution JPEG originals (kept clean, even when a watermark is on); guest download copies max 2048px on the long edge, JPEG quality 80, no source metadata (canvas re-encoding drops EXIF/GPS); print files at the selected layout's dimensions (1200×1800 px for 4×6), sent to the driver on the paper size of the printer profile (F25).
 
 ## Project structure
 
