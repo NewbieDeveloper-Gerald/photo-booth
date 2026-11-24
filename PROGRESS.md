@@ -1,6 +1,6 @@
 # Progress
 
-Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`, F20 as `de322a2`, F21 as `e9564c1`, F22 as `1b3d92c`, F23 as `48fab71`, F24 as `22bff4d`, F25 as `9cb5f59`, F26 as `665971d`, **F27 skipped by request**, F28 as `f4a18d0`, F22 USB cable screen as `PENDING-USB`.
+Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`, F20 as `de322a2`, F21 as `e9564c1`, F22 as `1b3d92c`, F23 as `48fab71`, F24 as `22bff4d`, F25 as `9cb5f59`, F26 as `665971d`, **F27 skipped by request**, F28 as `f4a18d0`, F22 USB cable screen as `fb130e9`.
 
 ## Current status
 
@@ -38,7 +38,7 @@ Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `4215
   booths are not supported yet, and nothing in the app pretends they are.
 - **F28 (email and SMS link): merged** (`f4a18d0`), awaiting the real send below.
 - **F29: not started.**
-- **F22 extension (USB cable screen + Android app source): merged** (`PENDING-USB`). The APK itself
+- **F22 extension (USB cable screen + Android app source): merged** (`fb130e9`). The APK itself
   is **not built** — no Android SDK here — so the app is source only; the cable link is tested
   against a fake `adb` and has never been exercised on a real phone.
 - Automated verification today: `npm run typecheck`, `npm run lint`, `npm test`
