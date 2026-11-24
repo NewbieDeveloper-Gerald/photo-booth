@@ -1,6 +1,6 @@
 # Progress
 
-Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`, F20 as `de322a2`, F21 as `PENDING-F21`.
+Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`, F20 as `de322a2`, F21 as `e9564c1`.
 
 ## Current status
 
@@ -26,9 +26,9 @@ Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `4215
   pause/resume print test below.
 - **F19 (attract screen): merged** (`3425d9d`), awaiting the two-minute idle check below.
 - **F20 (photo filters): merged** (`de322a2`), awaiting the per-look print check below.
-- **F21 (operator hotkeys, PIN lockout): merged** (`PENDING-F21`), awaiting the manual
+- **F21 (operator hotkeys, PIN lockout): merged** (`e9564c1`), awaiting the manual
   guest/keyboard and wrong-PIN checks below.
-- **F22–F29: not started.**
+- **F22 (tablet guest screen) and F23–F29: not started.**
 - Automated verification today: `npm run typecheck`, `npm run lint`, `npm test`
   (**384 tests in 68 files**), `npm run build` (Vite production build) all pass.
   `npm run test:e2e` exists but cannot run in this environment (no browser runtime).
