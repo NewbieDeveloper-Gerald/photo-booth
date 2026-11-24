@@ -103,10 +103,19 @@ and keeps blob URLs for the lifetime of that event, so a 25 MB clip is not re-re
   three channels (`usbLink:status|connect|disconnect`) and never spawns anything.
 - **Two different failures, kept apart:** "adb is missing" (`ENOENT`) is the computer's problem;
   "no device" / "unauthorized" is the cable's or the phone's. Each gets its own sentence.
+- **The app is started by component, not by URL.** `am start -n ph.photobooth.screen/.MainActivity
+  -d <url>`: a bare `VIEW` intent for an http URL would let the phone hand the screen to a browser.
+  `am start` failing with "Activity class … does not exist" is reported as "install the app", which
+  is the one failure the booth cannot fix by itself.
 - **The Android app is a WebView with a localhost-only network policy.** It accepts a URL from the
   intent the booth sends (or a pasted one), refuses anything that is not `http://127.0.0.1:47626…`,
   hides the system bars and keeps the screen on. It has no analytics, no storage of guest data and
-  no camera permission.
+  no camera permission. It is pinned to `sensorLandscape`: a booth screen is never portrait.
+- **Built without Gradle in this environment.** `android/booth-screen/tools/build_apk.py` drives
+  `aapt2` (from PyPI), assembles `classes.dex` with `booth_dex.py` (no JDK here to run `javac`/`d8`)
+  and signs v1+v2+v3 with `apkforge`; the Gradle project is the same source for machines that have
+  the SDK. A test reads the shipped APK and fails if it stops being a signed, landscape-only app
+  whose package the cable link starts.
 
 ## Link delivery (F28)
 

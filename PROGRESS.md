@@ -38,11 +38,17 @@ Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `4215
   booths are not supported yet, and nothing in the app pretends they are.
 - **F28 (email and SMS link): merged** (`f4a18d0`), awaiting the real send below.
 - **F29: not started.**
+- **F22 extension, APK follow-up: landscape + an installable APK** (`PENDING-APK`). The app is now
+  `sensorLandscape`, `BoothScreen-debug.apk` is committed and built without Gradle
+  (`tools/build_apk.py`: aapt2 + a hand-assembled `classes.dex` + apkforge signing v1/v2/v3), and
+  the cable link starts the app **by component** so the URL cannot land in a browser. Verified with
+  androguard (APK validated, one class, manifest landscape, only INTERNET), aapt2 badging and
+  apkforge's signature verifier; **never installed on a real phone** — that is the next manual check.
 - **F22 extension (USB cable screen + Android app source): merged** (`fb130e9`). The APK itself
   is **not built** — no Android SDK here — so the app is source only; the cable link is tested
   against a fake `adb` and has never been exercised on a real phone.
 - Automated verification today: `npm run typecheck`, `npm run lint`, `npm test`
-  (**573 tests in 100 files**), `npm run build` (Vite production build) all pass.
+  (**578 tests in 101 files**), `npm run build` (Vite production build) all pass.
   `npm run test:e2e` exists but cannot run in this environment (no browser runtime).
 
 ## Verification gaps (unrecorded or impossible here)

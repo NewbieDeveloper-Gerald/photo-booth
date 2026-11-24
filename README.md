@@ -57,32 +57,36 @@ Event setup has an **Attract screen** block: the toggle, the wait, and **Add pho
 ## Phone or tablet on a USB cable (F22 extension)
 
 The tablet guest screen normally reaches the booth over Wi-Fi. When there is no network at all — a
-mall with no router, a venue with no signal — the same screen runs over **the USB cable**:
+mall with no router, a venue with no signal — the same screen runs over **the USB cable**, in
+**landscape**, on any phone or tablet from Android 5 up:
 
-1. **Once per phone:** enable *Developer options → USB debugging*, plug the cable in, and tap
+1. **Install the app:** the APK is in the repository —
+   [`android/booth-screen/BoothScreen-debug.apk`](android/booth-screen/BoothScreen-debug.apk).
+   Either `adb install -r android/booth-screen/BoothScreen-debug.apk`, or copy the file to the phone
+   and tap it (allow installing from that source once). It is a WebView kiosk: cleartext is
+   permitted only for `127.0.0.1` and `localhost`, there is no analytics, and it asks for no camera
+   or storage permission.
+2. **Once per phone:** enable *Developer options → USB debugging*, plug the cable in, and tap
    **Allow** on the phone's prompt (and *Always allow* if offered).
-2. **Install the small Android app** in [`android/booth-screen`](android/booth-screen/README.md) —
-   it is a WebView with no internet ambitions: clear text is permitted only for `127.0.0.1` and
-   `localhost`, there are no analytics, and it asks for no camera or storage permission.
 3. In the booth's operator panel, switch on the **tablet screen** and press **Connect over USB** in
-   the *USB cable screen* card. The booth maps the port with `adb reverse` and opens the screen on
-   the phone by itself; the address the phone loads is `http://127.0.0.1:47626/remote/<token>/`.
+   the *USB cable screen* card. The booth maps the port with `adb reverse` and starts the app with
+   the screen URL, so the phone loads `http://127.0.0.1:47626/remote/<token>/` from its own loopback.
 
-Nothing leaves the cable: the phone talks to its own loopback, `adb` forwards that to the booth, and
-no router, DNS, internet or QR code is involved. The card reports the three things that can be
-wrong — `adb` missing, no phone on the cable, port not mapped — with the fix for each (install
-platform-tools, replug the cable, tap *Allow*).
+Nothing leaves the cable: no router, DNS, internet or QR code is involved. The card reports the
+things that can go wrong — `adb` missing, no phone on the cable, port not mapped, app not installed
+— with the fix for each.
 
-**Requirements:** Android platform-tools (`adb`) on the booth computer; a data cable, not a
-charge-only one; and Android's USB debugging allowed once per device. **Screen sizes:** the page is
-fluid (dynamic viewport height, safe-area insets, `clamp()` type, auto-fit grids, two columns only
-above 900 px), and the app hides the system bars and keeps the screen awake, so a phone in landscape
-and a 10-inch tablet both fill the frame.
+**Landscape and screen sizes:** the app is pinned to `sensorLandscape` (it never appears in portrait,
+and turns 180° when the phone is flipped), hides the system bars, keeps the screen awake and
+disables pinch-zoom. The page itself is fluid — dynamic viewport height, safe-area insets, `clamp()`
+type, auto-fit grids, two columns only above 900 px — so a 5-inch phone and a 10-inch tablet both
+fill the frame.
 
-**What is not provided:** the compiled APK. The Android app is source only — building it needs the
-Android SDK, which is not part of the booth's toolchain here, so `assembleDebug` has to run on a
-machine with Android Studio (see that folder's README). Until then, the same screen still works over
-Wi-Fi from a browser.
+**Requirements:** Android platform-tools (`adb`) on the booth computer, a data cable (not
+charge-only), and USB debugging allowed once per device. The committed APK is debug-signed with a
+throwaway key, which is all sideloading needs; building it yourself is described in
+[`android/booth-screen/README.md`](android/booth-screen/README.md) — with Gradle, or with the
+`tools/build_apk.py` route that needs no Android SDK and no JDK.
 
 ## Send the link by email or SMS (F28)
 

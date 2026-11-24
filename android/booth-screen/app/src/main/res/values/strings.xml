@@ -1,8 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Booth Screen</string>
-    <string name="open_hint">Paste the booth screen address</string>
-    <string name="open_button">Open</string>
-    <string name="opening">Connecting to the booth…</string>
-    <string name="unreachable">The booth did not answer. Check the USB cable and that Connect over USB was pressed in the booth app.</string>
 </resources>

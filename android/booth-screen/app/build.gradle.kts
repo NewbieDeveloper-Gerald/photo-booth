@@ -1,6 +1,5 @@
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
 }
 
 android {
@@ -9,7 +8,8 @@ android {
 
     defaultConfig {
         applicationId = "ph.photobooth.screen"
-        minSdk = 24
+        // The app is a WebView; API 21 is where the settings used below all exist.
+        minSdk = 21
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
@@ -24,10 +24,7 @@ android {
         sourceCompatibility = JavaVersion.valueOf("VERSION_17")
         targetCompatibility = JavaVersion.valueOf("VERSION_17")
     }
-    kotlinOptions { jvmTarget = "17" }
 }
 
-dependencies {
-    implementation("androidx.appcompat:appcompat:1.7.0")
-    implementation("androidx.core:core-ktx:1.13.1")
-}
+// No dependencies on purpose: a plain Activity and a WebView, so the app stays a screen and
+// nothing else — no AndroidX, no support libraries, nothing that phones home.
