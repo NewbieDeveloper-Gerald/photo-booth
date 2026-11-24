@@ -8,7 +8,8 @@ import { isRemoteCommandAllowed, parseRemoteCommand } from '../domain/remote-vie
 import { isRemoteToken } from './remote-settings';
 import type { RemoteCommand, RemoteView } from '../../../shared/types/remote-guest';
 
-export const REMOTE_GUEST_PORT = 47_626;
+import { REMOTE_GUEST_PORT } from '../domain/remote-port';
+export { REMOTE_GUEST_PORT };
 export const REMOTE_GUEST_HOST = '0.0.0.0';
 /** One booth, a handful of guest screens; more than this is a misconfigured network. */
 export const REMOTE_MAX_CLIENTS = 6;

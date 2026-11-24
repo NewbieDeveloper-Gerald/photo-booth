@@ -90,6 +90,24 @@ and keeps blob URLs for the lifetime of that event, so a 25 MB clip is not re-re
 | A new hardware device | `src/features/<feature>/devices/` behind an interface, with a mock |
 | A rule that must hold for every caller (lockouts, limits) | `src/features/<feature>/domain/`, called from the node-layer data module so no IPC handler can bypass it |
 
+## Phone or tablet over a USB cable (F22 extension)
+
+- The guest screen already exists as a small HTTP + WebSocket server on port 47626 (F22). Adding a
+  cable does not add a second screen: `adb reverse tcp:47626 tcp:47626` maps the phone's own port
+  back to that server, so the phone loads `http://127.0.0.1:47626/remote/<token>/` and the existing
+  page, token check and rate limits all apply unchanged.
+- `remote-guest/usb-link/` holds the logic: `adb.ts` (command lines, `adb devices` and
+  `adb reverse --list` parsing, the localhost URL, operator wording) and `link-service.ts` (status,
+  connect, disconnect over an injected `adb` runner, so the whole thing is tested without a phone).
+- **Main process only:** `electron/android-usb-service.ts` runs the real `adb`; the renderer sees
+  three channels (`usbLink:status|connect|disconnect`) and never spawns anything.
+- **Two different failures, kept apart:** "adb is missing" (`ENOENT`) is the computer's problem;
+  "no device" / "unauthorized" is the cable's or the phone's. Each gets its own sentence.
+- **The Android app is a WebView with a localhost-only network policy.** It accepts a URL from the
+  intent the booth sends (or a pasted one), refuses anything that is not `http://127.0.0.1:47626…`,
+  hides the system bars and keeps the screen on. It has no analytics, no storage of guest data and
+  no camera permission.
+
 ## Link delivery (F28)
 
 - `sharing/link-delivery/` is split the same way as the rest: `addresses.ts` (validation and
