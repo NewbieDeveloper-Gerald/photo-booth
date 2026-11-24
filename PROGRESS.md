@@ -1,6 +1,6 @@
 # Progress
 
-Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`; F20 implemented on `arena/1010967b-photo-booth`.
+Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`, F20 as `de322a2`.
 
 ## Current status
 
@@ -25,7 +25,7 @@ Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `4215
 - **F18 (print queue, counts and limits): merged** (`6a0abb9`), awaiting the manual
   pause/resume print test below.
 - **F19 (attract screen): merged** (`3425d9d`), awaiting the two-minute idle check below.
-- **F20 (photo filters): implemented**, awaiting the per-look print check below.
+- **F20 (photo filters): merged** (`de322a2`), awaiting the per-look print check below.
 - **F21–F29: not started.**
 - Automated verification today: `npm run typecheck`, `npm run lint`, `npm test`
   (**365 tests in 64 files**), `npm run build` (Vite production build) all pass.
@@ -382,7 +382,7 @@ Per-slide timing, sound, a video background behind the live camera preview, and 
 previous guests' photos as the loop are not implemented; the loop uses the operator's files
 (or this event's layouts) only.
 
-## F20. Photo filters (implemented)
+## F20. Photo filters (merged)
 
 - **Three looks plus the original** (`features/capture/domain/photo-filters.ts`, pure): black &
   white (`grayscale(1) contrast(1.06)`), warm (`sepia(0.32) saturate(1.22) brightness(1.04)`)
