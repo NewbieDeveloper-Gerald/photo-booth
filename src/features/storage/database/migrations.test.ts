@@ -55,7 +55,7 @@ describe('applyMigrations', () => {
   it('is a no-op on the second run', () => {
     const database = memoryDatabase();
     applyMigrations(database);
-    expect(applyMigrations(database)).toEqual({ applied: [], repaired: [] });
+    expect(applyMigrations(database)).toEqual({ applied: [], repaired: [], rebuilt: [] });
     database.close();
   });
 
@@ -83,7 +83,7 @@ describe('applyMigrations', () => {
     expect(database.prepare('SELECT name FROM templates').get()).toEqual({ name: 'Kept' });
     expect((database.prepare('PRAGMA table_info(template_elements)').all() as Array<{ name: string }>).map((column) => column.name)).toContain('asset_name');
     // And a third run has nothing left to do.
-    expect(applyMigrations(database)).toEqual({ applied: [], repaired: [] });
+    expect(applyMigrations(database)).toEqual({ applied: [], repaired: [], rebuilt: [] });
     database.close();
   });
 
@@ -115,16 +115,67 @@ describe('declaredColumns and schemaGaps', () => {
     database.close();
   });
 
-  it('names the table and column when an adopted database is older than this build', () => {
-    // A database whose `templates` table predates a column this build queries cannot be repaired
-    // by recording the migration, and must say so rather than fail later inside a screen.
+});
+
+describe('an old-shaped template table', () => {
+  /** The tables an early build created before the layout schema settled: templates in miniature. */
+  function makeEarlyBuildDatabase(): Database.Database {
+    const database = memoryDatabase();
+    applyMigrations(database, migrations.slice(0, 7));
+    database.exec(`
+      CREATE TABLE templates (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        shots INTEGER NOT NULL,
+        copies INTEGER NOT NULL
+      );
+      CREATE TABLE template_elements (
+        template_id TEXT NOT NULL REFERENCES templates(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL,
+        layer INTEGER NOT NULL,
+        x INTEGER NOT NULL,
+        y INTEGER NOT NULL,
+        width INTEGER NOT NULL,
+        height INTEGER NOT NULL,
+        slot_number INTEGER,
+        color TEXT,
+        font_size INTEGER,
+        PRIMARY KEY (template_id, kind, layer)
+      );
+    `);
+    database.prepare("INSERT INTO templates (id, name, shots, copies) VALUES ('legacy-1', 'Old custom strip', 3, 1)").run();
+    database.prepare("INSERT INTO template_elements (template_id, kind, layer, x, y, width, height) VALUES ('legacy-1', 'slot', 0, 0, 0, 100, 100)").run();
+    return database;
+  }
+
+  it('is repaired instead of blocking the start, and the old rows are kept aside', () => {
+    const database = makeEarlyBuildDatabase();
+
+    const result = applyMigrations(database, migrations, Date.UTC(2026, 10, 24, 11, 30, 45));
+
+    expect(result.rebuilt).toEqual([
+      'template_elements had an older shape, so it was renamed to template_elements_legacy_20261124T113045 and recreated; its old rows are still in that table if you want them',
+      'templates had an older shape, so it was renamed to templates_legacy_20261124T113045 and recreated; its old rows are still in that table if you want them',
+    ]);
+    // The current schema is complete, and the migrations that describe it are recorded again.
+    expect(schemaGaps(database)).toEqual([]);
+    expect(recordedNames(database)).toEqual(migrations.map((migration) => migration.name));
+    // Nothing was destroyed: the old row is still readable under the parked name.
+    expect(database.prepare('SELECT name FROM templates_legacy_20261124T113045').get()).toEqual({ name: 'Old custom strip' });
+    // The new table is empty and ready for the built-in layouts to be seeded into it.
+    expect(database.prepare('SELECT count(*) AS n FROM templates').get()).toEqual({ n: 0 });
+    // And a second start has nothing left to do.
+    expect(applyMigrations(database, migrations, Date.UTC(2026, 10, 24, 11, 30, 45))).toEqual({ applied: [], repaired: [], rebuilt: [] });
+    database.close();
+  });
+
+  it('still refuses when a table that holds booth data is the one out of date', () => {
     const database = memoryDatabase();
     applyMigrations(database);
-    database.exec('ALTER TABLE templates DROP COLUMN is_builtin');
-    database.prepare("DELETE FROM schema_migrations WHERE name = '008_templates'").run();
+    database.exec('ALTER TABLE events DROP COLUMN welcome_text');
 
     expect(() => applyMigrations(database)).toThrow(/from an older build/);
-    expect(() => applyMigrations(database)).toThrow(/table templates has no is_builtin/);
+    expect(() => applyMigrations(database)).toThrow(/table events has no welcome_text/);
     database.close();
   });
 });
