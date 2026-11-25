@@ -209,13 +209,22 @@ manual check. Hardware is simulated until you can plug a camera in.
 | Phase | Deliverable | Definition of done |
 |---|---|---|
 | **0. Identity** (built) | Renamed to Boothwright: package/product name, window and page titles, top-bar wordmark, guest pages, printed document, exit copy; `src/shared/paths/user-data-path.ts` keeps a running booth on its old data folder. | App builds and runs under the new name; an existing booth's data opens unchanged; 3 tests pin the folder choice. |
-| **1. Camera host** (1–2 weeks) | `camera-host` .NET helper + EDSDK: list/open, live view 24 fps, autofocus, shutter, download, ISO/Av/Tv/WB/quality, live-view vs capture settings, battery/media events; simulated camera; webcam fallback. | Live view ≥ 24 fps at 1024×680 on your 200D; settings round-trip; unplug/replug mid-session recovers; gate green with simulated camera. |
+| **1. Camera host** (built, bench check owed) | `camera-host` .NET helper + EDSDK: list/open, live view 24 fps, autofocus, shutter, download, ISO/Av/Tv/WB/quality, live-view vs capture settings, battery/media events; simulated camera; webcam fallback. | Live view ≥ 24 fps at 1024×680 on your 200D; settings round-trip; unplug/replug mid-session recovers; gate green with simulated camera. |
 | **2. Sessions & templates** (1 week) | 1–8 shots, custom paper sizes, signature/sticker/survey fields in the editor, per-mode templates, final layout ≤ 5 s after the last shot. | A 4-shot and an 8-shot session print on the DNP; editor round-trips through JSON; perf test on the render path. |
 | **3. Guest flow & kiosk** (1–2 weeks) | The 16-step flow as one state machine: mode/layout/background pickers with skip rules, per-screen theming, inactivity timeouts, back/cancel rules, hidden gesture + PIN, rehearsal mode. | First-time guest completes a session unaided; every screen times out per spec; a guest cannot reach settings. |
 | **4. Media modes & decorate** (2–3 weeks) | GIF (frames/delay/loop), boomerang, video + guestbook questions + audio, filters incl. LUT, stickers, drawing, signature, processing screen. | All four modes produce playable files; video has audio; retake deletes only that session's files. |
 | **5. Sharing & queue** (1–2 weeks) | Real email/SMS gateway, offline queue with backoff and operator visibility, local QR/gallery when offline, expiry, deletion requests. | Airplane-mode event: everything queues and delivers when the network returns; nothing lost. |
 | **6. Green screen, survey, reports, slideshow** (2 weeks) | Chroma key with picker/tolerance/edges + background library; survey answers printed/exported; reports with payments and surveys to CSV; second-screen slideshow. | Keyed output matches a reference print; survey prints on the layout; slideshow runs 8 h. |
 | **7. 360, remote, cloud** (open-ended) | 360/slow-mo capture; phone monitoring and control; multi-booth cloud sync. | 360 exports with audio; a phone can watch and reprint without touching the booth. |
+
+**Phase 1 delivered** (`src/features/capture/camera/`, `electron/camera-*`, `native/camera-host/`):
+framed stdio protocol (4-byte length + kind byte, JSON control and JPEG live-view frames), request
+client with per-call deadlines, supervisor with restart budget and backoff, EDSDK device + camera
+router, capability-driven settings split (live view applied on preview, capture applied before the
+shutter), simulated camera in both TypeScript (booth preview) and .NET (`--simulated`, the host
+alone), the operator card, and 50 tests. Two things only a real machine can settle: the 24 fps
+target on the 200D, and the EDSDK code tables in `native/camera-host/Cameras/Edsdk/`. The bench
+checklist is `native/camera-host/README.md`.
 
 **Sequencing note:** Phase 1 first because the 24 fps target and the whole camera-control list cannot
 be met by spawning `gphoto2` CLI per frame — that is a hard architectural limit, not tuning.

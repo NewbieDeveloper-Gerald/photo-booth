@@ -4,6 +4,8 @@ import { capturePhotoFrom, createCameraSources, webcamFallback } from './camera-
 import { MockTetherBridge, TetherCameraDevice } from './tether-camera';
 import { TETHER_MODEL } from './dslr-types';
 import type { CameraDevice, CameraInfo } from '../devices/camera';
+import { EDSDK_DEVICE_PREFIX, EdsdkCameraDevice, MockCameraHostBridge } from '../camera/edsdk-camera';
+import { SIMULATED_DEVICE_ID, createSimulatedCamera, type SimulatedCanvas } from '../camera/simulated-camera';
 
 function fakeWebcam(cameras: CameraInfo[] = [{ deviceId: 'webcam-1', label: 'Logitech C920' }]) {
   const device = {
@@ -48,6 +50,40 @@ describe('camera sources (F26)', () => {
     expect(createCameraSources({})).toBeNull();
   });
 
+  it('routes to the EDSDK camera and the simulated camera as well, so a rehearsal needs no hardware', async () => {
+    const webcam = fakeWebcam();
+    const bridge = new MockCameraHostBridge(undefined, new Uint8Array([9, 9]));
+    const edsdk = new EdsdkCameraDevice(bridge, () => fakeSink());
+    const sources = createCameraSources({ webcam, edsdk })!;
+
+    expect((await sources.listCameras()).map((camera) => camera.deviceId)).toEqual(['webcam-1', `${EDSDK_DEVICE_PREFIX}0`]);
+    await sources.startPreview(`${EDSDK_DEVICE_PREFIX}0`, 'best');
+    expect(bridge.starts).toBe(1);
+    expect([...(await sources.captureStill!(`${EDSDK_DEVICE_PREFIX}0`))]).toEqual([9, 9]);
+
+    const simulated = createSimulatedCamera({ createCanvas: () => ({ width: 0, height: 0, getContext: () => null }) });
+    const rehearsal = createCameraSources({ simulated })!;
+    expect((await rehearsal.listCameras())[0]?.deviceId).toBe(SIMULATED_DEVICE_ID);
+  });
+
+  it('takes the real file from the DSLR and the test camera, never the preview canvas', async () => {
+    stubImagePipeline();
+    const bridge = new MockCameraHostBridge(undefined, new Uint8Array([4, 4]));
+    const sources = createCameraSources({ edsdk: new EdsdkCameraDevice(bridge, () => fakeSink()) })!;
+    const fromDsr = await capturePhotoFrom({ device: sources, deviceId: `${EDSDK_DEVICE_PREFIX}0`, video: null });
+    expect(fromDsr.width).toBe(4000);
+    expect(bridge.shutters).toBe(1);
+
+    const rehearsal = createCameraSources({ simulated: createSimulatedCamera({ createCanvas: fakeCanvas }) })!;
+    const fromTest = await capturePhotoFrom({ device: rehearsal, deviceId: SIMULATED_DEVICE_ID, video: null });
+    expect(fromTest.width).toBe(4000);
+  });
+
+  it('refuses a camera id for a camera that is not connected instead of quietly using the webcam', () => {
+    const sources = createCameraSources({ webcam: fakeWebcam() })!;
+    expect(() => sources.startPreview(`${EDSDK_DEVICE_PREFIX}0`, 'best')).toThrow('not connected');
+  });
+
   it('picks a webcam to fall back to, never the tether camera', () => {
     expect(webcamFallback([{ deviceId: TETHER_MODEL.deviceId, label: 'Tether' }, { deviceId: 'webcam-2', label: 'Webcam' }])).toBe('webcam-2');
     expect(webcamFallback([{ deviceId: TETHER_MODEL.deviceId, label: 'Tether' }])).toBe('');
@@ -70,6 +106,17 @@ describe('camera sources (F26)', () => {
     await expect(capturePhotoFrom({ device: sources, deviceId: 'webcam-1', video: null })).rejects.toThrow('not ready for capture');
   });
 });
+
+/** jsdom has no canvas: the test camera needs one that draws nothing and encodes a tiny JPEG. */
+function fakeCanvas(): SimulatedCanvas {
+  return {
+    width: 0,
+    height: 0,
+    getContext: () => ({ fillStyle: '', font: '', textAlign: '', fillRect: () => undefined, fillText: () => undefined }),
+    captureStream: () => ({ getTracks: () => [] } as unknown as MediaStream),
+    toDataURL: () => 'data:image/jpeg;base64,/9j/4AAQ',
+  };
+}
 
 function fakeSink() {
   return { stream: { getTracks: () => [] } as unknown as MediaStream, push: async () => undefined, close: () => undefined };

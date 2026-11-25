@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import QRCode from 'qrcode';
 import { createRoot } from 'react-dom/client';
 import {
-  BrowserCameraDevice, TetherCameraDevice, canRetake, capturePhotoFrom, createCameraSources, isValidRetakeLimit, isTetherDeviceId,
+  BrowserCameraDevice, EdsdkCameraDevice, SIMULATED_DEVICE_ID, TetherCameraDevice, canRetake, capturePhotoFrom,
+  createCameraSources, createSimulatedCamera, isValidRetakeLimit, isSimulatedDeviceId, isTetherDeviceId,
   PHOTO_FILTERS, webcamFallback, type CameraInfo, type CameraResolution, type PhotoFilterId, type TetherStatus, type WatermarkPosition,
 } from '../features/capture';
 import { cameraErrorMessage } from '../features/capture/domain/camera-messages';
@@ -33,6 +34,8 @@ import { UsbScreenCard } from '../renderer/components/UsbScreenCard';
 import type { UsbLinkStatus } from '../features/remote-guest';
 import { SendLinkCard } from '../renderer/components/SendLinkCard';
 import { createTetherBridge } from '../renderer/lib/tether-bridge';
+import { createCameraHostBridge } from '../renderer/lib/camera-host-bridge';
+import { CameraSettingsCard } from '../renderer/components/CameraSettingsCard';
 import { AnalyticsCard } from '../renderer/components/AnalyticsCard';
 import { PrinterProfileCard } from '../renderer/components/PrinterProfileCard';
 import { isTypingTarget, matchHotkey } from '../renderer/lib/hotkeys';
@@ -80,10 +83,17 @@ function App(): React.JSX.Element {
     if (!window.photobooth) return null;
     return new TetherCameraDevice(createTetherBridge(), undefined, (message) => setTetherError(message));
   }, []);
+  /** Phase 1: the Canon EDSDK host. Frames arrive over IPC; a dead camera reports through tetherError. */
+  const edsdkCamera = useMemo(() => {
+    if (!window.photobooth) return null;
+    return new EdsdkCameraDevice(createCameraHostBridge(), undefined, (message) => setTetherError(message));
+  }, []);
+  const [simulatedCameraEnabled, setSimulatedCameraEnabled] = useState(false);
+  const simulatedCamera = useMemo(() => (simulatedCameraEnabled ? createSimulatedCamera() : null), [simulatedCameraEnabled]);
   const camera = useMemo(() => {
     const webcam = typeof navigator !== 'undefined' && navigator.mediaDevices ? new BrowserCameraDevice() : null;
-    return createCameraSources({ webcam, tether: tetherCamera });
-  }, [tetherCamera]);
+    return createCameraSources({ webcam, tether: tetherCamera, edsdk: edsdkCamera, simulated: simulatedCamera });
+  }, [tetherCamera, edsdkCamera, simulatedCamera]);
   const videoRef = useRef<HTMLVideoElement>(null);
   const currentStream = useRef<MediaStream | null>(null);
   const startSequence = useRef(0);
@@ -413,6 +423,17 @@ function App(): React.JSX.Element {
     })();
   }, [tetherError, camera, refreshTetherStatus, resolution, selectedCameraId]);
 
+  /**
+   * Phase 1: the shipped test camera. Turning it on adds it to the camera list and picks it, so a
+   * rehearsal booth is one tick away from a working preview; turning it off goes back to the webcam.
+   */
+  const handleSimulatedCameraToggle = useCallback((enabled: boolean) => {
+    setSimulatedCameraEnabled(enabled);
+    void savePreference('simulatedCamera', enabled ? 'on' : 'off').catch(() => setErrorMessage('Could not save the camera setting.'));
+    const fallback = enabled ? SIMULATED_DEVICE_ID : webcamFallback(cameras);
+    if (fallback) { setSelectedCameraId(fallback); void startCamera(fallback, resolution); }
+  }, [cameras, resolution, startCamera]);
+
   const refreshCameras = useCallback(async () => {
     if (!camera) return;
     const devices = await camera.listCameras().catch(() => []);
@@ -435,7 +456,7 @@ function App(): React.JSX.Element {
   useEffect(() => {
     let cancelled = false;
     const initialize = async (): Promise<void> => {
-      const [savedCamera, savedCountdown, savedResolution, savedDiskWarning, savedPrinter, savedDownloadBaseUrl, savedConsentText] = await Promise.all([
+      const [savedCamera, savedCountdown, savedResolution, savedDiskWarning, savedPrinter, savedDownloadBaseUrl, savedConsentText, savedSimulatedCamera] = await Promise.all([
         readPreference('selectedCameraId').catch(() => null),
         readPreference('countdownSeconds').catch(() => null),
         readPreference('cameraResolution').catch(() => null),
@@ -443,7 +464,10 @@ function App(): React.JSX.Element {
         readPreference('selectedPrinterName').catch(() => null),
         readPreference('downloadBaseUrl').catch(() => null),
         readPreference('consentText').catch(() => null),
+        readPreference('simulatedCamera').catch(() => null),
       ]);
+      // The test camera is remembered, so a rehearsal booth stays a rehearsal booth across restarts.
+      if (savedSimulatedCamera === 'on') setSimulatedCameraEnabled(true);
       if (savedDownloadBaseUrl) setDownloadBaseUrl(savedDownloadBaseUrl);
       if (savedConsentText) setConsentText(savedConsentText);
       if (window.photobooth) {
@@ -1431,7 +1455,7 @@ function App(): React.JSX.Element {
             <h1>{screen === 'ready' ? (event?.welcomeText || 'Frame the moment.') : screen === 'capturing' ? `Photo ${currentSlot} of ${slotCount}` : screen === 'finished' ? (event?.thankYouText || DEFAULT_THANK_YOU_TEXT) : 'Choose a favorite.'}</h1>
             <p className="subheading">{screen === 'ready' ? `Ready for ${event?.name ?? 'your event'}${event?.eventDate ? ` · ${event.eventDate}` : ''}. Check the preview, then start a session.` : screen === 'capturing' ? 'Stay in frame. Your original photo is saved directly to the session folder.' : screen === 'finished' ? 'The selected print-size image is saved with this session.' : 'Retake just one slot if needed. Your other photos will stay exactly as they are.'}</p>
           </div>
-          <div className="live-badge"><span /> {screen === 'capturing' ? 'CAPTURING' : screen === 'review' ? 'SESSION REVIEW' : screen === 'finished' ? 'LAYOUT READY' : 'LOCAL CAMERA'}</div>
+          <div className="live-badge"><span /> {screen === 'capturing' ? 'CAPTURING' : screen === 'review' ? 'SESSION REVIEW' : screen === 'finished' ? 'LAYOUT READY' : isSimulatedDeviceId(selectedCameraId) ? 'TEST CAMERA' : 'LOCAL CAMERA'}</div>
         </div>}
         <div className="preview-card">
           <video ref={videoRef} className="camera-video" autoPlay playsInline muted aria-label="Mirrored live camera preview" />
@@ -1516,6 +1540,13 @@ function App(): React.JSX.Element {
             busy={busy}
             onRefresh={() => { void refreshTetherStatus(); void refreshCameras(); }}
             onUseWebcam={() => { const fallback = webcamFallback(cameras); if (fallback) { setSelectedCameraId(fallback); void startCamera(fallback, resolution); } }} />
+          <CameraSettingsCard
+            camera={edsdkCamera}
+            deviceId={selectedCameraId}
+            simulatedEnabled={simulatedCameraEnabled}
+            busy={busy || isBusy}
+            onToggleSimulated={handleSimulatedCameraToggle}
+            onNotice={setErrorMessage} />
           {printSummary && <PrintQueueCard summary={printSummary} jobs={printJobs} busy={busy} onSetPaused={(paused) => void handleSetPrintPaused(paused)} onCancel={(jobId) => void handleCancelPrintJob(jobId)} />}
           <PrinterProfileCard
             profiles={printerProfiles}

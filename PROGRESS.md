@@ -1,7 +1,7 @@
 # Progress
 
 Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`, F20 as `de322a2`, F21 as `e9564c1`, F22 as `1b3d92c`, F23 as `48fab71`, F24 as `22bff4d`, F25 as `9cb5f59`, F26 as `665971d`, **F27 skipped by request**, F28 as `f4a18d0`, F22 USB cable screen as `fb130e9`, VS Code setup as `caf99d2`,
-test-timeout fix as `098f34b`, onTaskUpdate yield as `8073ee1`, database adoption as `94dbaa6`, template-table rebuild as `62ce2ab`, USB card diagnostics as `633786e`, working mode in `AGENTS.md` as `9686dbe`, light theme as `67747e3`, organised operator screen as `55c57aa`, booth mode as `e8b9ada`, Boothwright Phase 0 as `8a07195`.
+test-timeout fix as `098f34b`, onTaskUpdate yield as `8073ee1`, database adoption as `94dbaa6`, template-table rebuild as `62ce2ab`, USB card diagnostics as `633786e`, working mode in `AGENTS.md` as `9686dbe`, light theme as `67747e3`, organised operator screen as `55c57aa`, booth mode as `e8b9ada`, Boothwright Phase 0 as `8a07195`, **Boothwright Phase 1 (camera host) on this branch**.
 
 ## Current status
 
@@ -38,6 +38,22 @@ test-timeout fix as `098f34b`, onTaskUpdate yield as `8073ee1`, database adoptio
 - **F27 (payment / coin mode): skipped on request** — not built. The backlog still has it; walk-up
   booths are not supported yet, and nothing in the app pretends they are.
 - **F28 (email and SMS link): merged** (`f4a18d0`), awaiting the real send below.
+- **Boothwright Phase 1 (camera host): built, bench check owed.** New code lives under
+  `src/features/capture/camera/` (settings split, framed protocol, request client, supervisor,
+  EDSDK device, simulated camera, host lookup), `electron/camera-service.ts` +
+  `camera-host-transport.ts` + `ipc/camera-host-handlers.ts` (the host in the main process),
+  `src/renderer/components/CameraSettingsCard.tsx` (operator card: host state, live-view and
+  capture columns, autofocus, test shutter, test-camera switch) and `native/camera-host/` (the
+  .NET 8 program: framing, session loop, `--simulated` test camera, EDSDK provider).
+  **Verified here:** gate green — 654 tests in 112 files (+50), `tsc -b`, `tsc -p
+  tsconfig.electron.json`, eslint, `vite build`; the simulated camera's JPEG path, the settings
+  split, the restart budget and the IPC-shaped bridge are all under test.
+  **Not verified:** the .NET program has never been compiled or run (no .NET toolchain in this
+  sandbox, no EDSDK, no camera), so 24 fps on the 200D, the EDSDK call signatures and the
+  shutter-speed/aperture/ISO code tables are unproven; `native/camera-host/README.md` carries the
+  bench checklist. The installer does not yet copy the camera host (`electron-builder` config is
+  still owed), and the booth's own guest screen still runs on the webcam/tether path — the EDSDK
+  camera is selectable in the operator panel but the live 200D session is the next manual test.
 - **F29: not started.**
 - **Developer experience: VS Code setup** (`caf99d2`). `.vscode/tasks.json` (install / vite /
   dev / build / test / lint / typecheck), `launch.json` (F5 = Vite + Electron with main-process

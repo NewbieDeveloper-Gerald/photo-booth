@@ -10,3 +10,7 @@ coverage/
 *.sqlite-wal
 .env*
 .DS_Store
+
+# .NET camera host build output (built on Windows, see native/camera-host/README.md)
+native/camera-host/bin/
+native/camera-host/obj/
