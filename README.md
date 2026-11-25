@@ -1,6 +1,12 @@
-# Photobooth Studio
+# Boothwright Studio
 
-Offline-first Windows desktop photobooth app. Feature work follows `FEATURES.md` one approved feature at a time.
+Offline-first Windows DSLR photobooth for weddings, birthdays, corporate events and unattended
+kiosks. Graphite-on-paper UI, a full-screen booth mode for guests, and the operator panel behind
+a PIN.
+
+The product plan (stack, architecture, schema, phases 0–7) lives in
+[`docs/product/proposal.md`](docs/product/proposal.md). Feature work on the existing build follows
+`FEATURES.md` one approved feature at a time.
 
 ## Requirements
 

@@ -28,7 +28,7 @@ export function buildImagePrintDocument(dataUrl: string, options: PrintDocumentO
       @page{size:${width}in ${height}in;margin:0}
       *{box-sizing:border-box}html,body{width:${width}in;height:${height}in;margin:0;padding:0;overflow:hidden}
       img{display:block;width:100%;height:100%;object-fit:contain;${filter}}
-      </style></head><body><img src="${escapeHtml(dataUrl)}" alt="Photobooth print"></body></html>`;
+      </style></head><body><img src="${escapeHtml(dataUrl)}" alt="Boothwright print"></body></html>`;
 }
 
 const SWATCHES: Array<{ name: string; css: string }> = [

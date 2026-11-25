@@ -1,11 +1,12 @@
 {
-  "name": "photobooth-build",
+  "name": "boothwright",
+  "productName": "Boothwright",
   "version": "0.1.0",
   "private": true,
   "engines": {
     "node": ">=20 <23"
   },
-  "description": "Offline-first desktop photobooth application",
+  "description": "Boothwright — offline-first DSLR photobooth for Windows",
   "main": "dist-electron/electron/main.js",
   "scripts": {
     "dev": "npm run build:main && concurrently -k \"vite --host 0.0.0.0\" \"wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"",

@@ -38,7 +38,7 @@ function page(title: string, body: string): string {
 /** The login is the same admin PIN as the booth, so the lockout from F21 protects it too. */
 export function renderAdminLogin(error = ''): string {
   return page('Booth numbers · sign in', `
-    <p class="eyebrow">PHOTOBOOTH STUDIO · OPERATOR</p>
+    <p class="eyebrow">BOOTHWRIGHT STUDIO · OPERATOR</p>
     <h1>Booth numbers</h1>
     <p class="note">Sign in with the booth's admin PIN. Five wrong tries lock the PIN for a minute.</p>
     <form class="card" method="post" action="login">
@@ -70,7 +70,7 @@ export function renderAdminDashboard(stats: BoothStats): string {
   return page('Booth numbers', `
     <div class="row">
       <div>
-        <p class="eyebrow">PHOTOBOOTH STUDIO · OPERATOR</p>
+        <p class="eyebrow">BOOTHWRIGHT STUDIO · OPERATOR</p>
         <h1>Booth numbers</h1>
         <p class="note">Generated ${escapeHtml(new Date(stats.generatedAt).toLocaleString())} · ${number(totals.events)} ${totals.events === 1 ? 'event' : 'events'} · ${number(totals.sessions)} finished ${totals.sessions === 1 ? 'session' : 'sessions'}</p>
       </div>
@@ -91,7 +91,7 @@ export function renderAdminDashboard(stats: BoothStats): string {
 
 export function renderAdminError(message: string): string {
   return page('Booth numbers', `
-    <p class="eyebrow">PHOTOBOOTH STUDIO · OPERATOR</p>
+    <p class="eyebrow">BOOTHWRIGHT STUDIO · OPERATOR</p>
     <h1>Not available</h1>
     <p class="note">${escapeHtml(message)}</p>
     <p><a class="link ghost" href=".">Back to the sign-in page</a></p>

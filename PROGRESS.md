@@ -155,8 +155,16 @@ test-timeout fix as `098f34b`, onTaskUpdate yield as `8073ee1`, database adoptio
   **Operator** lock (Ctrl + Shift + A still works). Unlocking returns the operator screen exactly
   as it was. Nothing about capture, printing, sharing, the tablet screen or the attract loop
   changed; the event's brand colour still drives the touch button.
+- **Boothwright — Phase 0, identity** (this branch). The application is now **Boothwright**: package
+  name and `productName`, window title, page title, the top-bar wordmark, the guest download/gallery
+  and operator-numbers pages, the printed document's alt text and the exit dialog all say so. The
+  rename does **not** move a booth's data: `src/shared/paths/user-data-path.ts` picks the existing
+  `photobooth-build` folder when it is there and `boothwright` only on a fresh install (3 tests). The
+  internal IPC bridge stays `window.photobooth` on purpose — it is an API name, not a brand, and
+  renaming it would touch ~200 call sites for no user-visible gain. Product plan:
+  `docs/product/proposal.md` (evolve this codebase, EDSDK supplied by the operator, payments dropped).
 - Automated verification today: `npm run typecheck`, `npm run lint`, `npm test`
-  (**601 tests in 103 files**), `npm run build` (Vite production build) all pass.
+  (**604 tests in 104 files**), `npm run build` (Vite production build) all pass.
   `npm run test:e2e` exists but cannot run in this environment (no browser runtime).
 
 ## Verification gaps (unrecorded or impossible here)
@@ -164,6 +172,8 @@ test-timeout fix as `098f34b`, onTaskUpdate yield as `8073ee1`, database adoptio
 - Playwright E2E (`tests/home.spec.ts`) never ran: the sandbox has no Chromium runtime.
 - The re-grouped operator screen and the two collapsible setup forms were never seen rendered:
   the gate is `tsc`, eslint, 601 tests and the Vite build, plus the token test for colour.
+- The rename was verified by the gate only: nothing was installed, so the window title, the
+  taskbar name and the installer identity have not been seen on Windows.
 - Booth mode was never seen rendered either, and it was never run against a real camera on a
   touch screen: the overlay stack (branding, sheet, countdown, lock) is checked by types, lint and
   the colour contract only. The 250D/200D tether check is still owed.
