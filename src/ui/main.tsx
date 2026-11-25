@@ -1241,7 +1241,12 @@ function App(): React.JSX.Element {
     const bridge = window.photobooth;
     if (!bridge) return;
     setRemoteError('');
-    try { setRemoteInfo(await bridge.setRemoteEnabled(enabled)); } catch (error) { setRemoteError(toErrorMessage(error, 'Could not change the tablet screen.')); }
+    try {
+      setRemoteInfo(await bridge.setRemoteEnabled(enabled));
+      // Switching the tablet screen on is what the cable card was waiting for, so look again now
+      // instead of leaving the operator to press Check cable for no visible reason.
+      if (enabled) await refreshUsbLink();
+    } catch (error) { setRemoteError(toErrorMessage(error, 'Could not change the tablet screen.')); }
   };
 
   const handleRemoteRotateLink = async (): Promise<void> => {
@@ -1337,6 +1342,24 @@ function App(): React.JSX.Element {
     }, 160);
     return () => window.clearInterval(timer);
   }, [remoteInfo?.clients]);
+
+  /**
+   * A phone can be plugged in at any time, and the cable card can only offer Connect once one is
+   * there. Ask the desktop app every few seconds while the operator is on the ready screen, so
+   * plugging the phone in enables the button by itself — the "Check cable" button is then only for
+   * the impatient. Stops the moment a session starts or the settings are locked.
+   */
+  useEffect(() => {
+    const bridge = window.photobooth;
+    if (!bridge || screen !== 'ready' || adminLocked) return;
+    let cancelled = false;
+    const timer = window.setInterval(() => {
+      void bridge.getUsbLinkStatus()
+        .then((next) => { if (!cancelled && next) setUsbLink(next); })
+        .catch(() => { /* a status that cannot be read is reported inside the card */ });
+    }, 4000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [screen, adminLocked]);
 
   /**
    * Operator hotkeys (F21). A held key, a typing guest or a dialog all leave the booth alone;

@@ -55,6 +55,28 @@ describe('UsbScreenCard (F22 extension)', () => {
     expect((screen.getByRole('button', { name: 'Connect over USB' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it('names everything the disabled Connect button is waiting for', () => {
+    renderCard({
+      status: status({ toolsAvailable: false, reason: 'The Android USB tools (adb) are not installed on this computer.' }),
+      remoteEnabled: false,
+    });
+    const text = screen.getByLabelText('USB cable screen').textContent ?? '';
+    expect(text).toContain('Connect needs: the tablet guest screen switched on');
+    expect(text).toContain('Android platform-tools (adb) installed');
+    expect((screen.getByRole('button', { name: 'Connect over USB' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('says a phone is still needed when adb is there and the tablet screen is on', () => {
+    renderCard();
+    const text = screen.getByLabelText('USB cable screen').textContent ?? '';
+    expect(text).toContain('Connect needs: a phone on the cable with USB debugging allowed.');
+  });
+
+  it('drops the "needs" line once the phone is there and the port is mapped', () => {
+    renderCard({ status: connectedStatus });
+    expect(screen.getByLabelText('USB cable screen').textContent ?? '').not.toContain('Connect needs:');
+  });
+
   it('maps the port and reports the localhost address', async () => {
     const props = renderCard({ status: status({ device: 'R58M12345', devices: [{ serial: 'R58M12345', state: 'device', usb: true }] }) });
     fireEvent.click(screen.getByRole('button', { name: 'Connect over USB' }));
