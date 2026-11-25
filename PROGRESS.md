@@ -1,7 +1,7 @@
 # Progress
 
 Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`, F20 as `de322a2`, F21 as `e9564c1`, F22 as `1b3d92c`, F23 as `48fab71`, F24 as `22bff4d`, F25 as `9cb5f59`, F26 as `665971d`, **F27 skipped by request**, F28 as `f4a18d0`, F22 USB cable screen as `fb130e9`, VS Code setup as `caf99d2`,
-test-timeout fix as `098f34b`.
+test-timeout fix as `098f34b`, onTaskUpdate yield as `8073ee1`.
 
 ## Current status
 
@@ -68,7 +68,7 @@ test-timeout fix as `098f34b`.
   sandbox reports 0.34 ms per temp-file fsync and 1.06 ms per autocommit (a 175× fsync penalty
   inside vs outside a transaction), the exact ratio a Windows run spends on antivirus; the user
   must re-run `npm test` and `npm run test:doctor` to confirm.
-- **The remaining `onTaskUpdate` error, fixed** (branch `arena/65eed260-photo-booth`). After the
+- **The remaining `onTaskUpdate` error, fixed: merged as `8073ee1`** (PR #38, branch `arena/65eed260-photo-booth`). After the
   30 s budget the user's run was 101/101 files and 578/578 tests green but still exited 1 with
   `Errors 1 error: [vitest-worker]: Timeout calling "onTaskUpdate"` — a real symptom, not cosmetic.
   Vitest 3 gives that worker→main RPC a hardcoded 60 s timeout with no config knob; better-sqlite3
