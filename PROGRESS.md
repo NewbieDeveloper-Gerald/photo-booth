@@ -1,7 +1,7 @@
 # Progress
 
 Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`, F20 as `de322a2`, F21 as `e9564c1`, F22 as `1b3d92c`, F23 as `48fab71`, F24 as `22bff4d`, F25 as `9cb5f59`, F26 as `665971d`, **F27 skipped by request**, F28 as `f4a18d0`, F22 USB cable screen as `fb130e9`, VS Code setup as `caf99d2`,
-test-timeout fix as `098f34b`, onTaskUpdate yield as `8073ee1`, database adoption as `94dbaa6`, template-table rebuild as `62ce2ab`, USB card diagnostics as `633786e`, working mode in `AGENTS.md` as `9686dbe`, light theme as `67747e3`, organised operator screen as `55c57aa`, booth mode as `e8b9ada`.
+test-timeout fix as `098f34b`, onTaskUpdate yield as `8073ee1`, database adoption as `94dbaa6`, template-table rebuild as `62ce2ab`, USB card diagnostics as `633786e`, working mode in `AGENTS.md` as `9686dbe`, light theme as `67747e3`, organised operator screen as `55c57aa`, booth mode as `e8b9ada`, Boothwright Phase 0 as `8a07195`.
 
 ## Current status
 
@@ -155,7 +155,7 @@ test-timeout fix as `098f34b`, onTaskUpdate yield as `8073ee1`, database adoptio
   **Operator** lock (Ctrl + Shift + A still works). Unlocking returns the operator screen exactly
   as it was. Nothing about capture, printing, sharing, the tablet screen or the attract loop
   changed; the event's brand colour still drives the touch button.
-- **Boothwright — Phase 0, identity** (this branch). The application is now **Boothwright**: package
+- **Boothwright — Phase 0, identity — merged as `8a07195`** (PR #54, branch `arena/a01ee827-photo-booth`). The application is now **Boothwright**: package
   name and `productName`, window title, page title, the top-bar wordmark, the guest download/gallery
   and operator-numbers pages, the printed document's alt text and the exit dialog all say so. The
   rename does **not** move a booth's data: `src/shared/paths/user-data-path.ts` picks the existing
