@@ -1,7 +1,7 @@
 # Progress
 
 Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`, F20 as `de322a2`, F21 as `e9564c1`, F22 as `1b3d92c`, F23 as `48fab71`, F24 as `22bff4d`, F25 as `9cb5f59`, F26 as `665971d`, **F27 skipped by request**, F28 as `f4a18d0`, F22 USB cable screen as `fb130e9`, VS Code setup as `caf99d2`,
-test-timeout fix as `098f34b`, onTaskUpdate yield as `8073ee1`, database adoption as `94dbaa6`.
+test-timeout fix as `098f34b`, onTaskUpdate yield as `8073ee1`, database adoption as `94dbaa6`, template-table rebuild as `62ce2ab`.
 
 ## Current status
 
@@ -94,8 +94,8 @@ test-timeout fix as `098f34b`, onTaskUpdate yield as `8073ee1`, database adoptio
   logs them, and a startup failure shows an error dialog with the database path instead of a blank
   window. 13 new tests (splitter, repair, genuine-error rollback, column check, and the exact
   "objects present, row missing" case at the `initializeStorage` level).
-- **A template table from an early build is now rebuilt, not refused** (branch
-  `arena/929e7232-photo-booth`). The precise dialog from the last fix was correct but unhelpful for
+- **A template table from an early build is now rebuilt, not refused — merged as `62ce2ab`**
+  (PR #42, branch `arena/929e7232-photo-booth`). The precise dialog from the last fix was correct but unhelpful for
   the user: their `templates`/`template_elements` are the *early miniature* shape (id, name, shots,
   copies), missing nearly every column the current schema declares, so the booth would not start at
   all. `REGENERATED_TABLES` (templates, template_elements — both seeded from code on every start)
