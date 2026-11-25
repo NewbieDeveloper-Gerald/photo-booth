@@ -35,6 +35,23 @@ event details and operator access — stay folded behind a `<details>` summary s
 operator works on stays a screen. First-time PIN setup is the one exception: it opens by itself
 until a PIN exists.
 
+## Booth mode (the guest screen)
+
+The booth runs the way a DSLR photobooth package does: a **guest screen** and an **operator screen**,
+and the guest never sees a setting.
+
+Press **Lock for guests** in the top bar, or **Lock guest mode** in the operator panel, and the
+whole window becomes the live view: the event logo, name and welcome text at the top, the offered
+layouts and looks as a strip at the bottom, and one large, pulsing **Touch to start**. The countdown
+draws over the full-bleed view with **Photo 2 of 4**, the saved shot flashes up in place, review shows
+the thumbnails with **Use these photos**, and the finished screen shows the layout with the QR code,
+the print status, **Print** and **Start again**.
+
+A small **Operator** lock sits in the bottom-right corner; tap it or press **Ctrl + Shift + A** to get
+the PIN prompt, and the operator panel comes back with everything in it. There is nothing else for a
+guest to reach: no settings, no camera list, no file paths, no technical resolution labels. The
+attract loop (F19) still covers the booth when it is idle.
+
 ## Build and checks
 
 ```sh
@@ -71,7 +88,7 @@ Guests can be given a look. The event picks one of **Original**, **Black & white
 
 ## Attract screen (F19)
 
-When the booth is idle it invites guests in: after an event-set wait (default 60 seconds, 5 to 600) the operator screen is covered by a full-bleed loop of the event's photos or clips, with the event logo, name, welcome text and a pulsing **Touch to start**. Tapping anywhere returns to the booth screen, where the guest picks a layout (when the event offers more than one) and presses Start. The loop also comes back straight after a session ends. It stays out of the way while a session is unfinished, while the operator has unlocked settings, and while a dialog is open.
+When the booth is idle it invites guests in: after an event-set wait (default 60 seconds, 5 to 600) the operator screen is covered by a full-bleed loop of the event's photos or clips, with the event logo, name, welcome text and a pulsing **Touch to start**. Tapping anywhere returns to the booth screen, where the guest picks a layout (when the event offers more than one) and touches **Touch to start**. The loop also comes back straight after a session ends. It stays out of the way while a session is unfinished, while the operator has unlocked settings, and while a dialog is open.
 
 Event setup has an **Attract screen** block: the toggle, the wait, and **Add photos or video** (PNG/JPEG/WebP, MP4/M4V/WebM, up to eight files of 25 MB each). The files are copied into the event's own folder under the booth's data directory, so the memory card can go home with the operator; **Remove** deletes that copy. With no media, the loop cycles the layouts the event offers, so a brand-new event still has an invite screen. **Preview attract screen** shows the loop immediately instead of waiting.
 
@@ -260,4 +277,4 @@ The booth must remain powered, connected to the internet, and running; this F7 m
 
 ## Consent, PIN and kiosk mode (F9)
 
-On first launch, create a 6–12 digit admin PIN in the operator section before starting guest sessions. It is stored as a salted scrypt hash, not plaintext. Lock guest mode to hide settings; use the PIN to unlock settings or authorize exiting the app. A consent notice appears before every session and must be agreed to before capture. The editable default says photos remain on the booth until removed by the operator and the private QR link expires after 30 days; local photo deletion is not automatic. Review consent wording with a lawyer before paid use, including for the Philippines Data Privacy Act of 2012. Electron kiosk mode makes the app full-screen and guards normal in-app/window exit; it cannot block Windows system shortcuts or replace Windows Assigned Access configuration.
+On first launch, create a 6–12 digit admin PIN in the operator section before starting guest sessions. It is stored as a salted scrypt hash, not plaintext. **Lock for guests** switches the window to booth mode (see above); the PIN unlocks the operator panel again or authorizes exiting the app. A consent notice appears before every session and must be agreed to before capture. The editable default says photos remain on the booth until removed by the operator and the private QR link expires after 30 days; local photo deletion is not automatic. Review consent wording with a lawyer before paid use, including for the Philippines Data Privacy Act of 2012. Electron kiosk mode makes the app full-screen and guards normal in-app/window exit; it cannot block Windows system shortcuts or replace Windows Assigned Access configuration.
