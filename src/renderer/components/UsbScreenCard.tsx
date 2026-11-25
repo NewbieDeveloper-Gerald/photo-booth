@@ -30,6 +30,13 @@ export function UsbScreenCard({ status, remoteEnabled, busy = false, onRefresh, 
   };
 
   const connected = Boolean(status?.device && status.portForwarded);
+  // Why the button is not clickable, in the order the operator can fix it. A disabled button that
+  // does not say what it is waiting for is the whole reason this list exists.
+  const needs: string[] = [];
+  if (!remoteEnabled) needs.push('the tablet guest screen switched on');
+  if (!status) needs.push('the cable checked (press Check cable)');
+  else if (!status.toolsAvailable) needs.push('Android platform-tools (adb) installed');
+  else if (!status.device) needs.push('a phone on the cable with USB debugging allowed');
   return (
     <section className="recovery-card usb-screen-card" aria-label="USB cable screen">
       <div>
@@ -43,6 +50,7 @@ export function UsbScreenCard({ status, remoteEnabled, busy = false, onRefresh, 
         {status?.url && <input className="remote-link" aria-label="USB screen address" readOnly value={status.url} onFocus={(event) => event.currentTarget.select()} />}
         {!remoteEnabled && <span className="queue-note">Switch on the tablet guest screen first; the cable link serves that screen.</span>}
         {status && !status.toolsAvailable && <span className="queue-note">Install Android platform-tools on this computer to use a cable.</span>}
+        {!connected && needs.length > 0 && <span className="queue-note">Connect needs: {needs.join(' · ')}.</span>}
       </div>
       <div className="remote-actions">
         <button type="button" className="secondary-button" onClick={onRefresh} disabled={busy || working}>Check cable</button>

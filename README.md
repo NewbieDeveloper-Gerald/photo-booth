@@ -78,7 +78,9 @@ mall with no router, a venue with no signal — the same screen runs over **the 
 
 Nothing leaves the cable: no router, DNS, internet or QR code is involved. The card reports the
 things that can go wrong — `adb` missing, no phone on the cable, port not mapped, app not installed
-— with the fix for each.
+— with the fix for each. While the ready screen is open it asks the computer about the cable every
+few seconds, so plugging the phone in enables **Connect over USB** by itself; when the button stays
+greyed out the card prints **Connect needs: …** and names exactly which of those is missing.
 
 **Landscape and screen sizes:** the app is pinned to `sensorLandscape` (it never appears in portrait,
 and turns 180° when the phone is flipped), hides the system bars, keeps the screen awake and

@@ -107,6 +107,13 @@ test-timeout fix as `098f34b`, onTaskUpdate yield as `8073ee1`, database adoptio
   produced `electron.exe - Fast Fail Exception` on Windows. Tests reproduce the user's database
   exactly (001–007 recorded, miniature template tables, a row in them) and assert the rebuild, the
   parked table, the re-seeded built-ins and an empty second run.
+- **"Why can't I click Connect over USB?"** (branch `arena/2ed90307-photo-booth`). The button was
+  disabled until three conditions held — the tablet guest screen switched on, `adb` installed, and a
+  phone on the cable — but nothing said which one was missing, and the status was only read at
+  startup and on **Check cable**, so a phone plugged in afterwards left the button grey until the
+  operator guessed. The card now prints **Connect needs: …** listing every unmet condition in the
+  order the operator can fix them, the ready screen re-reads the cable status every 4 s while it is
+  open, and switching the tablet screen on re-reads it immediately.
 - Automated verification today: `npm run typecheck`, `npm run lint`, `npm test`
   (**578 tests in 101 files**), `npm run build` (Vite production build) all pass.
   `npm run test:e2e` exists but cannot run in this environment (no browser runtime).
