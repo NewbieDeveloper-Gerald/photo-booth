@@ -15,7 +15,7 @@ export function ExitDialog({ pin, error, onPinChange, onCancel, onSubmit }: Exit
       <section className="consent-dialog" role="dialog" aria-modal="true" aria-labelledby="exit-heading">
         <p className="eyebrow">ADMIN AUTHORIZATION</p>
         <h2 id="exit-heading">Exit booth?</h2>
-        <p>Enter the admin PIN to close the photobooth application.</p>
+        <p>Enter the admin PIN to close Boothwright.</p>
         <label>
           Admin PIN
           <input

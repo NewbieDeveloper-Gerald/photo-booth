@@ -1417,7 +1417,7 @@ function App(): React.JSX.Element {
   return (
     <main className={`booth-app${adminLocked ? ' kiosk' : ''}`} style={{ '--event-primary': event?.primaryColor ?? DEFAULT_PRIMARY_COLOR, '--event-accent': event?.accentColor ?? DEFAULT_ACCENT_COLOR } as React.CSSProperties}>
       {!adminLocked && <header className="topbar">
-        <div className="brand"><span className="brand-mark">P</span><span>PHOTOBOOTH <b>STUDIO</b></span></div>
+        <div className="brand"><span className="brand-mark">B</span><span>BOOTHWRIGHT <b>STUDIO</b></span></div>
         <div className="connection">
           {pinConfigured && <button type="button" className="secondary-button topbar-button" onClick={lockGuestMode}>Lock for guests</button>}
           <span className={`connection-dot ${cameraReady ? 'online' : ''}`} />{status}
@@ -1446,7 +1446,7 @@ function App(): React.JSX.Element {
           {countdown !== null && <div className="countdown-overlay" aria-live="assertive"><span>{countdown}</span></div>}
           {adminLocked && <div className="kiosk-brand">
             {eventLogoDataUrl && <img src={eventLogoDataUrl} alt="" />}
-            <div><strong>{event?.name ?? 'Photobooth'}</strong>{screen === 'ready' && event?.welcomeText && <span>{event.welcomeText}</span>}</div>
+            <div><strong>{event?.name ?? 'Boothwright'}</strong>{screen === 'ready' && event?.welcomeText && <span>{event.welcomeText}</span>}</div>
           </div>}
           {adminLocked && <div className={`kiosk-sheet${screen === 'review' || screen === 'finished' ? ' is-panel' : ''}`}>
             {screen === 'ready' && <>

@@ -17,6 +17,14 @@ import { startAndroidUsbService } from './android-usb-service.js';
 import { readRemoteToken } from '../src/features/remote-guest/node.js';
 import type { DslrService } from './dslr-service.js';
 import { createBoothWindowController } from './windows/booth-window.js';
+import { chooseUserDataFolder } from '../src/shared/paths/user-data-path.js';
+
+// Identity (Boothwright) and data folder. The product name is new; the folder a booth has been
+// writing to is not something a rename gets to change, so the existing one wins when it is there.
+app.setName('Boothwright');
+app.setPath('userData', path.join(app.getPath('appData'), chooseUserDataFolder({
+  exists: (folder) => fs.existsSync(path.join(app.getPath('appData'), folder)),
+})));
 
 const boothWindow = createBoothWindowController();
 let mainWindow: BrowserWindow | null = null;
@@ -42,7 +50,7 @@ function reportStartupFailure(error: unknown): void {
   } catch {
     // The dialog carries the message either way; a log we cannot write is not worth failing over.
   }
-  dialog.showErrorBox('The photo booth could not start', `${message}\n\nDatabase: ${databasePath}${details}`);
+  dialog.showErrorBox('Boothwright could not start', `${message}\n\nDatabase: ${databasePath}${details}`);
   // Quit through the normal path: terminating straight from inside the message box left the
   // Electron process in a fast-fail crash on Windows.
   process.exitCode = 1;

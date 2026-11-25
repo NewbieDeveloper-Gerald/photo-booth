@@ -23,6 +23,7 @@ export function createBoothWindowController(): BoothWindowController {
   const create = (): BrowserWindow => {
     const window = new BrowserWindow({
       ...WINDOW_BOUNDS,
+      title: 'Boothwright',
       backgroundColor: BACKGROUND_COLOR,
       kiosk: true,
       webPreferences: {
