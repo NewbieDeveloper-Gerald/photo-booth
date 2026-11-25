@@ -143,6 +143,18 @@ test-timeout fix as `098f34b`, onTaskUpdate yield as `8073ee1`, database adoptio
   (`.attract-toggle`, `.attract-media-label`, the printer-profile row border, the editor canvas
   shadow), and `style-tokens.test.ts` now rejects `rgb()/hsl()` literals outside `:root` as well as
   hex, so that class of leak fails the gate.
+- **Booth mode: the guest screen works like a DSLR booth package** (this branch). The booth had
+  two modes in name only — "Lock guest mode" hid some fields but the guest still saw a workspace,
+  a top bar, a footer and a control grid. Locked is now a real booth screen: the live view is the
+  whole window, the event logo/name/welcome text sit on it, the offered layouts and looks are a
+  strip at the bottom, and the only action is a large pulsing **Touch to start**. The countdown,
+  "Photo 2 of 4" and the slot dots draw over the view; review and the finished screen (QR, send
+  link, print status) open as a bottom sheet with **Use these photos**, **Print** and
+  **Start again**. The operator panel, its settings, the camera list, the resolution label and the
+  footer are not rendered at all while locked, and the PIN prompt lives in a small bottom-right
+  **Operator** lock (Ctrl + Shift + A still works). Unlocking returns the operator screen exactly
+  as it was. Nothing about capture, printing, sharing, the tablet screen or the attract loop
+  changed; the event's brand colour still drives the touch button.
 - Automated verification today: `npm run typecheck`, `npm run lint`, `npm test`
   (**601 tests in 103 files**), `npm run build` (Vite production build) all pass.
   `npm run test:e2e` exists but cannot run in this environment (no browser runtime).
@@ -152,6 +164,9 @@ test-timeout fix as `098f34b`, onTaskUpdate yield as `8073ee1`, database adoptio
 - Playwright E2E (`tests/home.spec.ts`) never ran: the sandbox has no Chromium runtime.
 - The re-grouped operator screen and the two collapsible setup forms were never seen rendered:
   the gate is `tsc`, eslint, 601 tests and the Vite build, plus the token test for colour.
+- Booth mode was never seen rendered either, and it was never run against a real camera on a
+  touch screen: the overlay stack (branding, sheet, countdown, lock) is checked by types, lint and
+  the colour contract only. The 250D/200D tether check is still owed.
 - The F7 phone/tunnel, F8 restart-after-crash and F9 Windows-kiosk manual checks were
   never reported.
 - Printing is verified only up to "Windows accepted the job"; no physical 4×6 borderless

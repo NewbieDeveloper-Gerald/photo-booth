@@ -1361,6 +1361,16 @@ function App(): React.JSX.Element {
     return () => { cancelled = true; window.clearInterval(timer); };
   }, [screen, adminLocked]);
 
+  /** Booth mode: the guest screens take the whole screen and the operator panel goes away. */
+  const lockGuestMode = (): void => {
+    setAdminLocked(true);
+    setShowUnlock(false);
+    setPinDraft('');
+    setPinConfirm('');
+    setCurrentPinDraft('');
+    setPinError('');
+  };
+
   /**
    * Operator hotkeys (F21). A held key, a typing guest or a dialog all leave the booth alone;
    * the destructive one (restart) is refused unless the settings are already unlocked.
@@ -1405,13 +1415,16 @@ function App(): React.JSX.Element {
   });
 
   return (
-    <main className="booth-app" style={{ '--event-primary': event?.primaryColor ?? DEFAULT_PRIMARY_COLOR, '--event-accent': event?.accentColor ?? DEFAULT_ACCENT_COLOR } as React.CSSProperties}>
-      <header className="topbar">
+    <main className={`booth-app${adminLocked ? ' kiosk' : ''}`} style={{ '--event-primary': event?.primaryColor ?? DEFAULT_PRIMARY_COLOR, '--event-accent': event?.accentColor ?? DEFAULT_ACCENT_COLOR } as React.CSSProperties}>
+      {!adminLocked && <header className="topbar">
         <div className="brand"><span className="brand-mark">P</span><span>PHOTOBOOTH <b>STUDIO</b></span></div>
-        <div className="connection"><span className={`connection-dot ${cameraReady ? 'online' : ''}`} />{status}</div>
-      </header>
+        <div className="connection">
+          {pinConfigured && <button type="button" className="secondary-button topbar-button" onClick={lockGuestMode}>Lock for guests</button>}
+          <span className={`connection-dot ${cameraReady ? 'online' : ''}`} />{status}
+        </div>
+      </header>}
       <section className="workspace">
-        <div className="stage-heading">
+        {!adminLocked && <div className="stage-heading">
           {eventLogoDataUrl && <img className="event-brand-logo" src={eventLogoDataUrl} alt={`${event?.name ?? 'Event'} logo`} />}
           <div>
             <p className="eyebrow">{screen === 'ready' ? 'PHOTO SESSION' : screen === 'capturing' ? 'SESSION IN PROGRESS' : screen === 'finished' ? 'FINISHED LAYOUT' : 'REVIEW YOUR PHOTOS'}</p>
@@ -1419,10 +1432,10 @@ function App(): React.JSX.Element {
             <p className="subheading">{screen === 'ready' ? `Ready for ${event?.name ?? 'your event'}${event?.eventDate ? ` · ${event.eventDate}` : ''}. Check the preview, then start a session.` : screen === 'capturing' ? 'Stay in frame. Your original photo is saved directly to the session folder.' : screen === 'finished' ? 'The selected print-size image is saved with this session.' : 'Retake just one slot if needed. Your other photos will stay exactly as they are.'}</p>
           </div>
           <div className="live-badge"><span /> {screen === 'capturing' ? 'CAPTURING' : screen === 'review' ? 'SESSION REVIEW' : screen === 'finished' ? 'LAYOUT READY' : 'LOCAL CAMERA'}</div>
-        </div>
+        </div>}
         <div className="preview-card">
           <video ref={videoRef} className="camera-video" autoPlay playsInline muted aria-label="Mirrored live camera preview" />
-          {!cameraReady && <div className="preview-empty"><div className="camera-glyph">◉</div><strong>{cameras.length ? 'Connecting to your camera…' : 'No camera preview yet'}</strong><span>Connect a webcam or select a camera below.</span></div>}
+          {!cameraReady && <div className="preview-empty"><div className="camera-glyph">◉</div><strong>{cameras.length ? 'Connecting to your camera…' : 'No camera preview yet'}</strong><span>{adminLocked ? 'Please ask the operator to check the camera.' : 'Connect a webcam or select a camera below.'}</span></div>}
           {screen === 'finished' && finalOutputUrl && <div className="final-output"><img src={finalOutputUrl} alt="Finished 4 by 6 photo layout" /></div>}
           {screen === 'finished' && (animationUrl || animationNote) && <div className="animation-extra" aria-label="Animated extra">
             {animationUrl && <img src={animationUrl} alt="Animated loop of this session" />}
@@ -1431,10 +1444,38 @@ function App(): React.JSX.Element {
           </div>}
           {photoPreviewUrl && <div className="captured-photo"><img src={photoPreviewUrl} alt={`Saved photo ${currentSlot}`} /><span>PHOTO {currentSlot} SAVED</span></div>}
           {countdown !== null && <div className="countdown-overlay" aria-live="assertive"><span>{countdown}</span></div>}
-          <div className="preview-meta"><span>{actualResolution || (cameraReady ? 'Camera ready' : 'Waiting for camera')}</span><span className="mirror-label">MIRRORED</span></div>
+          {adminLocked && <div className="kiosk-brand">
+            {eventLogoDataUrl && <img src={eventLogoDataUrl} alt="" />}
+            <div><strong>{event?.name ?? 'Photobooth'}</strong>{screen === 'ready' && event?.welcomeText && <span>{event.welcomeText}</span>}</div>
+          </div>}
+          {adminLocked && <div className={`kiosk-sheet${screen === 'review' || screen === 'finished' ? ' is-panel' : ''}`}>
+            {screen === 'ready' && <>
+              {event?.filterChoiceEnabled && <FilterPicker selected={selectedFilterId} onSelect={setSelectedFilterId} disabled={isBusy || unfinishedSessions.length > 0} />}
+              <LayoutPicker choices={layoutChoices.map((summary) => ({ summary, document: layoutDocuments[summary.id] ?? null }))} selectedId={selectedLayoutId} onSelect={setSelectedLayoutId} disabled={isBusy || unfinishedSessions.length > 0} />
+              <button className="start-button kiosk-cta" type="button" onClick={() => void handleStartSession()} disabled={!cameraReady || !event || !pinConfigured || isBusy || unfinishedSessions.length > 0}>{unfinishedSessions.length > 0 ? 'Ask the operator' : 'Touch to start'}</button>
+            </>}
+            {screen === 'capturing' && <>
+              <p className="kiosk-step">Photo {currentSlot} of {slotCount}</p>
+              <SlotProgress slotCount={slotCount} currentSlot={currentSlot} capturedSlots={capturedSlots} />
+            </>}
+            {screen === 'review' && reviewRecord && <>
+              <ReviewSection record={reviewRecord} images={reviewImages} isBusy={isBusy} cameraReady={cameraReady} onRetake={(slot) => void handleRetake(slot)} onRevert={(slot) => void handleRevert(slot)} />
+              <button className="start-button kiosk-cta" type="button" onClick={() => void handleContinue()} disabled={isBusy}>Use these photos</button>
+            </>}
+            {screen === 'finished' && <>
+              {shareUrl && <p className="share-status" role="status">Scan to download · {shareStatus}</p>}
+              {shareUrl && <SendLinkCard qrDataUrl={shareQrDataUrl} link={shareUrl} enabled={event?.sendLinkEnabled ?? true} busy={busy} onSend={handleSendLink} />}
+              {printStatus && <p className={`print-status ${printStatus.startsWith('Failed') ? 'failed' : printStatus.startsWith('Done') ? 'done' : ''}`} role="status">{printStatus}</p>}
+              <div className="kiosk-actions">
+                <button className="secondary-button" type="button" onClick={() => void handleReprint()} disabled={busy || !selectedPrinterName}>Print</button>
+                <button className="start-button kiosk-cta" type="button" onClick={returnToReady} disabled={busy}>Start again</button>
+              </div>
+            </>}
+          </div>}
+          {!adminLocked && <div className="preview-meta"><span>{actualResolution || (cameraReady ? 'Camera ready' : 'Waiting for camera')}</span><span className="mirror-label">MIRRORED</span></div>}
         </div>
-        {screen === 'ready' && event?.filterChoiceEnabled && <FilterPicker selected={selectedFilterId} onSelect={setSelectedFilterId} disabled={isBusy || unfinishedSessions.length > 0} />}
-        {screen === 'ready' && <LayoutPicker choices={layoutChoices.map((summary) => ({ summary, document: layoutDocuments[summary.id] ?? null }))} selectedId={selectedLayoutId} onSelect={setSelectedLayoutId} disabled={isBusy || unfinishedSessions.length > 0} />}
+        {screen === 'ready' && !adminLocked && event?.filterChoiceEnabled && <FilterPicker selected={selectedFilterId} onSelect={setSelectedFilterId} disabled={isBusy || unfinishedSessions.length > 0} />}
+        {screen === 'ready' && !adminLocked && <LayoutPicker choices={layoutChoices.map((summary) => ({ summary, document: layoutDocuments[summary.id] ?? null }))} selectedId={selectedLayoutId} onSelect={setSelectedLayoutId} disabled={isBusy || unfinishedSessions.length > 0} />}
         <div className={`controls-grid ${screen === 'ready' && adminLocked ? 'settings-locked' : ''}`}>
           <label className="control-field"><span>CAMERA</span><select value={selectedCameraId} onChange={(e) => void handleCameraChange(e.target.value)} disabled={isBusy || screen === 'review' || screen === 'finished' || !cameras.length}><option value="" disabled>Select a camera</option>{cameras.map((item, index) => <option key={item.deviceId || index} value={item.deviceId}>{item.label || `Camera ${index + 1}`}</option>)}</select></label>
           <label className="control-field"><span>PREVIEW QUALITY</span><select value={resolution} onChange={(e) => void handleResolutionChange(e.target.value as CameraResolution)} disabled={isBusy || screen === 'review' || screen === 'finished'}>{resolutionOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
@@ -1548,32 +1589,41 @@ function App(): React.JSX.Element {
           </div>}
           {eventMessage && <p className="event-message" role="status">{eventMessage}</p>}
         </details>}
-        {screen === 'ready' && <details className="admin-security-card admin-setup" aria-label="Operator security" {...(pinConfigured ? {} : { open: true })}>
+        {screen === 'ready' && !adminLocked && <details className="admin-security-card admin-setup" aria-label="Operator security" {...(pinConfigured ? {} : { open: true })}>
           {pinConfigured && <summary className="admin-setup-summary"><div><p className="eyebrow">OPERATOR</p><h2>Admin access &amp; consent</h2></div></summary>}
           {!pinConfigured ? <><p className="eyebrow">FIRST-TIME SETUP</p><h2>Create admin PIN</h2><p>Set a PIN before starting guest sessions. Use 6 to 12 digits and keep it private.</p><label>New PIN<input aria-label="New admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinDraft} onChange={(e) => setPinDraft(e.target.value.replace(/\D/g, ''))} /></label><label>Confirm PIN<input aria-label="Confirm admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinConfirm} onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, ''))} /></label><button type="button" onClick={() => void savePin()}>Save admin PIN</button></>
-            : adminLocked ? <><p className="eyebrow">GUEST MODE</p><h2>Booth locked</h2><p>Operator settings are hidden. Enter the admin PIN to unlock them.</p>{showUnlock ? <><label>Admin PIN<input aria-label="Admin PIN to unlock settings" type="password" inputMode="numeric" maxLength={12} autoComplete="current-password" value={currentPinDraft} onChange={(e) => setCurrentPinDraft(e.target.value.replace(/\D/g, ''))} onKeyDown={(e) => { if (e.key === 'Enter') void unlockAdmin(); }} /></label><button type="button" onClick={() => void unlockAdmin()}>Unlock settings</button><button type="button" className="secondary-button" onClick={() => { setShowUnlock(false); setCurrentPinDraft(''); setPinError(''); }}>Cancel</button></> : <button type="button" onClick={() => { setShowUnlock(true); setPinError(''); }}>Operator unlock</button>}</>
-              : <><label>Current PIN<input aria-label="Current admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="current-password" value={currentPinDraft} onChange={(e) => setCurrentPinDraft(e.target.value.replace(/\D/g, ''))} /></label><label>New PIN<input aria-label="Replacement admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinDraft} onChange={(e) => setPinDraft(e.target.value.replace(/\D/g, ''))} /></label><label>Confirm new PIN<input aria-label="Confirm replacement PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinConfirm} onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, ''))} /></label><button type="button" onClick={() => void savePin()}>Change admin PIN</button><label>Consent notice shown before every session<textarea aria-label="Consent notice wording" maxLength={1200} value={consentText} onChange={(e) => setConsentText(e.target.value)} onBlur={() => void savePreference('consentText', consentText).catch((error: unknown) => setPinError(toErrorMessage(error, 'Could not save consent text.')))} /></label><p className="consent-retention-note">This is the booth-wide notice. An event with its own consent wording uses that instead.</p><button type="button" onClick={() => { setAdminLocked(true); setShowUnlock(false); setPinError(''); setPinDraft(''); setPinConfirm(''); setCurrentPinDraft(''); }}>Lock guest mode</button><button type="button" className="secondary-button" onClick={() => setHelpOpen(true)}>Keyboard shortcuts</button><button type="button" className="secondary-button" onClick={() => { setExitPrompt(true); setExitPin(''); setPinError(''); }}>Exit booth…</button></>}
+            : <><label>Current PIN<input aria-label="Current admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="current-password" value={currentPinDraft} onChange={(e) => setCurrentPinDraft(e.target.value.replace(/\D/g, ''))} /></label><label>New PIN<input aria-label="Replacement admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinDraft} onChange={(e) => setPinDraft(e.target.value.replace(/\D/g, ''))} /></label><label>Confirm new PIN<input aria-label="Confirm replacement PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinConfirm} onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, ''))} /></label><button type="button" onClick={() => void savePin()}>Change admin PIN</button><label>Consent notice shown before every session<textarea aria-label="Consent notice wording" maxLength={1200} value={consentText} onChange={(e) => setConsentText(e.target.value)} onBlur={() => void savePreference('consentText', consentText).catch((error: unknown) => setPinError(toErrorMessage(error, 'Could not save consent text.')))} /></label><p className="consent-retention-note">This is the booth-wide notice. An event with its own consent wording uses that instead.</p><button type="button" onClick={lockGuestMode}>Lock guest mode</button><button type="button" className="secondary-button" onClick={() => setHelpOpen(true)}>Keyboard shortcuts</button><button type="button" className="secondary-button" onClick={() => { setExitPrompt(true); setExitPin(''); setPinError(''); }}>Exit booth…</button></>}
           {pinError && <p className="pin-error" role="alert">{pinError}</p>}
         </details>}
         {editorOpen && window.photobooth && <TemplateEditor bridge={window.photobooth} logoDataUrl={eventLogoDataUrl} onClose={() => setEditorOpen(false)} onTemplatesChanged={(listing) => { setTemplates(listing); setSelectedLayoutId((current) => listing.some((item) => item.id === current) ? current : listing[0]?.id ?? current); }} />}
         {consentOpen && <ConsentDialog text={event?.consentText.trim() ? event.consentText : consentText} onDecline={() => setConsentOpen(false)} onAccept={() => void confirmConsentAndStart()} />}
         {helpOpen && <HotkeyHelp onClose={() => setHelpOpen(false)} />}
         {exitPrompt && <ExitDialog pin={exitPin} error={pinError} onPinChange={setExitPin} onCancel={() => { setExitPrompt(false); setExitPin(''); setPinError(''); }} onSubmit={() => void submitExit()} />}
-        {screen === 'finished' && <p className="share-status" role="status">{shareUrl ? <>Scan to download: <a href={shareUrl} target="_blank" rel="noreferrer">{shareUrl}</a> · {shareStatus}</> : shareStatus}</p>}
-        {screen === 'finished' && shareUrl && <SendLinkCard
+        {screen === 'finished' && !adminLocked && <p className="share-status" role="status">{shareUrl ? <>Scan to download: <a href={shareUrl} target="_blank" rel="noreferrer">{shareUrl}</a> · {shareStatus}</> : shareStatus}</p>}
+        {screen === 'finished' && !adminLocked && shareUrl && <SendLinkCard
           qrDataUrl={shareQrDataUrl}
           link={shareUrl}
           enabled={event?.sendLinkEnabled ?? true}
           busy={busy}
           onSend={handleSendLink} />}
-        {screen === 'finished' && <p className={`print-status ${printStatus.startsWith('Failed') ? 'failed' : printStatus.startsWith('Done') ? 'done' : ''}`} role="status">{printStatus}</p>}
-        {screen === 'finished' && event && <p className="print-limit-note">Prints this session: {printJobs.filter((job) => job.sessionId === sessionId && job.status !== 'cancelled').length} of {event.printLimitPerSession}{printSummary?.paperWarning ? ` · ${printSummary.paperWarning}` : ''}</p>}
-        {screen === 'capturing' && <SlotProgress slotCount={slotCount} currentSlot={currentSlot} capturedSlots={capturedSlots} />}
-        {screen === 'review' && reviewRecord && <ReviewSection record={reviewRecord} images={reviewImages} isBusy={isBusy} cameraReady={cameraReady} onRetake={(slot) => void handleRetake(slot)} onRevert={(slot) => void handleRevert(slot)} />}
-        {errorMessage && <p className="camera-error" role="alert">{errorMessage}<button type="button" onClick={() => void refreshCameras()}>Retry</button></p>}
-        {!errorMessage && <p className="helper-note">Originals stay on this booth. No photos are uploaded in this feature.</p>}
+        {screen === 'finished' && !adminLocked && <p className={`print-status ${printStatus.startsWith('Failed') ? 'failed' : printStatus.startsWith('Done') ? 'done' : ''}`} role="status">{printStatus}</p>}
+        {screen === 'finished' && !adminLocked && event && <p className="print-limit-note">Prints this session: {printJobs.filter((job) => job.sessionId === sessionId && job.status !== 'cancelled').length} of {event.printLimitPerSession}{printSummary?.paperWarning ? ` · ${printSummary.paperWarning}` : ''}</p>}
+        {screen === 'capturing' && !adminLocked && <SlotProgress slotCount={slotCount} currentSlot={currentSlot} capturedSlots={capturedSlots} />}
+        {screen === 'review' && !adminLocked && reviewRecord && <ReviewSection record={reviewRecord} images={reviewImages} isBusy={isBusy} cameraReady={cameraReady} onRetake={(slot) => void handleRetake(slot)} onRevert={(slot) => void handleRevert(slot)} />}
+        {!adminLocked && errorMessage && <p className="camera-error" role="alert">{errorMessage}<button type="button" onClick={() => void refreshCameras()}>Retry</button></p>}
+        {!adminLocked && !errorMessage && <p className="helper-note">Originals stay on this booth. No photos are uploaded in this feature.</p>}
       </section>
-      <footer className="app-footer"><span>OFFLINE-READY · PRIVATE BY DESIGN</span><span>{event?.name.toUpperCase() ?? 'CAMERA SETUP'}</span></footer>
+      {adminLocked && <div className="kiosk-lock">
+        {showUnlock ? <div className="kiosk-lock-form">
+          <label>Admin PIN<input aria-label="Admin PIN to unlock settings" type="password" inputMode="numeric" maxLength={12} autoComplete="current-password" value={currentPinDraft} onChange={(e) => setCurrentPinDraft(e.target.value.replace(/\D/g, ''))} onKeyDown={(e) => { if (e.key === 'Enter') void unlockAdmin(); }} /></label>
+          {pinError && <p className="pin-error" role="alert">{pinError}</p>}
+          <div className="kiosk-lock-actions">
+            <button type="button" className="secondary-button" onClick={() => { setShowUnlock(false); setCurrentPinDraft(''); setPinError(''); }}>Cancel</button>
+            <button type="button" onClick={() => void unlockAdmin()}>Unlock</button>
+          </div>
+        </div> : <button type="button" className="kiosk-lock-button" aria-label="Operator unlock" onClick={() => { setShowUnlock(true); setPinError(''); }}><span aria-hidden="true">🔒</span> Operator</button>}
+      </div>}
+      {!adminLocked && <footer className="app-footer"><span>OFFLINE-READY · PRIVATE BY DESIGN</span><span>{event?.name.toUpperCase() ?? 'CAMERA SETUP'}</span></footer>}
       {attractVisible && event && <AttractScreen
         event={event}
         logoDataUrl={eventLogoDataUrl}
