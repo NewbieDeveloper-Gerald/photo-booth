@@ -114,6 +114,11 @@ test-timeout fix as `098f34b`, onTaskUpdate yield as `8073ee1`, database adoptio
   operator guessed. The card now prints **Connect needs: …** listing every unmet condition in the
   order the operator can fix them, the ready screen re-reads the cable status every 4 s while it is
   open, and switching the tablet screen on re-reads it immediately.
+- **Working mode written down: `AGENTS.md`** (branch `arena/4b8786c9-photo-booth`). The user asked
+  for the Ponytail skill (lazy senior dev mode, MIT, DietrichGebert/ponytail) in every session, so it
+  is now `AGENTS.md` at the repository root with `CLAUDE.md` as a one-line pointer: default on, level
+  `full`, off on "stop ponytail"/"normal mode". No plugin, hook or marketplace file is copied — the
+  agent reads the repository, so a file in the repository is the whole installation.
 - Automated verification today: `npm run typecheck`, `npm run lint`, `npm test`
   (**578 tests in 101 files**), `npm run build` (Vite production build) all pass.
   `npm run test:e2e` exists but cannot run in this environment (no browser runtime).

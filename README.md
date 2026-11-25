@@ -217,6 +217,8 @@ never pull in SQLite or `node:fs`.
 - `src/renderer`: components, hooks and renderer helpers
 - `src/ui`: the React shell that composes the screens
 - `electron/ipc`, `electron/windows`, `electron/devices`: main process, one module per area
+- `AGENTS.md`: the working mode for anyone (or anything) changing this code — smallest complete
+  change, no unrequested abstractions; `CLAUDE.md` points at it
 
 Every IPC channel lives in `electron/ipc/<area>-handlers.ts` and is registered once in
 `electron/ipc/registry.ts`. The renderer only talks to `window.photobooth`
