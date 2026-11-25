@@ -2,6 +2,9 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { AdminPinAttempt, AdminPinLockout } from '../src/shared/types/admin-pin';
 import type { RemoteCommand, RemoteServerInfo, RemoteView } from '../src/shared/types/remote-guest';
 import type { TetherStatus } from '../src/features/capture/dslr/dslr-types';
+import type { CameraCapabilities, CameraSettingRole, CameraSettings, CameraSettingsPair } from '../src/features/capture/camera/camera-settings';
+import type { CameraHostStatus } from '../src/features/capture/camera/host-protocol';
+import type { CameraInfo } from '../src/features/capture/devices/camera';
 import type { LinkChannel, SendLinkOutcome } from '../src/features/sharing/link-delivery/types';
 import type { UsbLinkStatus } from '../src/features/remote-guest/usb-link/link-service';
 
@@ -48,6 +51,34 @@ contextBridge.exposeInMainWorld('photobooth', {
     const handler = (_event: unknown, jpeg: Uint8Array): void => listener(jpeg);
     ipcRenderer.on('dslr:frame', handler);
     return () => { ipcRenderer.removeListener('dslr:frame', handler); };
+  },
+  // Canon EDSDK camera (Phase 1): the host process runs in the main process, and live-view frames
+  // arrive as events. The renderer never spawns anything and never reads a file path.
+  cameraHostStatus: (): Promise<CameraHostStatus> => ipcRenderer.invoke('camera:status'),
+  cameraList: (): Promise<CameraInfo[]> => ipcRenderer.invoke('camera:list'),
+  cameraCapabilities: (deviceId: string): Promise<CameraCapabilities> => ipcRenderer.invoke('camera:capabilities', deviceId),
+  cameraSettings: (deviceId: string): Promise<CameraSettingsPair> => ipcRenderer.invoke('camera:settings', deviceId),
+  setCameraSettings: (deviceId: string, role: CameraSettingRole, settings: CameraSettings): Promise<void> =>
+    ipcRenderer.invoke('camera:setSettings', deviceId, role, settings),
+  startCameraLiveView: (deviceId: string): Promise<void> => ipcRenderer.invoke('camera:liveViewStart', deviceId),
+  stopCameraLiveView: (): Promise<void> => ipcRenderer.invoke('camera:liveViewStop'),
+  focusCamera: (deviceId: string): Promise<void> => ipcRenderer.invoke('camera:focus', deviceId),
+  cameraShutter: (deviceId: string): Promise<void> => ipcRenderer.invoke('camera:shutter', deviceId),
+  downloadCameraPhoto: (deviceId: string): Promise<Uint8Array> => ipcRenderer.invoke('camera:download', deviceId),
+  onCameraFrame: (listener: (jpeg: Uint8Array) => void): (() => void) => {
+    const handler = (_event: unknown, jpeg: Uint8Array): void => listener(jpeg);
+    ipcRenderer.on('camera:frame', handler);
+    return () => { ipcRenderer.removeListener('camera:frame', handler); };
+  },
+  onCameraError: (listener: (message: string) => void): (() => void) => {
+    const handler = (_event: unknown, message: string): void => listener(message);
+    ipcRenderer.on('camera:error', handler);
+    return () => { ipcRenderer.removeListener('camera:error', handler); };
+  },
+  onCameraHostStatus: (listener: (status: CameraHostStatus) => void): (() => void) => {
+    const handler = (_event: unknown, status: CameraHostStatus): void => listener(status);
+    ipcRenderer.on('camera:status', handler);
+    return () => { ipcRenderer.removeListener('camera:status', handler); };
   },
   onDslrError: (listener: (message: string) => void): (() => void) => {
     const handler = (_event: unknown, message: string): void => listener(message);

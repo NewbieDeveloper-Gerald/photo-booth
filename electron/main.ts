@@ -17,6 +17,7 @@ import { startAndroidUsbService } from './android-usb-service.js';
 import { readRemoteToken } from '../src/features/remote-guest/node.js';
 import type { DslrService } from './dslr-service.js';
 import { createBoothWindowController } from './windows/booth-window.js';
+import { startCameraService, type CameraService } from './camera-service.js';
 import { chooseUserDataFolder } from '../src/shared/paths/user-data-path.js';
 
 // Identity (Boothwright) and data folder. The product name is new; the folder a booth has been
@@ -31,6 +32,7 @@ let mainWindow: BrowserWindow | null = null;
 let downloadServer: Server | null = null;
 let remoteGuest: RemoteGuestService | null = null;
 let dslr: DslrService | null = null;
+let camera: CameraService | null = null;
 
 /**
  * A failure this early has no window to show it in, and an unhandled rejection leaves a blank
@@ -93,6 +95,11 @@ app.whenReady().then(async () => {
   dslr = startDslrService(() => mainWindow);
   app.on('will-quit', () => dslr?.dispose());
 
+  // The EDSDK camera (Phase 1): a supervised host process that owns Canon's SDK. Absent host or
+  // missing EDSDK files are not failures — the booth simply keeps using a webcam.
+  camera = startCameraService(() => mainWindow);
+  app.on('will-quit', () => camera?.dispose());
+
   registerIpcHandlers({
     userDataPath,
     wakePrintQueue: printQueue.wake,
@@ -103,7 +110,7 @@ app.whenReady().then(async () => {
       boothWindow.permitClose();
       app.quit();
     },
-  }, remoteGuest, dslr, usbLink);
+  }, remoteGuest, dslr, usbLink, camera);
 
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
     callback(permission === 'media');

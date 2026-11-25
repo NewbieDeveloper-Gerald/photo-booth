@@ -12,6 +12,20 @@ export {
   type FrameStream, type FrameStreamFactory,
 } from './dslr/tether-camera';
 export {
+  EDSDK_DEVICE_PREFIX, EdsdkCameraDevice, EdsdkCameraError, isEdsdkDeviceId, MockCameraHostBridge,
+  type CameraHostBridge, type SettingsApplyResult,
+} from './camera/edsdk-camera';
+export {
+  SIMULATED_DEVICE_ID, SIMULATED_LABEL, createSimulatedCamera, isSimulatedDeviceId, type SimulatedCamera,
+} from './camera/simulated-camera';
+export {
+  CAMERA_SETTING_IDS, CAMERA_SETTING_LABELS, defaultsFromCapabilities, hasAnyCapability, pickSupported,
+  unsupportedSettings,
+  type CameraCapabilities, type CameraSettingChoice, type CameraSettingId, type CameraSettingRole,
+  type CameraSettings, type CameraSettingsPair,
+} from './camera/camera-settings';
+export type { CameraHostStatus } from './camera/host-protocol';
+export {
   capturePhotoFrom, createCameraSources, webcamFallback,
   type CameraSourceDevice, type CameraSources, type CaptureSource,
 } from './dslr/camera-sources';

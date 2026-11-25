@@ -7,6 +7,8 @@ export const BOOTH_SETTING_KEYS = [
   'selectedPrinterName',
   'downloadBaseUrl',
   'consentText',
+  /** 'on' puts the shipped test camera in the camera list, so a booth can be rehearsed without hardware. */
+  'simulatedCamera',
 ] as const;
 
 export type BoothSettingKey = (typeof BOOTH_SETTING_KEYS)[number];

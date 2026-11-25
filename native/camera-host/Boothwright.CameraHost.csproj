@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The camera host: a small console program that owns Canon's EDSDK and speaks the booth's
+       framed stdio protocol. It is built separately from the Electron app because the app is
+       JavaScript and the SDK is a 64-bit Windows DLL. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>12</LangVersion>
+    <PlatformTarget>x64</PlatformTarget>
+    <AssemblyName>Boothwright.CameraHost</AssemblyName>
+    <RootNamespace>Boothwright.CameraHost</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <UseSystemDrawing>true</UseSystemDrawing>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Only the simulated camera draws anything, and only on Windows; the EDSDK path never does. -->
+    <PackageReference Include="System.Drawing.Common" Version="8.0.7" />
+  </ItemGroup>
+</Project>
