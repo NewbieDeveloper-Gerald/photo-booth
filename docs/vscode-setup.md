@@ -88,7 +88,9 @@ does not build it — `android/booth-screen/README.md` covers that, and the APK 
 | `npm install` fails while building `better-sqlite3` | the C++ workload is missing (Windows: *Desktop development with C++*), or Python 3 is not on `PATH` |
 | App window opens, database error on start | run `npx electron-rebuild -f -w better-sqlite3` after any `npm test` that was interrupted |
 | `table templates already exists` at start | an older dev database is missing its migration record; current builds adopt it automatically. On an older build, delete `%APPDATA%\photobooth-build\photobooth.sqlite` (dev data only) |
-| `… is from an older build and cannot be upgraded in place` | that database is missing a column this build needs: back it up, delete it, start again. The dialog names the table and column |
+| `… is from an older build and cannot be upgraded in place` | a table that holds booth data is out of date. The dialog names the table and column and the database path, and writes `startup-error.log` beside it: back the file up, delete it, start again |
+| `schema: templates had an older shape…` in the terminal | a database from an older build: the template tables were renamed to `*_legacy_<timestamp>` and recreated, and the built-in layouts were seeded again. Nothing to do |
+| `electron.exe - Fast Fail Exception` right after the error dialog | older builds exited straight out of the message box; current builds quit normally. Pull, or delete the database file and start again |
 | `ERR_OSSL_EVP_UNSUPPORTED` / native module ABI mismatch | you are on a Node the project does not support — switch to Node 20/22 with `nvm use 22` |
 | Port 5173 already in use | an older `npm run dev` is still running: stop it, or close the terminal it was started in |
 | Changes to `electron/**` do nothing | the main process is not hot-reloaded: stop and start `npm run dev` again |

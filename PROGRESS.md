@@ -94,6 +94,19 @@ test-timeout fix as `098f34b`, onTaskUpdate yield as `8073ee1`, database adoptio
   logs them, and a startup failure shows an error dialog with the database path instead of a blank
   window. 13 new tests (splitter, repair, genuine-error rollback, column check, and the exact
   "objects present, row missing" case at the `initializeStorage` level).
+- **A template table from an early build is now rebuilt, not refused** (branch
+  `arena/929e7232-photo-booth`). The precise dialog from the last fix was correct but unhelpful for
+  the user: their `templates`/`template_elements` are the *early miniature* shape (id, name, shots,
+  copies), missing nearly every column the current schema declares, so the booth would not start at
+  all. `REGENERATED_TABLES` (templates, template_elements — both seeded from code on every start)
+  are now repaired: the old table is **renamed aside** as `*_legacy_<timestamp>` (nothing dropped),
+  the migrations that describe it are replayed, and the built-in layouts seed into the new table.
+  A table that holds booth data (sessions, photos, events, …) still stops the start with the table,
+  the column, the database path and a `startup-error.log`. Also: a startup failure now leaves the
+  app through `app.quit()` instead of `app.exit(1)`, because exiting from inside the message box
+  produced `electron.exe - Fast Fail Exception` on Windows. Tests reproduce the user's database
+  exactly (001–007 recorded, miniature template tables, a row in them) and assert the rebuild, the
+  parked table, the re-seeded built-ins and an empty second run.
 - Automated verification today: `npm run typecheck`, `npm run lint`, `npm test`
   (**578 tests in 101 files**), `npm run build` (Vite production build) all pass.
   `npm run test:e2e` exists but cannot run in this environment (no browser runtime).

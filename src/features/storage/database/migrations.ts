@@ -120,13 +120,20 @@ export function declaredColumns(list: Migration[] = migrations): Map<string, str
 
 export type SchemaGap = { table: string; missingColumns: string[] };
 
-/** What the migrations declare that the database does not actually have. */
+/**
+ * What the migrations declare that an existing table does not have.
+ *
+ * A table that is not there at all is not a gap: a fresh database has none of them yet, and the
+ * migrations create them. This asks the narrower question the repair needs — of the tables that
+ * are already present, which are older than this build expects.
+ */
 export function schemaGaps(database: Database.Database, list: Migration[] = migrations): SchemaGap[] {
   const gaps: SchemaGap[] = [];
   for (const [table, columns] of declaredColumns(list)) {
     const actual = new Set(
       (database.prepare('SELECT name FROM pragma_table_info(?)').all(table) as Array<{ name: string }>).map((row) => row.name),
     );
+    if (actual.size === 0) continue;
     const missingColumns = columns.filter((column) => !actual.has(column));
     if (missingColumns.length > 0) gaps.push({ table, missingColumns });
   }
@@ -138,28 +145,49 @@ export type MigrationResult = {
   applied: string[];
   /** `name: message` for each statement that was already in the schema and was therefore skipped. */
   repaired: string[];
+  /** One line per table that had an older shape and was parked aside and recreated. */
+  rebuilt: string[];
 };
 
 /**
- * Applies the migrations that this database has not recorded yet, one transaction each.
+ * Tables whose contents this build produces itself: the built-in layouts are seeded from code on
+ * every start (`ensureBuiltinTemplates`), so an old-shaped version of these tables can be set
+ * aside and recreated instead of blocking the booth. Nothing here is booth data, and nothing that
+ * is not listed here is ever discarded automatically — `sessions`, `photos`, `events` and the rest
+ * still stop the start with the reason, because losing them silently would be worse than not
+ * starting.
+ */
+const REGENERATED_TABLES = new Set(['templates', 'template_elements']);
+
+/** Names of the migrations whose DDL mentions any of these tables. */
+function migrationsTouching(list: Migration[], tables: string[]): string[] {
+  const pattern = new RegExp(`\\b(?:${tables.join('|')})\\b`, 'i');
+  return list
+    .filter((migration) => splitStatements(migration.sql).some(
+      (statement) => /^\s*(?:CREATE|ALTER|DROP)\b/i.test(statement) && pattern.test(statement),
+    ))
+    .map((migration) => migration.name);
+}
+
+function legacySuffix(now: number): string {
+  return `_legacy_${new Date(now).toISOString().replace(/[-:]/g, '').slice(0, 15)}`;
+}
+
+/**
+ * Applies the migrations this database has not recorded yet, one transaction each.
  *
  * A statement that fails because its work is already present (see `isAlreadyPresentError`) is
  * skipped and the migration is still recorded, so the database is usable again and the same
  * statement is not retried on every start. Anything else — a syntax error, a missing table, a
  * constraint — rolls that migration back and is thrown, because a schema that half-applied is
  * worse than a booth that refuses to start and says why.
- *
- * The repair matters for databases created by builds that made schema changes outside this list:
- * they hold the tables but not the record, so the first start of a newer build died with
- * `table templates already exists` before any window appeared.
  */
-export function applyMigrations(database: Database.Database, list: Migration[] = migrations): MigrationResult {
-  database.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT (datetime('now')))`);
+function applyPending(database: Database.Database, list: Migration[]): MigrationResult {
   const recorded = new Set(
     (database.prepare('SELECT name FROM schema_migrations').all() as Array<{ name: string }>).map((row) => row.name),
   );
   const record = database.prepare('INSERT OR IGNORE INTO schema_migrations (name) VALUES (?)');
-  const result: MigrationResult = { applied: [], repaired: [] };
+  const result: MigrationResult = { applied: [], repaired: [], rebuilt: [] };
   for (const migration of list) {
     if (recorded.has(migration.name)) continue;
     const skipped: string[] = [];
@@ -177,19 +205,61 @@ export function applyMigrations(database: Database.Database, list: Migration[] =
     result.applied.push(migration.name);
     for (const message of skipped) result.repaired.push(`${migration.name}: ${message}`);
   }
+  return result;
+}
 
-  // Recording a migration whose objects already existed is only safe if those objects are the
-  // ones this build expects. If they are not (a database from a much older build, with a table
-  // that predates columns this build queries), say so here, in words, instead of failing later
-  // inside a screen with `no such column`.
+function describeGaps(gaps: SchemaGap[]): string {
+  const detail = gaps.map((gap) => `table ${gap.table} has no ${gap.missingColumns.join(', no ')}`).join('; ');
+  return `The photo booth database is from an older build and cannot be upgraded in place: ${detail}. ` +
+    'Back up the database file, delete it, and start the booth again to create a new one.';
+}
+
+/**
+ * Parks tables whose shape is older than the migrations declare, and replays the migrations that
+ * describe them.
+ *
+ * Only tables this build recreates from code take this path (see `REGENERATED_TABLES`); nothing is
+ * dropped — the old table is renamed aside — and anything else out of date still stops the start.
+ */
+function repairOldShapes(database: Database.Database, list: Migration[], now: number, result: MigrationResult): void {
   const gaps = schemaGaps(database, list);
-  if (gaps.length > 0) {
-    const detail = gaps.map((gap) => `table ${gap.table} has no ${gap.missingColumns.join(', no ')}`).join('; ');
-    throw new Error(
-      `The photo booth database is from an older build and cannot be upgraded in place: ${detail}. ` +
-      'Back up the database file, delete it, and start the booth again to create a new one.',
-    );
+  if (gaps.length === 0) return;
+  const blocking = gaps.filter((gap) => !REGENERATED_TABLES.has(gap.table));
+  if (blocking.length > 0) throw new Error(describeGaps(blocking));
+
+  const suffix = legacySuffix(now);
+  const hadForeignKeys = database.pragma('foreign_keys', { simple: true }) === 1;
+  database.pragma('foreign_keys = OFF');
+  try {
+    database.transaction(() => {
+      // Children before parents: template_elements references templates.
+      for (const gap of [...gaps].reverse()) {
+        const parked = `${gap.table}${suffix}`;
+        database.exec(`ALTER TABLE ${gap.table} RENAME TO ${parked}`);
+        result.rebuilt.push(`${gap.table} had an older shape, so it was renamed to ${parked} and recreated; its old rows are still in that table if you want them`);
+      }
+      const forget = database.prepare('DELETE FROM schema_migrations WHERE name = ?');
+      for (const name of migrationsTouching(list, gaps.map((gap) => gap.table))) forget.run(name);
+    })();
+  } finally {
+    database.pragma(`foreign_keys = ${hadForeignKeys ? 'ON' : 'OFF'}`);
   }
+
+  const replayed = applyPending(database, list);
+  result.applied.push(...replayed.applied);
+  result.repaired.push(...replayed.repaired);
+  const remaining = schemaGaps(database, list);
+  if (remaining.length > 0) throw new Error(describeGaps(remaining));
+}
+
+/**
+ * Brings a database up to date: applies what is missing, adopts what is already there, and repairs
+ * the tables this build produces itself when an older build created them with a different shape.
+ */
+export function applyMigrations(database: Database.Database, list: Migration[] = migrations, now = Date.now()): MigrationResult {
+  database.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT (datetime('now')))`);
+  const result = applyPending(database, list);
+  repairOldShapes(database, list, now, result);
   return result;
 }
 

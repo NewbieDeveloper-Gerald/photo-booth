@@ -6,9 +6,8 @@ import { applyMigrations } from './migrations';
 /**
  * Creates the folders, the paths file and the database, and brings the schema up to date.
  *
- * Returns the migrations that were found already present in the schema and recorded rather than
- * re-applied (normally none); the caller can log them so an upgrade of an old database is visible
- * instead of silent.
+ * Returns one line per thing that had to be repaired or rebuilt on the way (normally none); the
+ * caller logs them, so bringing an old database forward is visible instead of silent.
  */
 export function initializeStorage(userDataPath: string): string[] {
   const configPath = path.join(userDataPath, 'photobooth-paths.json');
@@ -38,7 +37,8 @@ export function initializeStorage(userDataPath: string): string[] {
   const database = new Database(path.join(userDataPath, 'photobooth.sqlite'));
   database.pragma('foreign_keys = ON');
   try {
-    return applyMigrations(database).repaired;
+    const result = applyMigrations(database);
+    return [...result.rebuilt, ...result.repaired];
   } finally {
     database.close();
   }

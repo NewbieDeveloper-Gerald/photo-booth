@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, session } from 'electron';
+import fs from 'node:fs';
 import path from 'node:path';
 import type { Server } from 'node:http';
 import { DATABASE_FILE_NAME, initializeStorage } from '../src/features/storage/node.js';
@@ -30,17 +31,28 @@ let dslr: DslrService | null = null;
  */
 function reportStartupFailure(error: unknown): void {
   const message = error instanceof Error ? error.message : String(error);
-  const databasePath = path.join(app.getPath('userData'), DATABASE_FILE_NAME);
+  const userDataPath = app.getPath('userData');
+  const databasePath = path.join(userDataPath, DATABASE_FILE_NAME);
   console.error(error);
-  dialog.showErrorBox('The photo booth could not start', `${message}\n\nDatabase: ${databasePath}`);
-  app.exit(1);
+  let details = '';
+  try {
+    const logPath = path.join(userDataPath, 'startup-error.log');
+    fs.writeFileSync(logPath, `${new Date().toISOString()}\n${message}\n\n${error instanceof Error ? error.stack ?? '' : ''}\n`);
+    details = `\n\nDetails written to ${logPath}`;
+  } catch {
+    // The dialog carries the message either way; a log we cannot write is not worth failing over.
+  }
+  dialog.showErrorBox('The photo booth could not start', `${message}\n\nDatabase: ${databasePath}${details}`);
+  // Quit through the normal path: terminating straight from inside the message box left the
+  // Electron process in a fast-fail crash on Windows.
+  process.exitCode = 1;
+  app.quit();
 }
 
 app.whenReady().then(async () => {
   const userDataPath = app.getPath('userData');
-  const repaired = initializeStorage(userDataPath);
-  // An older database already had part of the schema; it is recorded as applied now.
-  for (const repair of repaired) console.warn(`schema repaired: ${repair}`);
+  // An older database may have been adopted or rebuilt on the way; say so in the terminal.
+  for (const repair of initializeStorage(userDataPath)) console.warn(`schema: ${repair}`);
   ensureBuiltinTemplates(userDataPath);
   recoverInterruptedUploads(userDataPath);
   // Background sync (F14): resumes queued uploads at startup and retries with backoff.
