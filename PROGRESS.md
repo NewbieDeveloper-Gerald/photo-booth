@@ -1,7 +1,7 @@
 # Progress
 
 Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`, F20 as `de322a2`, F21 as `e9564c1`, F22 as `1b3d92c`, F23 as `48fab71`, F24 as `22bff4d`, F25 as `9cb5f59`, F26 as `665971d`, **F27 skipped by request**, F28 as `f4a18d0`, F22 USB cable screen as `fb130e9`, VS Code setup as `caf99d2`,
-test-timeout fix as `098f34b`, onTaskUpdate yield as `8073ee1`, database adoption as `94dbaa6`, template-table rebuild as `62ce2ab`, USB card diagnostics as `633786e`, working mode in `AGENTS.md` as `9686dbe`.
+test-timeout fix as `098f34b`, onTaskUpdate yield as `8073ee1`, database adoption as `94dbaa6`, template-table rebuild as `62ce2ab`, USB card diagnostics as `633786e`, working mode in `AGENTS.md` as `9686dbe`, light theme as `67747e3`.
 
 ## Current status
 
@@ -119,7 +119,7 @@ test-timeout fix as `098f34b`, onTaskUpdate yield as `8073ee1`, database adoptio
   is now `AGENTS.md` at the repository root with `CLAUDE.md` as a one-line pointer: default on, level
   `full`, off on "stop ponytail"/"normal mode". No plugin, hook or marketplace file is copied — the
   agent reads the repository, so a file in the repository is the whole installation.
-- **Light, minimalist look** (branch `arena/80ffd0af-photo-booth`). The operator UI was a dark
+- **Light, minimalist look — merged as `67747e3`** (PR #48, branch `arena/80ffd0af-photo-booth`). The operator UI was a dark
   indigo theme with 151 hardcoded colours; it is now a light one (page `#f7f6f3`, white cards, one
   near-black accent, `--stage` keeps the camera/photo wells dark) driven by **24 tokens** in
   `:root`. The rules themselves hold no colour any more: a single mapping pass replaced each
