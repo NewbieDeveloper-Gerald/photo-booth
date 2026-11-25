@@ -132,13 +132,26 @@ test-timeout fix as `098f34b`, onTaskUpdate yield as `8073ee1`, database adoptio
   `var()` declared, text ≥ 4.5:1 on page/card/inset, white on accent and stage, lines quiet.
   Not verified visually: there is no browser or Electron in this environment, so the palette is
   checked by contrast maths and by review, not by looking at it.
+- **Organised operator screen** (this branch, on top of the light theme). The ready screen was a
+  flat pile of cards in feature order; it is now a few labelled groups — "This session", "Guests and
+  sharing", "Hardware" — between the capture controls and the setup forms, and the two long forms
+  (event details/branding, operator access/consent) sit behind a native `<details>` summary, so the
+  operating screen is a screen again. First-run PIN setup renders open and cannot be collapsed until
+  a PIN exists; the event card keeps its brand accent line while closed. Grouping is CSS only
+  (`.panel`, `.event-setup` / `.admin-setup`), the cards keep their own surfaces, and no handler,
+  label or hotkey changed. The same pass fixed four colours the light theme missed
+  (`.attract-toggle`, `.attract-media-label`, the printer-profile row border, the editor canvas
+  shadow), and `style-tokens.test.ts` now rejects `rgb()/hsl()` literals outside `:root` as well as
+  hex, so that class of leak fails the gate.
 - Automated verification today: `npm run typecheck`, `npm run lint`, `npm test`
-  (**578 tests in 101 files**), `npm run build` (Vite production build) all pass.
+  (**601 tests in 103 files**), `npm run build` (Vite production build) all pass.
   `npm run test:e2e` exists but cannot run in this environment (no browser runtime).
 
 ## Verification gaps (unrecorded or impossible here)
 
 - Playwright E2E (`tests/home.spec.ts`) never ran: the sandbox has no Chromium runtime.
+- The re-grouped operator screen and the two collapsible setup forms were never seen rendered:
+  the gate is `tsc`, eslint, 601 tests and the Vite build, plus the token test for colour.
 - The F7 phone/tunnel, F8 restart-after-crash and F9 Windows-kiosk manual checks were
   never reported.
 - Printing is verified only up to "Windows accepted the job"; no physical 4×6 borderless

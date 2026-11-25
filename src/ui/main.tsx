@@ -1447,8 +1447,47 @@ function App(): React.JSX.Element {
             : screen === 'finished' ? <>{!adminLocked && <ConfirmAction className="secondary-button" label="Delete session" question="Delete this session and its photos?" confirmLabel="Yes, delete session" onConfirm={() => void handleDeleteSession()} disabled={busy} />}<button className="secondary-button" type="button" onClick={() => void handleReprint()} disabled={busy || !selectedPrinterName}>Reprint</button><button className="start-button" type="button" onClick={returnToReady} disabled={busy}>Back to start</button></>
               : <><button className="secondary-button" type="button" onClick={() => void handleExportEvent()} disabled={busy || !event || !window.photobooth}>Export event</button><button className="start-button" type="button" onClick={() => void handleStartSession()} disabled={!cameraReady || !event || !pinConfigured || isBusy || unfinishedSessions.length > 0}>Start session <span aria-hidden="true">→</span></button></>}
         </div>
-        {screen === 'ready' && !adminLocked && <section className="event-manager-card" aria-label="Event setup and branding">
-          <div className="event-manager-heading"><div><p className="eyebrow">EVENT SETUP</p><h2>Event details & branding</h2></div><div className="event-manager-actions"><select aria-label="Active event" disabled={unfinishedSessions.length > 0} value={event?.id ?? ''} onChange={(e) => void handleSelectEvent(e.target.value)}>{events.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><button type="button" className="secondary-button" onClick={handleNewEvent} disabled={unfinishedSessions.length > 0}>New event</button><button type="button" className="secondary-button" onClick={() => void handleDuplicateEvent()} disabled={!event || unfinishedSessions.length > 0}>Duplicate active</button><button type="button" className="secondary-button" onClick={() => setEditorOpen(true)} disabled={!window.photobooth}>Layouts…</button><ConfirmAction className="secondary-button" label="Delete event" question="Delete this event, its sessions and their photos?" confirmLabel="Yes, delete event" onConfirm={() => void handleDeleteEvent()} disabled={!event || events.length < 2 || unfinishedSessions.length > 0} /></div></div>
+        {screen === 'ready' && !adminLocked && <section className="panel" aria-label="This session">
+          <h2>This session</h2>
+          {unfinishedSessions.length > 0 && <RecoveryCard session={unfinishedSessions[0]!} busy={busy} cameraReady={cameraReady} onResume={() => void handleResumeSession(unfinishedSessions[0]!)} onDiscard={() => void handleDiscardSession(unfinishedSessions[0]!)} />}
+          {queueWarning && <p className="pin-error" role="alert">{queueWarning}</p>}
+          {uploadQueue && <UploadQueueCard summary={uploadQueue} />}
+          {retention && <RetentionNote status={retention} />}
+        </section>}
+        {screen === 'ready' && !adminLocked && <section className="panel" aria-label="Guests and sharing">
+          <h2>Guests and sharing</h2>
+          <RemoteGuestCard info={remoteInfo} busy={busy} error={remoteError}
+            onToggle={(enabled) => void handleRemoteToggle(enabled)} onRotate={() => void handleRemoteRotateLink()} />
+          <UsbScreenCard
+            status={usbLink}
+            remoteEnabled={Boolean(remoteInfo?.enabled)}
+            busy={busy}
+            onRefresh={() => void refreshUsbLink()}
+            onConnect={handleUsbConnect}
+            onDisconnect={handleUsbDisconnect} />
+          <AnalyticsCard downloadBaseUrl={downloadBaseUrl} />
+        </section>}
+        {screen === 'ready' && !adminLocked && <section className="panel" aria-label="Hardware">
+          <h2>Hardware</h2>
+          <CameraSourceCard
+            status={tetherStatus}
+            selectedCameraId={selectedCameraId}
+            busy={busy}
+            onRefresh={() => { void refreshTetherStatus(); void refreshCameras(); }}
+            onUseWebcam={() => { const fallback = webcamFallback(cameras); if (fallback) { setSelectedCameraId(fallback); void startCamera(fallback, resolution); } }} />
+          {printSummary && <PrintQueueCard summary={printSummary} jobs={printJobs} busy={busy} onSetPaused={(paused) => void handleSetPrintPaused(paused)} onCancel={(jobId) => void handleCancelPrintJob(jobId)} />}
+          <PrinterProfileCard
+            profiles={printerProfiles}
+            printers={printers.map((printer) => ({ name: printer.name, displayName: printer.displayName }))}
+            busy={busy}
+            onSave={handleSavePrinterProfile}
+            onDelete={handleDeletePrinterProfile}
+            onChecked={handleCheckPrinterProfile}
+            onTestPrint={handleTestPrintProfile} />
+        </section>}
+        {screen === 'ready' && !adminLocked && <details className="event-manager-card event-setup" aria-label="Event setup and branding">
+          <summary className="event-setup-summary"><div><p className="eyebrow">EVENT SETUP</p><h2>Event details &amp; branding</h2></div></summary>
+          <div className="event-manager-heading"><div className="event-manager-actions"><select aria-label="Active event" disabled={unfinishedSessions.length > 0} value={event?.id ?? ''} onChange={(e) => void handleSelectEvent(e.target.value)}>{events.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><button type="button" className="secondary-button" onClick={handleNewEvent} disabled={unfinishedSessions.length > 0}>New event</button><button type="button" className="secondary-button" onClick={() => void handleDuplicateEvent()} disabled={!event || unfinishedSessions.length > 0}>Duplicate active</button><button type="button" className="secondary-button" onClick={() => setEditorOpen(true)} disabled={!window.photobooth}>Layouts…</button><ConfirmAction className="secondary-button" label="Delete event" question="Delete this event, its sessions and their photos?" confirmLabel="Yes, delete event" onConfirm={() => void handleDeleteEvent()} disabled={!event || events.length < 2 || unfinishedSessions.length > 0} /></div></div>
           {eventDraft && <div className="event-form-grid">
             <label>Event name<input aria-label="Event name" maxLength={80} value={eventDraft.name} onChange={(e) => setEventDraft({ ...eventDraft, name: e.target.value })} /></label>
             <label>Event date<input aria-label="Event date" type="date" value={eventDraft.eventDate ?? ''} onChange={(e) => setEventDraft({ ...eventDraft, eventDate: e.target.value || null })} /></label>
@@ -1508,13 +1547,14 @@ function App(): React.JSX.Element {
             <button type="button" className="start-button" onClick={() => void handleSaveEvent()} disabled={unfinishedSessions.length > 0}>Save and use this event</button>
           </div>}
           {eventMessage && <p className="event-message" role="status">{eventMessage}</p>}
-        </section>}
-        {screen === 'ready' && <section className="admin-security-card" aria-label="Operator security">
+        </details>}
+        {screen === 'ready' && <details className="admin-security-card admin-setup" aria-label="Operator security" {...(pinConfigured ? {} : { open: true })}>
+          {pinConfigured && <summary className="admin-setup-summary"><div><p className="eyebrow">OPERATOR</p><h2>Admin access &amp; consent</h2></div></summary>}
           {!pinConfigured ? <><p className="eyebrow">FIRST-TIME SETUP</p><h2>Create admin PIN</h2><p>Set a PIN before starting guest sessions. Use 6 to 12 digits and keep it private.</p><label>New PIN<input aria-label="New admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinDraft} onChange={(e) => setPinDraft(e.target.value.replace(/\D/g, ''))} /></label><label>Confirm PIN<input aria-label="Confirm admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinConfirm} onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, ''))} /></label><button type="button" onClick={() => void savePin()}>Save admin PIN</button></>
             : adminLocked ? <><p className="eyebrow">GUEST MODE</p><h2>Booth locked</h2><p>Operator settings are hidden. Enter the admin PIN to unlock them.</p>{showUnlock ? <><label>Admin PIN<input aria-label="Admin PIN to unlock settings" type="password" inputMode="numeric" maxLength={12} autoComplete="current-password" value={currentPinDraft} onChange={(e) => setCurrentPinDraft(e.target.value.replace(/\D/g, ''))} onKeyDown={(e) => { if (e.key === 'Enter') void unlockAdmin(); }} /></label><button type="button" onClick={() => void unlockAdmin()}>Unlock settings</button><button type="button" className="secondary-button" onClick={() => { setShowUnlock(false); setCurrentPinDraft(''); setPinError(''); }}>Cancel</button></> : <button type="button" onClick={() => { setShowUnlock(true); setPinError(''); }}>Operator unlock</button>}</>
-              : <><p className="eyebrow">OPERATOR SETTINGS</p><h2>Admin access</h2><label>Current PIN<input aria-label="Current admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="current-password" value={currentPinDraft} onChange={(e) => setCurrentPinDraft(e.target.value.replace(/\D/g, ''))} /></label><label>New PIN<input aria-label="Replacement admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinDraft} onChange={(e) => setPinDraft(e.target.value.replace(/\D/g, ''))} /></label><label>Confirm new PIN<input aria-label="Confirm replacement PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinConfirm} onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, ''))} /></label><button type="button" onClick={() => void savePin()}>Change admin PIN</button><label>Consent notice shown before every session<textarea aria-label="Consent notice wording" maxLength={1200} value={consentText} onChange={(e) => setConsentText(e.target.value)} onBlur={() => void savePreference('consentText', consentText).catch((error: unknown) => setPinError(toErrorMessage(error, 'Could not save consent text.')))} /></label><p className="consent-retention-note">This is the booth-wide notice. An event with its own consent wording uses that instead.</p><button type="button" onClick={() => { setAdminLocked(true); setShowUnlock(false); setPinError(''); setPinDraft(''); setPinConfirm(''); setCurrentPinDraft(''); }}>Lock guest mode</button><button type="button" className="secondary-button" onClick={() => setHelpOpen(true)}>Keyboard shortcuts</button><button type="button" className="secondary-button" onClick={() => { setExitPrompt(true); setExitPin(''); setPinError(''); }}>Exit booth…</button></>}
+              : <><label>Current PIN<input aria-label="Current admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="current-password" value={currentPinDraft} onChange={(e) => setCurrentPinDraft(e.target.value.replace(/\D/g, ''))} /></label><label>New PIN<input aria-label="Replacement admin PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinDraft} onChange={(e) => setPinDraft(e.target.value.replace(/\D/g, ''))} /></label><label>Confirm new PIN<input aria-label="Confirm replacement PIN" type="password" inputMode="numeric" maxLength={12} autoComplete="new-password" value={pinConfirm} onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, ''))} /></label><button type="button" onClick={() => void savePin()}>Change admin PIN</button><label>Consent notice shown before every session<textarea aria-label="Consent notice wording" maxLength={1200} value={consentText} onChange={(e) => setConsentText(e.target.value)} onBlur={() => void savePreference('consentText', consentText).catch((error: unknown) => setPinError(toErrorMessage(error, 'Could not save consent text.')))} /></label><p className="consent-retention-note">This is the booth-wide notice. An event with its own consent wording uses that instead.</p><button type="button" onClick={() => { setAdminLocked(true); setShowUnlock(false); setPinError(''); setPinDraft(''); setPinConfirm(''); setCurrentPinDraft(''); }}>Lock guest mode</button><button type="button" className="secondary-button" onClick={() => setHelpOpen(true)}>Keyboard shortcuts</button><button type="button" className="secondary-button" onClick={() => { setExitPrompt(true); setExitPin(''); setPinError(''); }}>Exit booth…</button></>}
           {pinError && <p className="pin-error" role="alert">{pinError}</p>}
-        </section>}
+        </details>}
         {editorOpen && window.photobooth && <TemplateEditor bridge={window.photobooth} logoDataUrl={eventLogoDataUrl} onClose={() => setEditorOpen(false)} onTemplatesChanged={(listing) => { setTemplates(listing); setSelectedLayoutId((current) => listing.some((item) => item.id === current) ? current : listing[0]?.id ?? current); }} />}
         {consentOpen && <ConsentDialog text={event?.consentText.trim() ? event.consentText : consentText} onDecline={() => setConsentOpen(false)} onAccept={() => void confirmConsentAndStart()} />}
         {helpOpen && <HotkeyHelp onClose={() => setHelpOpen(false)} />}
@@ -1530,35 +1570,6 @@ function App(): React.JSX.Element {
         {screen === 'finished' && event && <p className="print-limit-note">Prints this session: {printJobs.filter((job) => job.sessionId === sessionId && job.status !== 'cancelled').length} of {event.printLimitPerSession}{printSummary?.paperWarning ? ` · ${printSummary.paperWarning}` : ''}</p>}
         {screen === 'capturing' && <SlotProgress slotCount={slotCount} currentSlot={currentSlot} capturedSlots={capturedSlots} />}
         {screen === 'review' && reviewRecord && <ReviewSection record={reviewRecord} images={reviewImages} isBusy={isBusy} cameraReady={cameraReady} onRetake={(slot) => void handleRetake(slot)} onRevert={(slot) => void handleRevert(slot)} />}
-        {unfinishedSessions.length > 0 && screen === 'ready' && !adminLocked && <RecoveryCard session={unfinishedSessions[0]!} busy={busy} cameraReady={cameraReady} onResume={() => void handleResumeSession(unfinishedSessions[0]!)} onDiscard={() => void handleDiscardSession(unfinishedSessions[0]!)} />}
-        {screen === 'ready' && !adminLocked && uploadQueue && <UploadQueueCard summary={uploadQueue} />}
-        {screen === 'ready' && !adminLocked && <AnalyticsCard downloadBaseUrl={downloadBaseUrl} />}
-        {screen === 'ready' && !adminLocked && <RemoteGuestCard info={remoteInfo} busy={busy} error={remoteError}
-          onToggle={(enabled) => void handleRemoteToggle(enabled)} onRotate={() => void handleRemoteRotateLink()} />}
-        {screen === 'ready' && !adminLocked && <UsbScreenCard
-          status={usbLink}
-          remoteEnabled={Boolean(remoteInfo?.enabled)}
-          busy={busy}
-          onRefresh={() => void refreshUsbLink()}
-          onConnect={handleUsbConnect}
-          onDisconnect={handleUsbDisconnect} />}
-        {screen === 'ready' && !adminLocked && printSummary && <PrintQueueCard summary={printSummary} jobs={printJobs} busy={busy} onSetPaused={(paused) => void handleSetPrintPaused(paused)} onCancel={(jobId) => void handleCancelPrintJob(jobId)} />}
-        {screen === 'ready' && !adminLocked && <CameraSourceCard
-          status={tetherStatus}
-          selectedCameraId={selectedCameraId}
-          busy={busy}
-          onRefresh={() => { void refreshTetherStatus(); void refreshCameras(); }}
-          onUseWebcam={() => { const fallback = webcamFallback(cameras); if (fallback) { setSelectedCameraId(fallback); void startCamera(fallback, resolution); } }} />}
-        {screen === 'ready' && !adminLocked && <PrinterProfileCard
-          profiles={printerProfiles}
-          printers={printers.map((printer) => ({ name: printer.name, displayName: printer.displayName }))}
-          busy={busy}
-          onSave={handleSavePrinterProfile}
-          onDelete={handleDeletePrinterProfile}
-          onChecked={handleCheckPrinterProfile}
-          onTestPrint={handleTestPrintProfile} />}
-        {screen === 'ready' && !adminLocked && retention && <RetentionNote status={retention} />}
-        {screen === 'ready' && !adminLocked && queueWarning && <p className="pin-error" role="alert">{queueWarning}</p>}
         {errorMessage && <p className="camera-error" role="alert">{errorMessage}<button type="button" onClick={() => void refreshCameras()}>Retry</button></p>}
         {!errorMessage && <p className="helper-note">Originals stay on this booth. No photos are uploaded in this feature.</p>}
       </section>

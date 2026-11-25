@@ -28,6 +28,13 @@ cannot read those tokens, so they carry the same values inline; the two dark sta
 (`--stage`, `--scrim`) are the only places that stay dark. `src/ui/style-tokens.test.ts` fails the
 build if a colour escapes the token block or if text drops below WCAG AA (4.5:1) on any surface.
 
+The operator screen is grouped rather than one long column: the camera and the capture controls,
+then "This session", "Guests and sharing" and "Hardware", then the setup. A new card goes into the
+group it belongs to (`.panel` supplies only the heading and the spacing), and the two long forms —
+event details and operator access — stay folded behind a `<details>` summary so the screen the
+operator works on stays a screen. First-time PIN setup is the one exception: it opens by itself
+until a PIN exists.
+
 ## Build and checks
 
 ```sh
