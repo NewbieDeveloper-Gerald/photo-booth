@@ -1,7 +1,7 @@
 # Progress
 
 Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`, F20 as `de322a2`, F21 as `e9564c1`, F22 as `1b3d92c`, F23 as `48fab71`, F24 as `22bff4d`, F25 as `9cb5f59`, F26 as `665971d`, **F27 skipped by request**, F28 as `f4a18d0`, F22 USB cable screen as `fb130e9`, VS Code setup as `caf99d2`,
-test-timeout fix as `098f34b`, onTaskUpdate yield as `8073ee1`.
+test-timeout fix as `098f34b`, onTaskUpdate yield as `8073ee1`, database adoption as `94dbaa6`.
 
 ## Current status
 
@@ -78,8 +78,8 @@ test-timeout fix as `098f34b`, onTaskUpdate yield as `8073ee1`.
   Reproduced first (six synchronous 11 s blocks: `6 passed` + `Errors 1` + exit 1), then verified
   fixed (`6 passed`, no errors, exit 0); full suite 578/578 with no unhandled errors. A microtask is
   not enough, and Vitest 4 removes the deadline at the source (`timeout: -1`).
-- **Startup crash on an older database: `table templates already exists`** (branch
-  `arena/49bb3a7c-photo-booth`). Reported from the user's machine: `npm run dev` printed
+- **Startup crash on an older database: `table templates already exists` — merged as `94dbaa6`**
+  (PR #40, branch `arena/49bb3a7c-photo-booth`). Reported from the user's machine: `npm run dev` printed
   `UnhandledPromiseRejectionWarning: SqliteError: table templates already exists` from
   `initializeStorage` and no booth window appeared. Cause: a database created by an older build has
   the template tables but **no `008_templates` row** in `schema_migrations` (the tables were created
