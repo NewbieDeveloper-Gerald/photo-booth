@@ -44,7 +44,10 @@ describe('booth theme tokens', () => {
 
   it('keeps colours out of the rules themselves', () => {
     const rules = css.replace(/:root\{[\s\S]*?\n\}/, '');
-    expect([...rules.matchAll(/#[0-9a-fA-F]{3,8}\b/g)].map((match) => match[0])).toEqual([]);
+    // Hex and colour functions alike: a light-surface retheme leaves white-on-white borders behind
+    // otherwise, which is exactly the kind of leak this catches.
+    const literals = /#[0-9a-fA-F]{3,8}\b|(?:rgba?|hsla?)\([^)]*\)/g;
+    expect([...rules.matchAll(literals)].map((match) => match[0])).toEqual([]);
   });
 
   it('keeps every text token readable on every surface', () => {
