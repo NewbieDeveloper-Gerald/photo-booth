@@ -103,6 +103,50 @@ directory is gone and *every* database test fails with a load error rather than 
 with `npm install` (or `npm rebuild better-sqlite3` once the connection is back). Nothing about
 the checkout is broken; the compiled file is simply missing.
 
+## `[vitest-worker]: Timeout calling "onTaskUpdate"`
+
+A green run that still exits 1 with
+
+```
+Test Files  101 passed (101)
+     Tests  578 passed (578)
+    Errors  1 error
+Error: [vitest-worker]: Timeout calling "onTaskUpdate"
+```
+
+Every task update a worker reports goes to the main process over birpc. In Vitest 3 that call has
+a **hardcoded 60 s timeout and no config knob**. better-sqlite3 is synchronous, so a database test
+blocks the worker's event loop for its whole duration: the main process answers in milliseconds,
+but the reply sits unread in the worker's IPC queue until the loop turns, and Node runs expired
+timers before polling I/O. So a *file* whose tests block the loop for 60 s in total — which a slow
+disk makes easy, 12 tests × 5 s is enough — ends with that error, all tests passing, exit code 1.
+It is a reporting deadline, not a test failure: the assertions really did pass.
+
+The fix is in `src/renderer/test-setup.ts`, which gives the loop one macrotask between tests:
+
+```ts
+beforeEach(async () => {
+  await new Promise<void>((resolve) => { setImmediate(resolve); });
+});
+```
+
+That caps the deadline at a single test, which `testTimeout` already bounds. Verified here with a
+reproduction of the exact shape (six synchronous 11 s blocks in one file): before, `6 passed` plus
+`Errors 1` and exit 1; after, `6 passed`, no errors, exit 0. A microtask (`await
+Promise.resolve()`) is **not** enough — it has to be a macrotask.
+
+You can reproduce it yourself with a throwaway file, `npx vitest run tests/tmp-block.test.ts`:
+
+```ts
+import { it } from 'vitest';
+function block(ms: number) { const end = Date.now() + ms; while (Date.now() < end) { /* busy */ } }
+for (let i = 0; i < 6; i += 1) it(`blocks 11 s (${i})`, () => { block(11_000); });
+```
+
+Two limits stay: no single test may block the loop for 60 s (that is a test bug, and the per-test
+timeout cannot fire while the loop is stuck either), and Vitest 4 removes the deadline entirely —
+`createRuntimeRpc` passes `timeout: -1` — so upgrading past 3.x makes the workaround unnecessary.
+
 ## When a test still times out at 30 s
 
 Report it with the per-test timings and the machine numbers, which is everything needed to tell a
