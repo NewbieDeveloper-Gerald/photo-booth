@@ -1,7 +1,7 @@
 # Progress
 
 Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`, F20 as `de322a2`, F21 as `e9564c1`, F22 as `1b3d92c`, F23 as `48fab71`, F24 as `22bff4d`, F25 as `9cb5f59`, F26 as `665971d`, **F27 skipped by request**, F28 as `f4a18d0`, F22 USB cable screen as `fb130e9`, VS Code setup as `caf99d2`,
-test-timeout fix as `098f34b`, onTaskUpdate yield as `8073ee1`, database adoption as `94dbaa6`, template-table rebuild as `62ce2ab`, USB card diagnostics as `633786e`, working mode in `AGENTS.md` as `9686dbe`, light theme as `67747e3`, organised operator screen as `55c57aa`.
+test-timeout fix as `098f34b`, onTaskUpdate yield as `8073ee1`, database adoption as `94dbaa6`, template-table rebuild as `62ce2ab`, USB card diagnostics as `633786e`, working mode in `AGENTS.md` as `9686dbe`, light theme as `67747e3`, organised operator screen as `55c57aa`, booth mode as `e8b9ada`.
 
 ## Current status
 
@@ -143,7 +143,7 @@ test-timeout fix as `098f34b`, onTaskUpdate yield as `8073ee1`, database adoptio
   (`.attract-toggle`, `.attract-media-label`, the printer-profile row border, the editor canvas
   shadow), and `style-tokens.test.ts` now rejects `rgb()/hsl()` literals outside `:root` as well as
   hex, so that class of leak fails the gate.
-- **Booth mode: the guest screen works like a DSLR booth package** (this branch). The booth had
+- **Booth mode — merged as `e8b9ada`** (PR #52, branch `arena/b204bea6-photo-booth`). The booth had
   two modes in name only — "Lock guest mode" hid some fields but the guest still saw a workspace,
   a top bar, a footer and a control grid. Locked is now a real booth screen: the live view is the
   whole window, the event logo/name/welcome text sit on it, the offered layouts and looks are a
