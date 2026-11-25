@@ -35,6 +35,31 @@ describe('initializeStorage', () => {
     database.close();
   });
 
+  it('repairs a database created by a build that made the template tables outside the migration list', () => {
+    // What the user's Windows database was in: `templates` and `template_elements` exist, but
+    // `008_templates` was never recorded, so every start died with `table templates already
+    // exists` before a window appeared.
+    const userData = makeTemporaryDirectory();
+    initializeStorage(userData);
+    const databasePath = path.join(userData, 'photobooth.sqlite');
+    const first = new Database(databasePath);
+    first.prepare("INSERT INTO templates (id, name, shots, copies, page_preset, page_width_px, page_height_px, margin_px, header_height_px, footer_height_px) VALUES ('kept', 'Kept layout', 3, 1, '4x6', 1200, 1800, 36, 120, 300)").run();
+    first.prepare("DELETE FROM schema_migrations WHERE name = '008_templates'").run();
+    first.close();
+
+    expect(initializeStorage(userData)).toEqual([
+      '008_templates: table templates already exists',
+      '008_templates: table template_elements already exists',
+    ]);
+
+    const second = new Database(databasePath);
+    expect(second.prepare("SELECT 1 FROM schema_migrations WHERE name = '008_templates'").get()).toBeTruthy();
+    expect(second.prepare('SELECT name FROM templates').get()).toEqual({ name: 'Kept layout' });
+    second.close();
+    // Third start: nothing left to repair.
+    expect(initializeStorage(userData)).toEqual([]);
+  });
+
   it('respects custom photo and backup paths', () => {
     const userData = makeTemporaryDirectory();
     const photoPath = path.join(userData, 'custom-photos');

@@ -1,6 +1,7 @@
-import { app, BrowserWindow, session } from 'electron';
+import { app, BrowserWindow, dialog, session } from 'electron';
+import path from 'node:path';
 import type { Server } from 'node:http';
-import { initializeStorage } from '../src/features/storage/node.js';
+import { DATABASE_FILE_NAME, initializeStorage } from '../src/features/storage/node.js';
 import { ensureBuiltinTemplates } from '../src/features/layouts/node.js';
 import { mockUploadAdapter, recoverInterruptedUploads, startUploadScheduler } from '../src/features/sharing/node.js';
 import { startRetentionScheduler } from '../src/features/retention/node.js';
@@ -22,9 +23,24 @@ let downloadServer: Server | null = null;
 let remoteGuest: RemoteGuestService | null = null;
 let dslr: DslrService | null = null;
 
+/**
+ * A failure this early has no window to show it in, and an unhandled rejection leaves a blank
+ * window and a stack trace in the terminal — which is exactly how the `table templates already
+ * exists` upgrade failure looked. Say what went wrong, where the database is, and stop.
+ */
+function reportStartupFailure(error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  const databasePath = path.join(app.getPath('userData'), DATABASE_FILE_NAME);
+  console.error(error);
+  dialog.showErrorBox('The photo booth could not start', `${message}\n\nDatabase: ${databasePath}`);
+  app.exit(1);
+}
+
 app.whenReady().then(async () => {
   const userDataPath = app.getPath('userData');
-  initializeStorage(userDataPath);
+  const repaired = initializeStorage(userDataPath);
+  // An older database already had part of the schema; it is recorded as applied now.
+  for (const repair of repaired) console.warn(`schema repaired: ${repair}`);
   ensureBuiltinTemplates(userDataPath);
   recoverInterruptedUploads(userDataPath);
   // Background sync (F14): resumes queued uploads at startup and retries with backoff.
@@ -77,7 +93,7 @@ app.whenReady().then(async () => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) mainWindow = boothWindow.create();
   });
-});
+}).catch(reportStartupFailure);
 
 app.on('before-quit', () => {
   if (downloadServer) downloadServer.close();

@@ -78,6 +78,22 @@ test-timeout fix as `098f34b`, onTaskUpdate yield as `8073ee1`.
   Reproduced first (six synchronous 11 s blocks: `6 passed` + `Errors 1` + exit 1), then verified
   fixed (`6 passed`, no errors, exit 0); full suite 578/578 with no unhandled errors. A microtask is
   not enough, and Vitest 4 removes the deadline at the source (`timeout: -1`).
+- **Startup crash on an older database: `table templates already exists`** (branch
+  `arena/49bb3a7c-photo-booth`). Reported from the user's machine: `npm run dev` printed
+  `UnhandledPromiseRejectionWarning: SqliteError: table templates already exists` from
+  `initializeStorage` and no booth window appeared. Cause: a database created by an older build has
+  the template tables but **no `008_templates` row** in `schema_migrations` (the tables were created
+  outside the migration list then), so the current runner tried to create them again. The migration
+  SQL was extracted unchanged into `src/features/storage/database/migrations.ts` with a runner that
+  works **statement by statement**: a statement that fails with "table/index already exists" or
+  "duplicate column name" is skipped, the migration is recorded, and the repair is logged, while any
+  other error still rolls the migration back and throws. Because recording a migration whose objects
+  existed is only safe if those objects are the right ones, `schemaGaps` compares the columns
+  declared in the SQL with the real schema and refuses to start — naming the table and column — if a
+  much older database lacks one. `initializeStorage` now returns the repairs, `electron/main.ts`
+  logs them, and a startup failure shows an error dialog with the database path instead of a blank
+  window. 13 new tests (splitter, repair, genuine-error rollback, column check, and the exact
+  "objects present, row missing" case at the `initializeStorage` level).
 - Automated verification today: `npm run typecheck`, `npm run lint`, `npm test`
   (**578 tests in 101 files**), `npm run build` (Vite production build) all pass.
   `npm run test:e2e` exists but cannot run in this environment (no browser runtime).
