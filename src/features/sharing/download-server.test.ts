@@ -111,7 +111,7 @@ describe('private QR download server', () => {
     setEventLogo(directory, 'default-event', logoPath);
     const page = await (await fetch(`${origin}/d/${token}`)).text();
     expect(page).toContain('border-bottom:3px solid #abcdef');
-    expect(page).toContain('background:#11131c');
+    expect(page).toContain('background:#f7f6f3'); // the light page shell
     expect(page).toContain('thankYouText');
     expect(page).not.toContain('<script>alert(1)</script>');
     const logo = await fetch(`${origin}/api/v1/logo/${token}`);

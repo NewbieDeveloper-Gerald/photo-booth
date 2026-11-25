@@ -18,6 +18,16 @@ This starts the Vite renderer and opens the Electron desktop app. For a browser-
 
 Working in VS Code? [`docs/vscode-setup.md`](docs/vscode-setup.md) has the prerequisites per platform (including the C++ toolchain `better-sqlite3` needs), and the repository ships `.vscode/` tasks and launch configs: **F5** starts Vite + Electron with main-process breakpoints, `Ctrl+Shift+B` builds, and *Tasks: Run Task* has install / test / lint / typecheck.
 
+## Look
+
+Light, flat and quiet: two greys, white cards, one near-black accent, and the photo stage stays
+dark so pictures read. Every colour in the operator UI is a token in `:root` at the top of
+`src/ui/style.css` — change the palette there, not in the rules. The three pages the booth serves
+as plain HTML (guest downloads, event gallery, operator numbers in `src/features/*/*/*-html.ts`)
+cannot read those tokens, so they carry the same values inline; the two dark stage areas
+(`--stage`, `--scrim`) are the only places that stay dark. `src/ui/style-tokens.test.ts` fails the
+build if a colour escapes the token block or if text drops below WCAG AA (4.5:1) on any surface.
+
 ## Build and checks
 
 ```sh
