@@ -13,15 +13,18 @@
     "build": "tsc -b && vite build && tsc -p tsconfig.electron.json",
     "typecheck": "tsc -b",
     "start": "electron .",
-    "pretest": "npm rebuild better-sqlite3",
+    "pretest": "npm run rebuild:node",
     "test": "vitest run",
-    "posttest": "electron-rebuild -f -w better-sqlite3",
+    "posttest": "npm run rebuild:electron",
+    "test:doctor": "node scripts/diagnose-tests.mjs",
+    "rebuild:node": "npm rebuild better-sqlite3",
+    "rebuild:electron": "electron-rebuild -f -w better-sqlite3",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "lint": "eslint .",
     "dev:web": "vite --host 0.0.0.0",
     "dev:debug": "npm run build:main && concurrently -k \"vite --host 0.0.0.0\" \"wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron --inspect=9229 .\"",
-    "postinstall": "electron-rebuild -f -w better-sqlite3"
+    "postinstall": "npm run rebuild:electron"
   },
   "dependencies": {
     "better-sqlite3": "^12.2.0",
