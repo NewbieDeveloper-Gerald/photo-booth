@@ -53,6 +53,20 @@ Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `4215
 - **F22 extension (USB cable screen + Android app source): merged** (`fb130e9`). The APK itself
   is **not built** — no Android SDK here — so the app is source only; the cable link is tested
   against a fake `adb` and has never been exercised on a real phone.
+- **Windows test run follow-up** (branch `arena/0d1f22d7-photo-booth`). A run on the user's
+  Windows machine reported **16 failed files / 52 failed tests**, every one of them
+  `Test timed out in 5000ms` — 578 tests, 526 passing, no assertion mismatch anywhere, 88 s wall
+  clock but 816 s of worker time. The failing files were exactly the database, filesystem and
+  loopback-HTTP suites; every pure-logic suite passed. Diagnosis: the suite's integration half
+  does real I/O (temp storage directory, migrations, one open/close per repository call, fsync per
+  commit), and Vitest's 5 s default is a logic-test budget. `vite.config.ts` now sets
+  **`testTimeout`/`hookTimeout` to 30 s** (still a real limit — hangs fail), `npm run test:doctor`
+  (`scripts/diagnose-tests.mjs`) measures the machine's small-file, commit, connection and scrypt
+  costs and prints the fix, `rebuild:node`/`rebuild:electron` make the addon-ABI flip explicit,
+  and `docs/testing.md` explains all of it. **The machine's numbers are not reproduced here** — the
+  sandbox reports 0.34 ms per temp-file fsync and 1.06 ms per autocommit (a 175× fsync penalty
+  inside vs outside a transaction), the exact ratio a Windows run spends on antivirus; the user
+  must re-run `npm test` and `npm run test:doctor` to confirm.
 - Automated verification today: `npm run typecheck`, `npm run lint`, `npm test`
   (**578 tests in 101 files**), `npm run build` (Vite production build) all pass.
   `npm run test:e2e` exists but cannot run in this environment (no browser runtime).

@@ -28,6 +28,8 @@ npm run lint
 
 `npm test` temporarily rebuilds the native SQLite addon for the installed Node.js version, runs Vitest, then restores the Electron-compatible addon. Let the command finish before launching the desktop app.
 
+Half the suite is integration: it writes real files and opens real SQLite connections, so its speed depends on the disk and on antivirus. `npm run test:doctor` measures that machine and prints what to fix; [`docs/testing.md`](docs/testing.md) explains the 30 s timeout budget, the addon rebuild, and how to run a subset.
+
 Playwright is configured for browser UI flows. Install its browser once with `npx playwright install chromium`, then run `npm run test:e2e`.
 
 ## Local data
