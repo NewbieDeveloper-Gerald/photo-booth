@@ -1,7 +1,7 @@
 # Progress
 
 Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`, F20 as `de322a2`, F21 as `e9564c1`, F22 as `1b3d92c`, F23 as `48fab71`, F24 as `22bff4d`, F25 as `9cb5f59`, F26 as `665971d`, **F27 skipped by request**, F28 as `f4a18d0`, F22 USB cable screen as `fb130e9`, VS Code setup as `caf99d2`,
-test-timeout fix as `098f34b`, onTaskUpdate yield as `8073ee1`, database adoption as `94dbaa6`, template-table rebuild as `62ce2ab`, USB card diagnostics as `633786e`, working mode in `AGENTS.md` as `9686dbe`, light theme as `67747e3`.
+test-timeout fix as `098f34b`, onTaskUpdate yield as `8073ee1`, database adoption as `94dbaa6`, template-table rebuild as `62ce2ab`, USB card diagnostics as `633786e`, working mode in `AGENTS.md` as `9686dbe`, light theme as `67747e3`, organised operator screen as `55c57aa`.
 
 ## Current status
 
@@ -132,7 +132,7 @@ test-timeout fix as `098f34b`, onTaskUpdate yield as `8073ee1`, database adoptio
   `var()` declared, text ≥ 4.5:1 on page/card/inset, white on accent and stage, lines quiet.
   Not verified visually: there is no browser or Electron in this environment, so the palette is
   checked by contrast maths and by review, not by looking at it.
-- **Organised operator screen** (this branch, on top of the light theme). The ready screen was a
+- **Organised operator screen — merged as `55c57aa`** (PR #50, branch `arena/505abdf9-photo-booth`). The ready screen was a
   flat pile of cards in feature order; it is now a few labelled groups — "This session", "Guests and
   sharing", "Hardware" — between the capture controls and the setup forms, and the two long forms
   (event details/branding, operator access/consent) sit behind a native `<details>` summary, so the
