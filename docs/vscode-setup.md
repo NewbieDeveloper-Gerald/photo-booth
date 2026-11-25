@@ -92,4 +92,5 @@ does not build it — `android/booth-screen/README.md` covers that, and the APK 
 | Changes to `electron/**` do nothing | the main process is not hot-reloaded: stop and start `npm run dev` again |
 | `Connect over USB` says adb is missing | platform-tools is not installed or not on `PATH` |
 | Tests fail with `Test timed out in 5000ms` | this machine makes small files expensive — run `npm run test:doctor` and follow its fixes (antivirus exclusions, `TEMP` on an SSD). See [`testing.md`](testing.md) |
+| Green run, but `Errors 1 error` and `Timeout calling "onTaskUpdate"` | a reporting deadline in Vitest 3, not a test failure — explained (and fixed) in [`testing.md`](testing.md) |
 | `NODE_MODULE_VERSION … different Node.js version` | the addon is built for the other runtime: `npm run rebuild:node` before `npm test`, `npm run rebuild:electron` before `npm run dev` |

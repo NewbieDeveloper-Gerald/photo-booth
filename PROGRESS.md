@@ -68,6 +68,16 @@ test-timeout fix as `098f34b`.
   sandbox reports 0.34 ms per temp-file fsync and 1.06 ms per autocommit (a 175× fsync penalty
   inside vs outside a transaction), the exact ratio a Windows run spends on antivirus; the user
   must re-run `npm test` and `npm run test:doctor` to confirm.
+- **The remaining `onTaskUpdate` error, fixed** (branch `arena/65eed260-photo-booth`). After the
+  30 s budget the user's run was 101/101 files and 578/578 tests green but still exited 1 with
+  `Errors 1 error: [vitest-worker]: Timeout calling "onTaskUpdate"` — a real symptom, not cosmetic.
+  Vitest 3 gives that worker→main RPC a hardcoded 60 s timeout with no config knob; better-sqlite3
+  is synchronous, so a database file blocks the worker's event loop, the ack sits unread in the IPC
+  queue, and Node runs the expired timer before polling. `src/renderer/test-setup.ts` now awaits one
+  macrotask (`setImmediate`) before each test, so the deadline never spans more than one test.
+  Reproduced first (six synchronous 11 s blocks: `6 passed` + `Errors 1` + exit 1), then verified
+  fixed (`6 passed`, no errors, exit 0); full suite 578/578 with no unhandled errors. A microtask is
+  not enough, and Vitest 4 removes the deadline at the source (`timeout: -1`).
 - Automated verification today: `npm run typecheck`, `npm run lint`, `npm test`
   (**578 tests in 101 files**), `npm run build` (Vite production build) all pass.
   `npm run test:e2e` exists but cannot run in this environment (no browser runtime).
