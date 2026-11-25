@@ -1,6 +1,7 @@
 # Progress
 
-Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`, F20 as `de322a2`, F21 as `e9564c1`, F22 as `1b3d92c`, F23 as `48fab71`, F24 as `22bff4d`, F25 as `9cb5f59`, F26 as `665971d`, **F27 skipped by request**, F28 as `f4a18d0`, F22 USB cable screen as `fb130e9`.
+Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `42158f2`, F13 as `f3ad680`, F14 as `dc20c12`, F15 as `bcb73f7`, F16 as `0d1debd`, F17 as `484354e`, F18 as `6a0abb9`, F19 as `3425d9d`, F20 as `de322a2`, F21 as `e9564c1`, F22 as `1b3d92c`, F23 as `48fab71`, F24 as `22bff4d`, F25 as `9cb5f59`, F26 as `665971d`, **F27 skipped by request**, F28 as `f4a18d0`, F22 USB cable screen as `fb130e9`, VS Code setup as `caf99d2`,
+test-timeout fix as `098f34b`.
 
 ## Current status
 
@@ -53,7 +54,7 @@ Updated 2026-11-24. Refactor merged as `0e8c9a1`, F11 as `4833af7`, F12 as `4215
 - **F22 extension (USB cable screen + Android app source): merged** (`fb130e9`). The APK itself
   is **not built** — no Android SDK here — so the app is source only; the cable link is tested
   against a fake `adb` and has never been exercised on a real phone.
-- **Windows test run follow-up** (branch `arena/0d1f22d7-photo-booth`). A run on the user's
+- **Windows test run follow-up: merged as `098f34b`** (PR #36, branch `arena/0d1f22d7-photo-booth`). A run on the user's
   Windows machine reported **16 failed files / 52 failed tests**, every one of them
   `Test timed out in 5000ms` — 578 tests, 526 passing, no assertion mismatch anywhere, 88 s wall
   clock but 816 s of worker time. The failing files were exactly the database, filesystem and
