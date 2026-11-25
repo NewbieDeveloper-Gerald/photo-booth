@@ -9,23 +9,23 @@ import type { BoothStats } from '../../../shared/types/analytics';
 export const ADMIN_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
 const STYLES = `
-  *{box-sizing:border-box}body{margin:0;background:#0f131c;color:#f2f4f8;font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+  *{box-sizing:border-box}body{margin:0;background:#f7f6f3;color:#1b1a17;font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
   .wrap{max-width:1080px;margin:auto;padding:28px 18px 56px}
-  h1{font-size:26px;margin:0 0 6px}h2{font-size:15px;margin:26px 0 8px;letter-spacing:.08em;text-transform:uppercase;color:#9aa5b8}
-  .eyebrow{color:#7dd3fc;font-size:11px;letter-spacing:.16em;font-weight:700;text-transform:uppercase}
-  .note{color:#9aa5b8;font-size:13px}
-  table{width:100%;border-collapse:collapse;background:#171d29;border:1px solid #ffffff1a;border-radius:12px;overflow:hidden}
-  th,td{padding:10px 12px;text-align:right;border-bottom:1px solid #ffffff12;font-variant-numeric:tabular-nums}
+  h1{font-size:26px;margin:0 0 6px}h2{font-size:15px;margin:26px 0 8px;letter-spacing:.08em;text-transform:uppercase;color:#6b6861}
+  .eyebrow{color:#1b1a17;font-size:11px;letter-spacing:.16em;font-weight:700;text-transform:uppercase}
+  .note{color:#6b6861;font-size:13px}
+  table{width:100%;border-collapse:collapse;background:#ffffff;border:1px solid #e7e4dd;border-radius:12px;overflow:hidden}
+  th,td{padding:10px 12px;text-align:right;border-bottom:1px solid #e7e4dd;font-variant-numeric:tabular-nums}
   th:first-child,td:first-child{text-align:left}
-  th{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#9aa5b8;font-weight:700}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#6b6861;font-weight:700}
   tr:last-child td{border-bottom:0}
-  tfoot td{background:#111725;font-weight:700}
-  .card{background:#171d29;border:1px solid #ffffff1a;border-radius:14px;padding:18px;margin:18px 0}
-  input{width:100%;padding:12px;border-radius:9px;border:1px solid #ffffff26;background:#0f131c;color:#f2f4f8;font:inherit;font-size:18px;letter-spacing:.35em}
-  button,.link{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border:0;border-radius:9px;background:#2563eb;color:#fff;font:inherit;font-weight:700;text-decoration:none;cursor:pointer}
-  button.ghost,.link.ghost{background:#ffffff14;border:1px solid #ffffff2b}
+  tfoot td{background:#f1efe9;font-weight:700}
+  .card{background:#ffffff;border:1px solid #e7e4dd;border-radius:14px;padding:18px;margin:18px 0}
+  input{width:100%;padding:12px;border-radius:9px;border:1px solid #d2cec3;background:#ffffff;color:#1b1a17;font:inherit;font-size:18px;letter-spacing:.35em}
+  button,.link{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border:0;border-radius:9px;background:#1b1a17;color:#fff;font:inherit;font-weight:700;text-decoration:none;cursor:pointer}
+  button.ghost,.link.ghost{background:#ffffff;border:1px solid #d2cec3;color:#1b1a17}
   .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
-  .error{color:#fca5a5;margin:10px 0 0}
+  .error{color:#a8232a;margin:10px 0 0}
   form{margin:0}
 `;
 

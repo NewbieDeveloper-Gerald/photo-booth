@@ -3,7 +3,7 @@ import path from 'node:path';
 import { isBlockedKioskShortcut } from '../../src/features/security/domain/kiosk-keys.js';
 
 const WINDOW_BOUNDS = { width: 1280, height: 800, minWidth: 900, minHeight: 600 };
-const BACKGROUND_COLOR = '#111827';
+const BACKGROUND_COLOR = '#f7f6f3';
 
 export type BoothWindowController = {
   create: () => BrowserWindow;

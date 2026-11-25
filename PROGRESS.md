@@ -119,6 +119,19 @@ test-timeout fix as `098f34b`, onTaskUpdate yield as `8073ee1`, database adoptio
   is now `AGENTS.md` at the repository root with `CLAUDE.md` as a one-line pointer: default on, level
   `full`, off on "stop ponytail"/"normal mode". No plugin, hook or marketplace file is copied — the
   agent reads the repository, so a file in the repository is the whole installation.
+- **Light, minimalist look** (branch `arena/80ffd0af-photo-booth`). The operator UI was a dark
+  indigo theme with 151 hardcoded colours; it is now a light one (page `#f7f6f3`, white cards, one
+  near-black accent, `--stage` keeps the camera/photo wells dark) driven by **24 tokens** in
+  `:root`. The rules themselves hold no colour any more: a single mapping pass replaced each
+  literal with its token, radii collapsed to two steps, and the page gradient became flat. The
+  three standalone HTML pages guests see (USB/tablet screen, downloads and gallery, operator
+  numbers) got the same values inline because they cannot read the app's CSS — that is what the
+  APK shows, so the phone looks new without rebuilding the APK. Electron's window background and
+  `index.html`'s theme colour follow the light theme, so no dark flash on launch.
+  `src/ui/style-tokens.test.ts` (5 tests) enforces the tokens: no colour outside `:root`, every
+  `var()` declared, text ≥ 4.5:1 on page/card/inset, white on accent and stage, lines quiet.
+  Not verified visually: there is no browser or Electron in this environment, so the palette is
+  checked by contrast maths and by review, not by looking at it.
 - Automated verification today: `npm run typecheck`, `npm run lint`, `npm test`
   (**578 tests in 101 files**), `npm run build` (Vite production build) all pass.
   `npm run test:e2e` exists but cannot run in this environment (no browser runtime).

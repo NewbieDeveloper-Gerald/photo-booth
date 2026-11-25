@@ -15,16 +15,17 @@ export function renderRemotePage(options: RemotePageOptions): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#111827">
+<meta name="theme-color" content="#f7f6f3">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'self'; connect-src 'self' ws: wss:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
 <title>${title}</title>
 <style>
-  :root { --primary: #2563eb; --accent: #f59e0b; color-scheme: dark; }
+  :root { --page:#f7f6f3; --card:#ffffff; --inset:#f1efe9; --stage:#121212; --ink:#1b1a17; --ink-soft:#43413c;
+    --ink-muted:#6b6861; --primary:#1b1a17; --accent:#eae7e0; --line:#e7e4dd; --line-strong:#d2cec3; --accent:#eae7e0; color-scheme: light; }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; height: 100%; }
   body {
     display: flex; flex-direction: column; min-height: 100dvh; gap: 0;
-    background: #0b0f17; color: #f8fafc; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--page); color: var(--ink); font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     touch-action: manipulation; overscroll-behavior: none;
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   }
@@ -32,33 +33,33 @@ export function renderRemotePage(options: RemotePageOptions): string {
   header img { max-height: 40px; max-width: 40vw; object-fit: contain; }
   header .name { font-size: 15px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; opacity: .9; margin: 0; }
   main { flex: 1; display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 14px; padding: 0 18px 18px; min-height: 0; }
-  .stage { position: relative; border-radius: 18px; overflow: hidden; background: #05070c; border: 1px solid #ffffff1a; min-height: 0; display: grid; place-items: center; }
+  .stage { position: relative; border-radius: 18px; overflow: hidden; background: var(--stage); border: 1px solid var(--line); min-height: 0; display: grid; place-items: center; }
   .preview { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .stage-overlay { position: absolute; inset: 0; display: grid; place-items: center; padding: 18px; text-align: center; background: #05070ccc; }
+  .stage-overlay { position: absolute; inset: 0; display: grid; place-items: center; padding: 18px; text-align: center; background: #141414d9; }
   .stage-overlay[hidden] { display: none; }
   .countdown { font-size: clamp(72px, 22vw, 190px); font-weight: 800; line-height: 1; color: #fff; text-shadow: 0 8px 40px #000a; }
   .headline { font-size: clamp(20px, 3.4vw, 30px); font-weight: 700; margin: 0 0 6px; }
-  .sub { margin: 0; font-size: 15px; line-height: 1.45; color: #cbd5e1; max-width: 46ch; }
+  .sub { margin: 0; font-size: 15px; line-height: 1.45; color: var(--ink-muted); max-width: 46ch; }
   .actions { display: grid; gap: 12px; }
   .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
   button {
     min-height: 62px; border-radius: 14px; border: 0; padding: 14px 18px; font: inherit; font-size: 18px; font-weight: 700;
-    color: #fff; background: #1e293b; cursor: pointer; touch-action: manipulation;
+    color: var(--ink); background: var(--inset); border: 1px solid var(--line-strong); cursor: pointer; touch-action: manipulation;
   }
   button:disabled { opacity: .45; }
-  button.primary { background: var(--primary); }
-  button.accent { background: var(--accent); color: #1a1206; }
-  button.ghost { background: #ffffff14; border: 1px solid #ffffff33; }
-  button.danger { background: #7f1d1d; }
+  button.primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+  button.accent { background: var(--accent); color: var(--ink); }
+  button.ghost { background: var(--card); border: 1px solid var(--line-strong); }
+  button.danger { background: #a8232a; color: #fff; border-color: #a8232a; }
   .slots { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
-  .slot { display: grid; gap: 8px; padding: 10px; border-radius: 12px; background: #ffffff0f; border: 1px solid #ffffff1a; text-align: center; }
-  .slot span { font-size: 13px; color: #cbd5e1; }
+  .slot { display: grid; gap: 8px; padding: 10px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); text-align: center; }
+  .slot span { font-size: 13px; color: var(--ink-muted); }
   .slot button { min-height: 48px; font-size: 15px; }
-  .notice { margin: 0; padding: 12px 14px; border-radius: 12px; background: #ffffff12; font-size: 14px; line-height: 1.5; color: #e2e8f0; max-height: 32vh; overflow: auto; }
-  .share { display: block; margin-top: 10px; font-size: 15px; color: #93c5fd; word-break: break-all; }
-  .conn { position: fixed; left: 0; right: 0; bottom: 0; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: #b45309; color: #1c1207; font-weight: 700; text-align: center; font-size: 15px; }
+  .notice { margin: 0; padding: 12px 14px; border-radius: 12px; background: var(--inset); font-size: 14px; line-height: 1.5; color: var(--ink-soft); max-height: 32vh; overflow: auto; }
+  .share { display: block; margin-top: 10px; font-size: 15px; color: var(--ink-soft); text-decoration: underline; word-break: break-all; }
+  .conn { position: fixed; left: 0; right: 0; bottom: 0; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: #fbf2de; color: #8a5a00; font-weight: 700; text-align: center; font-size: 15px; }
   .conn[hidden] { display: none; }
-  .stream-warning { margin: 0; font-size: 14px; color: #fca5a5; }
+  .stream-warning { margin: 0; font-size: 14px; color: var(--danger, #a8232a); }
   @media (min-width: 900px) { main { grid-template-columns: minmax(0, 1.35fr) minmax(320px, .65fr); grid-template-rows: minmax(0, 1fr); } .actions { align-content: end; overflow: auto; } }
 </style>
 </head>
@@ -143,8 +144,8 @@ export const REMOTE_APP_JS = `(function () {
 
   function render(viewData) {
     view = viewData;
-    document.documentElement.style.setProperty('--primary', viewData.primaryColor || '#2563eb');
-    document.documentElement.style.setProperty('--accent', viewData.accentColor || '#f59e0b');
+    document.documentElement.style.setProperty('--primary', viewData.primaryColor || '#1b1a17');
+    document.documentElement.style.setProperty('--accent', viewData.accentColor || '#eae7e0');
     el('event-name').textContent = viewData.eventName || 'Photo booth';
     var logo = el('logo');
     if (viewData.logoUrl) { logo.hidden = false; logo.src = viewData.logoUrl; } else { logo.hidden = true; logo.removeAttribute('src'); }
